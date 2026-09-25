@@ -1,0 +1,59 @@
+Pages: 1
+
+--- PAGE 1 ---
+
+Internal
+Annexure (P30339B_RFI -0113_REV-0)
+ITP
+Act#
+Activities Inspection Dates 3.2 TPI ARCO TPI ADNOC TPI Remarks / Location
+6.1 (a) Body, Bonnet & Trims after
+machining - Shell pressure Test
+13th ,14th , 15th , 16th &
+17th July 2026
+W W W Vendor Location:
+KSB MIL Controls Limited
+6.2 (b) Body, Bonnet & Trims after
+machining - DPT after machining
+13th ,14th , 15th , 16th &
+17th July 2026
+W 10% W 10% W 10% Vendor Location:
+KSB MIL Controls Limited
+6.3 © Body, Bonnet & Trims after
+machining - Material check - PMI
+(Applicable for body, bonnet and trim
+parts as per datasheet. Test will be
+done with portable XRF)
+13th ,14th , 15th , 16th &
+17th July 2026
+W 10% W 10% W 10% Vendor Location:
+KSB MIL Controls Limited
+6.4 (d) Body, Bonnet & Trims after
+machining - Hardness check on
+Hard-faced components (Stellite 6)
+13th ,14th , 15th , 16th &
+17th July 2026
+R R R Vendor Location:
+KSB MIL Controls Limited
+8.1 Surface preparation and Painting -
+Paint Material Selection
+17th July 2026 R R R Sub Vendor Location:
+Specialised Coating Services
+(All vehicle arrangements will
+be handled by the KSB MIL
+representative.)
+8.2 Surface preparation and Painting -
+Pre-production / Repair Qualification
+Test
+17th July 2026 R R R Sub Vendor Location:
+Specialised Coating Services
+(All vehicle arrangements will
+be handled by the KSB MIL
+representative.)
+8.3 Surface preparation and Painting -
+Incoming Abrasives / Paint Material
+inspection (Verify storage, container
+integrity, and shelf life)
+17th July 2026 R R R Sub Vendor Location:
+Specialised Coating Services
+(All vehicle arrangements will

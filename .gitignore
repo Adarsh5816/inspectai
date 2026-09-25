@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Production build outputs
+dist/
+**/dist/
+
+# Environment and secrets
+.env
+**/.env
+.env.local
+.env.*.local
+*.env
+
+# SQLite local databases
+*.db
+*.db-journal
+server/dev.db
+server/dev.db-journal
+server/prisma/*.db
+server/prisma/*.db-journal
+
+# Uploaded storage files (keep directories via .gitkeep)
+storage/*.docx
+storage/documents/*
+!storage/documents/.gitkeep
+storage/photos/*
+!storage/photos/.gitkeep
+storage/reports/*
+!storage/reports/.gitkeep
+
+# Logs and OS files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo

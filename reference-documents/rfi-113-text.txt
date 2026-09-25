@@ -1,0 +1,273 @@
+Pages: 6
+
+--- PAGE 1 ---
+
+Internal#
+Criticality Rating:
+Phone:
+Fax:
+Time:
+Rejected
+ARCHIRODON
+Final Inspection	FAT	Stage Inspection	Stock Materials	Pre-Inspection Meeting
+ADNOC Onshore
+TPIA
+EPC Contractor
+Vendor / Subcon
+ADNOC Onshore
+TPIA
+EPC Contractor
+Vendor / Subcontractor
+ADNOC Onshore
+TPIA
+EPC Contractor
+Vendor / Subcontractor
+Hold Witness Review
+Tel.: +91 480 2695832, Mob: +91 9746167097
+Tel.: +91 480 2695842, Mob: +91 9432487337
+Issued By EPC
+Con/Subcon Reviewed By EPC Quality ADNOC Onshore Acknowledgement
+Alex Davis
+Project Coordinator
+29-Jun-26
+Accepted
+Inspection Results
+Signature:
+Designation:
+Name:
+Remarks:
+Re-inspection
+Date:
+Accepted with Comments Cancelled Required Re-inspection
+Cancelled	Rejected	Accepted
+Inspection Attendance & Closing Out
+Signature:
+Title:
+Name:
+EPC Con/Subcon ADNOC Onshore	TPIA
+P30339B-30-99-52-
+4607 Rev.C ITP Activity Ref:
+Witness- 6.1,
+6.2(b),
+6.3©,8.7,8.10
+Review- 6.4(d),
+8.1, 8.2, 8.3,
+8.4, 8.5, 8.6,
+8.8, 8.9, 8.11,
+8.12
+Inspection Location:
+Mr. Gautham Sai S
+QA Inspection Incharge
+Tel.: +91 480 2695817, Mob: +91 70129 06581
+E-mail : Gautham.Sai@ksb.com
+KSB MIL CONTROLS LIMITED
+Meladoor, Annamanada - 680741,
+Kerala, India.
+Sub Vendor Location (For painting related):
+Specialised Coating Services (All vehicle
+arrangements will be handled by the KSB MIL
+representative.)
+5 Man-days
+09:00 AM to 06:00 PM (IST)
+	13th, 14th, 15th, 16th & 17th July 2026
+Alex.Davis@ksb.com
+Sreejith.A@ksb.com
+Mr. Alex Davis (KSB MIL Contract Management)
+Mr. Sreejith A. (KSB MIL QA)
+EPC Quality
+ITP Ref. No:
+Remarks:
+First Inspection
+Date:
+Inspection Date:
+E-mail:
+Request for Inspection (RFI)
+Body, Bonnet & Trims after machining
+6.1 (a) - Shell pressure Test
+6.2 (b) - DPT after machining
+6.3 (c) - Material check - PMI (Applicable for body, bonnet and trim parts asper datasheet. Test will be done with portable XRF)
+8.7 - Surface preparation and Painting - Blasting /Surface preparation checking
+8.10 - Surface preparation and Painting - Water Soluble Salts
+And all review activities as per approved ITP.
+Inspection Class
+Sub-Contractor Vendor	EPC Contractor
+Others
+Piping / Pipeline	Welding
+Painting	Structural
+Instruments
+Mechanical
+Electrical
+Telecom
+Civil
+Project:
+Project No.:
+1
+EPC for SE AiP5 Project (On plot) - ASAB/SAHIL (Package 1)
+P30339B
+RFI Originator
+Attachment:
+Discipline:
+If Others (Specify)
+Inspection Details
+I
+Date:
+Description
+Material Certification 3.2
+CONTRACTOR PO: 04108-PM-INST-008
+Contact Person:
+29-Jun-26 RFI No: P30339B-RFI-INST-008-ARC-INT-KSB-0113
+Rev.0
+Equipment /
+Materials /
+Activities
+
+--- PAGE 2 ---
+
+Internal
+Annexure (P30339B_RFI -0113_REV-0)
+ITP
+Act#
+Activities Inspection Dates 3.2 TPI ARCO TPI ADNOC TPI Remarks / Location
+6.1 (a) Body, Bonnet & Trims after
+machining - Shell pressure Test
+13th ,14th , 15th , 16th &
+17th July 2026
+W W W Vendor Location:
+KSB MIL Controls Limited
+6.2 (b) Body, Bonnet & Trims after
+machining - DPT after machining
+13th ,14th , 15th , 16th &
+17th July 2026
+W 10% W 10% W 10% Vendor Location:
+KSB MIL Controls Limited
+6.3 © Body, Bonnet & Trims after
+machining - Material check - PMI
+(Applicable for body, bonnet and trim
+parts as per datasheet. Test will be
+done with portable XRF)
+13th ,14th , 15th , 16th &
+17th July 2026
+W 10% W 10% W 10% Vendor Location:
+KSB MIL Controls Limited
+6.4 (d) Body, Bonnet & Trims after
+machining - Hardness check on
+Hard-faced components (Stellite 6)
+13th ,14th , 15th , 16th &
+17th July 2026
+R R R Vendor Location:
+KSB MIL Controls Limited
+8.1 Surface preparation and Painting -
+Paint Material Selection
+17th July 2026 R R R Sub Vendor Location:
+Specialised Coating Services
+(All vehicle arrangements will
+be handled by the KSB MIL
+representative.)
+8.2 Surface preparation and Painting -
+Pre-production / Repair Qualification
+Test
+17th July 2026 R R R Sub Vendor Location:
+Specialised Coating Services
+(All vehicle arrangements will
+be handled by the KSB MIL
+representative.)
+8.3 Surface preparation and Painting -
+Incoming Abrasives / Paint Material
+inspection (Verify storage, container
+integrity, and shelf life)
+17th July 2026 R R R Sub Vendor Location:
+Specialised Coating Services
+(All vehicle arrangements will
+
+--- PAGE 3 ---
+
+Internal
+be handled by the KSB MIL
+representative.)
+8.4 Surface preparation and Painting -
+Environmental Conditions
+17th July 2026 R R R Sub Vendor Location:
+Specialised Coating Services
+(All vehicle arrangements will
+be handled by the KSB MIL
+representative.)
+8.5 Surface preparation and Painting -
+Pre-cleaning of surfaces / Solvent
+cleaning
+17th July 2026 R R R Sub Vendor Location:
+Specialised Coating Services
+(All vehicle arrangements will
+be handled by the KSB MIL
+representative.)
+8.6 Surface preparation and Painting -
+Compressed Air Quality
+17th July 2026 R R R Sub Vendor Location:
+Specialised Coating Services
+(All vehicle arrangements will
+be handled by the KSB MIL
+representative.)
+8.7 Surface preparation and Painting -
+Blasting /Surface preparation
+checking
+17th July 2026 RW RW RW Sub Vendor Location:
+Specialised Coating Services
+(All vehicle arrangements will
+be handled by the KSB MIL
+representative.)
+8.8 Surface preparation and Painting -
+Roughness / Profile & Masking
+17th July 2026 R R R Sub Vendor Location:
+Specialised Coating Services
+(All vehicle arrangements will
+be handled by the KSB MIL
+representative.)
+8.9 Surface preparation and Painting -
+Dust test
+17th July 2026 R R R Sub Vendor Location:
+Specialised Coating Services
+(All vehicle arrangements will
+be handled by the KSB MIL
+representative.)
+
+--- PAGE 4 ---
+
+Internal
+8.10 Surface preparation and Painting -
+Water Soluble Salts
+17th July 2026 RW RW R Sub Vendor Location:
+Specialised Coating Services
+(All vehicle arrangements will
+be handled by the KSB MIL
+representative.)
+8.11 Surface preparation and Painting -
+Verify correct Mixing Ratio
+17th July 2026 R R R Sub Vendor Location:
+Specialised Coating Services
+(All vehicle arrangements will
+be handled by the KSB MIL
+representative.)
+8.12 Surface preparation and Painting -
+WFT
+17th July 2026 R R R Sub Vendor Location:
+Specialised Coating Services
+(All vehicle arrangements will
+be handled by the KSB MIL
+representative.)
+
+--- PAGE 5 ---
+
+Internal#
+Annexure-1
+PO SL NO TAG NO VALVE SL NO JOB VALVE DETAILS QTY
+74 16-01-TCV -2813-58A 25008073 CD13E020 8''-41932 ASME #1500 RF Gr LCC CV=400 38 24''-7A2 1
+'7 14-01-FCV -0709-01 25008076 CD13E032 10''-41611 ASME #300 RF Gr WCC CV=750 37 18''-7A1 1
+'8 14-01-FCV-0710-01 25008077 CD13E033 10''-41611 ASME #300 RF Gr WCC CV=750 37 18''-7A1 1
+'36 14-01-PCV -0804-08A 25008079 CD13E060 6''-41332 ASME #300 RF Gr WCC CV=210 37 18''-6A3 1
+'49 14-01-TCV-0410-45 25008081 CD13E072 12''-41921 ASME #300 RF Gr WCC CV=1250 38 24''-7A2 1
+'67 16-01-PCV-2803-37A 25008181 CD13E013 8''-41332 ASME #600 RF Gr LCC CV=255 37 18''H-8A 1
+'68 16-01-PCV-2803-37B 25008182 CD13E014 8''-41332 ASME #600 RF Gr LCC CV=255 37 18''H-8A 1
+
+--- PAGE 6 ---
+
+Internal#
+ANNEXURE-2

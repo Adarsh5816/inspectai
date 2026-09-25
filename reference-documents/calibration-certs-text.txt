@@ -1,0 +1,178 @@
+Pages: 11
+
+--- PAGE 1 ---
+
+
+
+--- PAGE 2 ---
+
+
+
+--- PAGE 3 ---
+
+
+
+--- PAGE 4 ---
+
+
+
+--- PAGE 5 ---
+
+
+
+--- PAGE 6 ---
+
+
+
+--- PAGE 7 ---
+
+BATCH TEST CERTIFICATE
+Date 	:
+Product : SKD-S2
+Batch No :
+Mfd. in 	:
+We hereby certify that when tested at time of manufacture, the above material:
+1. Meets the requirements of the following specifications:
+A. ASME Boiler and Pressure Vessel Code 2004, 2007, 2010, 2013, 2015, 2017,2019,2021 and 2023
+Edition, Section V, Nondestructive Examination, including 2005, 2006, 2008, 2009b, and 2011a
+Addenda, Article 6 Paragraph T-641 and Article 24 as applicable.
+B. ASME Boiler and Pressure Vessel Code, 1995, 1998 and 2001 Edition, Section V Nondestructive
+Examination, including 1999, 2000, 2002 and 2003 Addenda, Article 6 Paragraph T-640 and
+Article 24 as applicable.
+C. ASME Boiler and Pressure Vessel Code, 1986, 1989 and 1992 Edition, Section V , Nondestructive
+Examination, Article 6 including 1992 Addenda, Paragraph T-625, 1993 Addenda Paragraph T-640 and
+Article 24 as applicable.
+D. ASTM-165/E-165M-23, Paragraph 7.1,
+2. Meets the requirements of NUCLEAR POWER CORPORATION OF INDIA for materials for Dye penetrant
+Inspection process.
+The following test results were obtained:
+1. 	Sulphur 	: 	<25 	ppm
+2. 	Total Chlorine + Fluorine 	: 	<25 	ppm
+3. 	Cleaner residue (see note 2) 	: 	NA 	g/100g
+3. 	Meets the requirements of EN ISO 3452-2, EN 571-1 and ASTM E 1417 Paragraph 5.1
+Page 1 of 2 	Form No: F/QC/012/14 Rev: 07 /2023
+25/06/2025
+25F08
+JUNE 2025
+
+--- PAGE 8 ---
+
+4. 	It is hereby certified that the above listed inspection material and batch number meets the requirements of
+AMS 2644H and is approved by the U.S. Air Force and listed on QPL-AMS-2644.
+When tested according to paragraph 4.3.2, Sampling Plan A, the following test results were obtained:
+• 4.2.2.1 Penetrant Tests:
+Flash Point (PMCC), 3.3.3 	NA 	º F
+Viscosity, 3.3.4 ( cs. Nominal) 	NA 	@100º F
+Fluorescent Brightness, 3.3.8.3.2 (FP-4PE Standard) 	NA 	%
+Water Tolerance (Method A, B, C, D), 3.3.8.5 	NA
+Removability, 3.3.8.6 	NA 	.
+• 4.2.2.1 Emulsifier Tests:
+Flash Point (PMCC), 3.3.3 	NA 	º F
+Viscosity, 3.3.4 ( cs. Nominal) 	NA 	cs@100º F
+Water Content (Method B Only), 3.3.9.6 	NA 	%
+• 4.2.2.3 Developer Tests:
+Developer Fluorescence, 3.3.10.2 	PASS 	.
+Developer Removability, 3.3.10.4 	PASS 	.
+Redispersibility, 3.3.10.5 	PASS 	.
+• 3.3.11.4 Remover Tests:
+Penetrant Removal, 4.4.11.2 	NA 	.
+5. 	We further certify that this material does not contain mercury as a basic element and no mercury bearing
+equipment was used in its manufacture.
+Quality Assurance
+Notes:
+1. 	Batch numbers are printed on the base of aerosol cans and bulk containers
+2. 	The above certification gives the results obtained at the time of manufacture. Age and use may alter the properties of any material
+Page 2 of 2
+Form No: F/QC/012/14 Rev: 07 /2023
+
+--- PAGE 9 ---
+
+BATCH TEST CERTIFICATE
+Date :
+Product : SKC-I Solvent Cleaner / Remover
+Batch No :
+Mfd. in :
+We hereby certify that when tested at time of manufacture, the above material:
+1. Meets the requirements of the following specifications:
+A. ASME Boiler and Pressure Vessel Code, 2004, 2007, 2010, 2013, 2015, 2017,2019, 2021 and 2023
+Edition, Section V, Nondestructive Examination, including 2005, 2006, 2008, 2009b, and 2011a
+Addenda, Article 6 Paragraph T-641 and Article 24 as applicable.
+B. ASME Boiler and Pressure Vessel Code, 1995, 1998 and 2001 Edition, Section V Nondestructive
+Examination, including 1999, 2000, 2002 and 2003 Addenda, Article 6 Paragraph T-640 and
+Article 24 as applicable.
+C. ASME Boiler and Pressure Vessel Code, 1986, 1989 and 1992 Edition, Section V , Nondestructive
+Examination, Article 6 including 1992 Addenda, Paragraph T-625, 1993 Addenda Paragraph T-640 and
+Article 24 as applicable.
+D. ASTM-165/E-165M-23, Paragraph 7.1,
+E. ASTM E 1417-21, Paragraph 5.1.
+2. Meets the requirements of NUCLEAR POWER CORPORATION OF INDIA for materials for Dye penetrant
+Inspection process.
+3. Meets the requirements of EN ISO 3452-2.
+The following test results were obtained:
+1. 	Sulphur 	: 	<25 	ppm
+2. 	Total Chlorine + Fluorine 	: 	<25 	ppm
+3. 	Cleaner residue (see note 2) 	: 	<0.001 	g/100g
+4. 	We further certify that this material does not contain mercury as a basic element and no mercury bearing
+equipment was used in its manufacture.
+Page 1 of 3 Form No: F/QC/011/16 Rev: 06 /2025
+06/12/2025
+25M01
+DECEMBER 2025
+
+--- PAGE 10 ---
+
+5. It is hereby certified that the above listed inspection material and batch number meets the requirements of
+AMS 2644H and is approved by the U.S. Air Force and listed on QPL-AMS-2644.
+When tested according to paragraph 4.3.2, Sampling Plan A, the following test results were obtained:
+• 4.2.2.1 Penetrant Tests:
+Flash Point (PMCC), 3.3.3 	NA 	º F
+Viscosity, 3.3.4 	NA 	cs@100º F
+Fluorescent Brightness, 3.3.8.3.2 (FP-4PE Standard) 	NA
+Water Tolerance (Method A, B, C, D), 3.3.8.5 	NA
+Removability, 3.3.8.6 	NA 	.
+• 4.2.2.1 Emulsifier Tests:
+Flash Point (PMCC), 3.3.3 	NA 	º F
+Viscosity, 3.3.4 ( cs. Nominal) 	NA 	cs@100º F
+Water Content (Method B Only), 3.3.9.6 	NA 	%
+• 4.2.2.3 Developer Tests:
+Developer Fluorescence, 3.3.10.2 	NA 	.
+Developer Removability, 3.3.10.4 	NA 	.
+Redispersibility, 3.3.10.5 	NA 	.
+• 3.3.11.4 Remover Tests:
+Penetrant Removal, 4.4.11.2 	PASS 	.
+Quality Assurance
+Notes:
+1. Our batch number appears on the bottom of all aerosol cans and bulk containers.
+2. The above certification gives the results obtained at the time of manufacture. Age and use may alter the properties of any material.
+Page 2 of 3 Form No: F/QC/011/16 Rev: 06 /2025
+
+--- PAGE 11 ---
+
+6. We hereby certify that the Penetrant inspection material Type SKC-I Cleaner, Batch No
+manufactured in 	meets the requirements of EN ISO 3452-2 with the following results:
+Individual Property 	Section 	Requirement 	Result
+Appearance 	6.1 	Clear 	Clear
+Sensitivity (30 mic panel) 	6.2 	Sensitivity Level (1(<75%) or 2
+(>=75%))
+Penetrant : SKL – SP2
+Developer: SKD-S2
+Level 2
+Density 	6.3 	0.684 – 0.756 @ 20 deg C
+Residue on evaporation / Solid
+content
+6.13 	< 5 mg residue 	mg
+Flash point 	6.5 	NA 	NA
+Corrosive properties (Mg) 	6.11 	No evidence of staining, pitting and
+corrosion
+PASS
+Flashpoint is not required as per ISO3452-2 : 2006 6.5.1 flash point measurement only required for material with nominal flash of 20 deg C and 110 deg C.
+SKC-I flash point is below 20 deg C.
+Testing in accordance with 5.4.2 Table 3 , as applicable.
+.
+Quality Assurance
+Form No: F/QC/011/16 Rev: 06 /2025	Page 3 of 3
+EN CERTIFICATION
+25M01
+DECEMBER 2025
+0.74
+0.1

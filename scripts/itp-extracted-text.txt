@@ -1,0 +1,1640 @@
+=== ITP PDF ANALYSIS ===
+Pages: 24
+Info: {
+  "PDFFormatVersion": "1.7",
+  "Language": null,
+  "EncryptFilterName": null,
+  "IsLinearized": false,
+  "IsAcroFormPresent": false,
+  "IsXFAPresent": false,
+  "IsCollectionPresent": false,
+  "IsSignaturesPresent": false,
+  "ModDate": "D:20260904123145+04'00'",
+  "Producer": "Adobe Acrobat 10.0.0",
+  "Title": "",
+  "Author": "Emerson O. Zapanta",
+  "Creator": "Adobe Acrobat 10.0.0",
+  "CreationDate": "D:20251106164357+05'30'"
+}
+Metadata: {}
+
+=== FULL TEXT ===
+
+--- PAGE 1 ---
+
+ADNOC ONSHORE PROJECT NO. P30339B
+EPC for SE AiP5 Project (On plot) - ASAB/SAHIL (Package 1)
+EPC AGREEMENT NO: 4700025071
+COMMENT RESOLUTION SHEET (CRS)
+ARCHIRODON TRANSMITTAL
+NUMBER
+ADNOC ONSHORE
+TRANSMITTAL NUMBER DATE
+REVIE
+W
+CODE
+DOCUMENT NO. DOCUMENT TITLE REVISION
+CTA-VD-4700025071-007471 ATC-VD-4700025071-002985 26-AUG-2026 2 P30339B-30-99-52-4607 INSPECTION AND TEST PLAN FOR CONTROL VALVES 1
+ADNOC ONSHORE/ARCO - REVIEW BY VENDOR / SUBCON – RESPONSE BY
+NAME Anish Raj NAME Stinu Stephen
+POSITION Quality Engineer DISCIPLINE Project Engineer
+DATE 26-AUG-2026 DATE 02-SEP-2026
+SNO. PAGE /
+SECTION AON
+COMMENTS
+ARCO COMMENTS VENDOR / SUBCON RESPONSE ARCO
+COMME
+NT ON
+VENDO
+R /
+SUBCO
+N
+RESPO
+NSE
+AON
+COM
+MENT
+S ON
+ARCO
+RESP
+ONSE
+ST
+AT
+US
+(OP
+EN
+/
+CL
+OS
+ED)
+REVISION 1
+1 Kindly note that, piston seal is verified during actuator leak
+test.
+2 Please note that we are internally verifying the actuator
+thrust based on the actuator thrust calculation sheets
+submitted under document numbers P30339B-14-01-52-
+4706, P30339B-14-01-52-4710, and P30339B-16-01-52-
+4639. These documents have already been Code 1
+approved.
+Kindly note that separate thrust verification shall not be
+applicable for the control valve actuators.
+3 Incorporated
+
+--- PAGE 2 ---
+
+4 Incorporated
+REVISION B RESUB
+1 Refer the response on rows 7 & 8
+2 Actuator test details are already incorporated in the same
+ITP itself.
+3 Please note that the Hazardous Area Certificate and
+Degree of Protection (IP) Certificate have been included
+under Clause 5.3.
+The SIL Certificate is not applicable for the offered scope;
+hence, the same cannot be provided.
+We have already included Fail safe action check in Clause
+7.8 and same will be reported in the valve TC
+4 Since Revision B has been approved by ADNOC with
+Code 2, the ITP has been resubmitted under Revision 1.
+5 Kindly note that Heat treatment shall be a review point
+only. Please note that the foundries shall be operational
+during 24 hours and heat treatment activities will be
+performed based on the furnace load. Hence it is not
+practically feasible to arrange inspection call & offer Heat
+treatment witness to TPI & will delay the process. Also
+same is a time-consuming process & arranging witness for
+the same is not practically feasible. We shall provide heat
+treatment details in Material test certificate & same shall
+be submitted for review to TPI during inspection. This is
+the procedure we are following for all 3.2 orders including
+previous ADNOC projects. Also, this point was not agreed
+during the TBE stage & hence we cannot accept the same.
+Please waive off this comment. Please note that witness
+by all parties for the chemical and mechanical testing has
+already been included under Clause 3.3 & 3.4 to comply
+with the 3.2 certification requirement.
+6 Please note that, during the raw material identification
+stage, the heat number punched on the rod will be verified
+and correlated by the TPI with the corresponding Rod
+Material Test Certificate (MTC) to ensure complete
+material traceability & same is update in Clause 3.1.
+7 1. Kindly note that the actuator shell pressure test
+has been incorporated under Clause 7.3. The
+actuator leak test witnessing requirement has
+also been incorporated under the same clause
+2. Please note that there is no separate piston seal
+leak test applicable. Any leakage through the
+piston seal would adversely affect the actuator
+performance and would be identified during the
+
+--- PAGE 3 ---
+
+actuator leak test & valve performance checking
+as per clause 7.2. Hence, a separate piston seal
+leak test is not required.
+3. Since torque test is not applicable for this
+project, same is not included.
+4. The requirement has been incorporated under
+Clause 7.3.
+8 1. Kindly note that the Spring Material Test
+Certificate will be provided by the spring supplier
+in accordance with the manufacturer's standard
+for your review. Same is added in Clause 5.2.
+2. Please note that, during the valve calibration
+process, multiple opening and closing cycles are
+already performed to verify the proper operation
+and functionality of the valve assembly.
+Witnessing 10 opening and closing cycles for
+100% of the valves during final inspection will
+considerably increase the inspection duration
+without providing additional technical benefit.
+Furthermore, this requirement is not specified in
+the applicable AGES documents or the project
+specification. Hence, we kindly request you to
+waive this comment.
+9 Kindly note that the positioner calibration is carried out as
+part of the valve performance test, and the same is
+indicated in the remarks section of Clause 7.7. Therefore,
+there is no separate positioner calibration test applicable.
+10 Noted & updated as per the discussion with Archo team.
+REVISION B
+1 Noted & updated
+2 Incorporated
+3 Incorporated
+
+--- PAGE 4 ---
+
+4 Incorporated
+5 As per the discussion with the customer, the comment is
+waived off by the ARCO team
+6 As per AGES-SP-09-003, Clause 11.8.5, the corrosion test
+acceptance criterion for valve base materials is specified
+as less than 0.914 mm/year. There is no requirement in
+AGES-SP-09-003 to meet a more stringent limit of 0.457
+mm/year for valve base materials. Applying the corrosion
+limit specified in AGES-SP-09-015 (0.457 mm/year) for
+base material is not technically applicable, as this
+document governs clad piping components and not valves.
+Furthermore, imposing this requirement would be beyond
+the contractual scope and specification requirements for
+valves, and is not supported by the project governing valve
+specification. Accordingly, we confirm that the corrosion
+test results will be assessed against the < 0.914 mm/year
+acceptance criterion, which is fully compliant with the
+project specification and contractual requirements. Hence
+kindly confirm your acceptance.
+7 Kindly note that, for alloy steel RM, MPT will be done and
+DPT is not practical.
+8 As per the discussion with ARCO team, this comment is
+waived off
+9 Please note that, if ISO 19840 to be followed, it will have
+practical issues while measuring DFT values and may lead
+to paint reworks. Hence kindly ignore this comment.
+10 Incorporated
+REVISION A RESUB
+1 3 Incorporated
+2 3 The GAD has been submitted for approval.
+
+--- PAGE 5 ---
+
+3 3 Incorporated
+4
+3
+Please note that there is no separate ITP for the actuator.
+5 3 The same has been incorporated. Kindly refer to the
+attached Annexure-1 for details.
+6 4
+Please note that chemical, mechanical, NDE, corrosion,
+visual, and dimensional witnessing have not been added,
+as dimensional witnessing is not mandatory as per Clause
+3.2 and was also not required in the previous Swing
+projects.
+7 4 Incorporated
+8 4 Incorporated for Inconel material
+9 4 Incorporated
+
+--- PAGE 6 ---
+
+10 4 Please note that the impact test shall be carried out at −46
+°C in accordance with the applicable ASTM standard and
+in line with the previous Swing Project.
+11 5 The NDE requirements are clearly defined and separately
+specified for stainless steel and carbon steel items.
+12 5 Incorporated
+13 5 Added
+14 6 The same is applicable for cladding, in line with BB08E.
+15 6 Incorporated
+16 6 The actuator details shall be duly certified in the Valve TC.
+17 6 Please note that this requirement has already been
+addressed and included in Clause 7.2.
+18 7 As the actuator is of our own make, the relevant details
+shall be duly certified in the Valve TC.
+19 7 Kindly provide the document number
+20 7 Incorporated
+
+--- PAGE 7 ---
+
+21 7 Incorporated
+22 8 The same is not applicable, and we are facing difficulties in
+incorporating it, as this is not a standard practice followed
+by us.
+23 9 Please note that ISO 4628 (Visual) has already been
+included. ISO 19840 has not been added, as we are
+following SSPC-PA 2 instead of ISO 19840.
+24 9 Incorporated
+25 9 Incorporated
+26 9 Added separate clause
+27 9 Please note that the applicable certificates shall be
+submitted in accordance with the datasheet requirements
+and have already been addressed under Clauses 5.2 and
+5.3.
+REVISION A
+1 3 Incorporated
+2 3 Incorporated
+3 3 Incorporated
+4 3 Incorporated
+5 3 Incorporated
+6 3 Incorporated
+
+--- PAGE 8 ---
+
+7 3 Incorporated
+8 3 Please refer the attached reference documents.
+9 3 Incorporated
+10 5 Please clarify the comment.
+11 5 Incorporated
+12 5 Please note that, in line with AGES
+requirements, carbon detection is not mandatory
+for this scope.
+13 5 In line with the agreement with the customer, a
+random witness (W) at 10% has been
+considered and reflected in the ITP accordingly.
+14 6 Kindly refer clause 6.1
+15 6 Specified in clause 7 (header)
+16 6 Clause 7 header indicates valve with actuator.
+17 6 Noted
+18 6 Please note that we have prepared the ITP in
+line with previously executed ADNOC projects,
+namely EPCM for Project SWING (ADNOC
+Onshore Project No.: P30332) and EPCM for
+NOT
+Accepted.
+The vendor
+shall
+comply with
+
+--- PAGE 9 ---
+
+BAB & BU HASA (ADNOC Onshore Project No.:
+P30350). Kindly confirm your acceptance.
+KSB MIL Reply dt 04/11/25 – Noted & painting
+related activities inline with received sample ITP
+as applicable for the offered valves have been
+incorporated in the revised ITP.
+the
+requiremen
+ts of AGES-
+SP-7-004.
+19 7 MRB submission will be after valve despatch.
+20 7 Noted
+21 7 Kindly refer the attached reference document.
+22 1 Noted & updated
+23 2 Noted & updated
+24 4 Noted & updated
+25 7 Noted & ITP has been revised incorporating the
+painting requirements in line with AGES -SP-7-
+004 as per Clause 8 as applicable for the offered
+valves. Please refer the following points (Sl nos
+26 - 33) for our clarifications on the painting ITP.
+26 ITP
+Painting
+Activities
+“AGES-
+SP-07-
+004” -
+Point No
+1
+ISO 12944-9, category CX - Fulfilment of CX testing Please note that we are exactly following
+ADNOC scheme as per AGES spec for the
+applicable materials, insulation & temperature
+range (For actuator, we have considered
+scheme for carbon steel material and
+uninsulated category) and as per our
+understanding, if ADNOC AGES scheme is
+exactly followed, there is no need for separate
+CX compliance. Also, it is an onshore project
+and hence CX seems not relevant.
+27 ITP
+Painting
+Activities
+Pre-production / Repair Qualification Test Kindly note that PQT shall be done as per
+AGES-SP-07-004 on sample pad of dimension
+300 mm X 300 mm for each paint system and
+
+--- PAGE 10 ---
+
+“AGES-
+SP-07-
+004” -
+Point No
+2
+adhesion test shall be done for qualifying the
+same. We shall perform the same & report shall
+be submitted for review. During painting
+inspection, adhesion test on sample pad shall be
+offered for witness.
+28 ITP
+Painting
+Activities
+“AGES-
+SP-07-
+004” -
+Point No
+3
+Paint Material inspection (Verify storage, container integrity, and shelf life) - Storage
++15°C to +25°C
+Conductivity of Abrasives - ≤ 150 μmS/cm at 20°C
+Kindly note that the storage of paint material
+shall be done as per the recommendation by
+paint manufacturer in line with paint datasheet.
+Also conductivity of abrasives shall be tested at
+ambient temperature
+29 ITP
+Painting
+Activities
+“AGES-
+SP-07-
+004” -
+Point No
+4
+Steel and welding imperfections / Welding flux removal Inspection Same is not applicable for the offered valves &
+hence not included in the ITP.
+30 ITP
+Painting
+Activities
+“AGES-
+SP-07-
+004” -
+Point No
+8
+Protection of fittings and accessories Kindly note that during surface preparation,
+fittings & accessories will not be mounted &
+hence this clause is not relevant for the offered
+valves and hence not included in ITP.
+31 ITP
+Painting
+Activities
+“AGES-
+SP-07-
+004” -
+Point No
+10
+Power tool cleaning Please note that power tool cleaning is not
+applicable for the offered valves & hence this
+clause is not relevant for the offered valves and
+hence not included in ITP
+32 ITP
+Painting
+Activities
+“AGES-
+SP-07-
+004” -
+Point No
+14
+Apply a Stripe Coat by Brush Please note that stripe coat by brush is not
+applicable for the offered valves & hence this
+clause is not relevant for the offered valves and
+hence not included in ITP
+33 ITP
+Painting
+Activities
+“AGES-
+SP-07-
+004” -
+Point No
+16
+DFT Measurement – reference standard ISO 19840 Please note that reference standard for DFT
+measurement shall be SSPC PA2
+
+--- PAGE 11 ---
+
+34 3.2
+Witness
+– scope
+addition
+for TPIA
+for FAT
+Noted & updated
+Review Status Code Review Response SUBCONTRACTOR/VENDOR CHECKED BY DATE SIGNATURE
+1 Approved / No Comments Ginoy Shaju 02-SEP-2026
+2 Approved with comments – Resubmit
+3 Revise and resubmit ARCO APPROVED BY DATE SIGNATURE
+4 Rejected
+5 For Information
+
+--- PAGE 12 ---
+
+Security Code: 1 – Public
+ADNOC Classification: Public
+Abu Dhabi Company for Onshore Petroleum Operations Ltd.
+(ADNOC ONSHORE)
+EPC for SE AiP5 Project (On plot) - ASAB/SAHIL (Package 1)
+AGREEMENT NO.: 4700025071
+COMPANY PROJECT NO.: P30339B
+INSPECTION AND TEST PLAN FOR CONTROL VALVES
+DOCUMENT NO.: P30339B-30-99-52-4607
+2 02-SEP-26 STN GNY SH Issued for Construction
+1 11-AUG-26 STN GNY SH Issued for Construction
+B 19-JUN-26 STN GNY SH Issued for Approval
+A 06-NOV-25 STN GNY SH Issued for Review
+REVISION DATE PREPARED REVIEWED APPROVED DESCRIPTION
+THIS DOCUMENT IS INTENDED FOR USE BY COMPANY AND ITS NOMINATED CONSULTANTS, CONTRACTORS, MANUFACTURERS AND SUPPLIERS
+EPC CONTRACTOR SUBCONTRACTOR / VENDOR
+ORIGINATOR DOCUMENT NO.: CD13E-ITP-CV-001
+ADNOC ONSHORE AGREEMENT NO.
+4700025071
+ADNOC ONSHORE
+PROJECT NO. P30339B REV. 2 DATE: 02-SEP-26
+ADNOC ONSHORE DOCUMENT NO. 30-99-52-4607 Page 1 of 13
+
+--- PAGE 13 ---
+
+INSPECTION AND TEST PLAN FOR CONTROL
+VALVES
+Project No.: P30339B
+ADNOC Onshore Doc. No.: 30-99-52-4607
+ADNOC Classification: Public
+SHEETS INDEX AND REVISIONS:
+Rev. No. Section Revision Description
+A All Issued for Review
+B All Issued for Approval
+1 All Issued for Construction
+2 All Issued for Construction
+HOLDS:
+Hold No. Section Hold Description
+Rev.: 2 Date: 02-SEP-26
+Page 2 of 13
+
+--- PAGE 14 ---
+
+Project No.: P30339B
+ADNOC Onshore Doc. No.: 30-99-52-4607
+ADNOC Classification: Public
+Reference Documents
+Sl No Document Number Document Name
+1 AGES-SP-04-002 Control Valve Specification
+2 P30339B-14-01-40-4652 Datasheet for Control Valves – Asab (Batch 1)
+3 P30339B-14-01-40-4658 Datasheet for Control Valves – Asab (Batch 2)
+4 P30339B-16-01-40-4632 Datasheet for Control Valves – Sahil
+5 P30339B-14-01-50-4643 General Arrangement Drawings for Control Valves – Asab
+(Batch 1)
+6 P30339B-14-01-50-4649 General Arrangement Drawings for Control Valves – Asab
+(Batch 2)
+7 P30339B-16-01-50-4635 General Arrangement Drawings for Control Valves – Sahil
+8 P30339B-30-99-90-4699 Control Valves- Welding Procedures & Qualifications
+9 P30339B-30-99-90-4701 Control Valves- NDE Procedure
+10 P30339B-30-99-90-4703 Control Valves- Pressure Testing Procedures
+11 P30339B-30-99-90-4705 Control Valves- PMI Procedure
+12 P30339B-30-99-90-4707 Control Valves Painting/Coating Procedures (Valves +
+Actuator)
+13 P30339B-30-99-90-4711 Fugitive Emission Test Procedures for Control Valves
+14 P30339B-30-99-90-4712 Seat Leakage Test Procedure
+15 P30339B-30-99-99-4602 Control Valves Technical Catalogues for Valves & All
+Accessories
+16 P30339B-30-99-93-1679 Material Requisition for Control Valves
+17 AGES-SP-07-004 Painting and Coating Specifications
+18 P30339B-30-99-52-4608 Inspection and Test Plan for Self-Regulating Valves
+INSPECTION AND TEST PLAN FOR CONTROL
+VALVES
+19 P30339B-30-99-95-461 Control Valves factory Acceptance Test Procedure (FAT
+Procedure) (Valve + Actuator)
+Rev.: 2 Date: 02-SEP-26
+Page 3 of 13
+
+--- PAGE 15 ---
+
+Project No.: P30339B
+ADNOC Onshore Doc. No.: 30-99-52-4607
+ADNOC Classification: Public
+Testing Standards
+Sl No Standard Number Standard Title
+1 ASME B 16.34 Design Standard
+2 FCI 70.2 Testing Standard
+3 ASME B 16.10 Face to face dimension standard
+4 NACE MR0175-2021 ISO
+15156-1 2020
+NACE
+5 ASME SEC V NDE requirements
+6 ASME SEC IX Boiler and Pressure Vessel Code
+INSPECTION AND TEST PLAN FOR CONTROL
+VALVES Rev.: 2 Date: 02-SEP-26
+Page 4 of 13
+
+--- PAGE 16 ---
+
+Location:
+Page:
+Criticality
+Rating 1 2 3 4 Certification 3.2 3.1 2.2 2.1 I II III IV
+ADNOC
+Onshore
+1.1 -- A
+1.2 -- A
+1.3 --
+2
+2.1 100% W
+2.2 One sample per
+heat W
+2.3 100% R
+2.4 One sample per
+heat W
+2.5
+One sample per
+heat & heat
+treatment batch
+W
+2.6
+One sample per
+heat & heat
+treatment batch
+W
+2.7
+One sample per
+heat & heat
+treatment batch
+W As per
+datasheet
+2.8 100% W
+Extent of
+Examina-tion
+PO No.:
+Supplier
+P30339B
+KSB MIL Controls Limited, Kerala, India
+KSB MIL Sale order number : CD13E (ITP CV-L2-4817 Rev 03)
+04108-PM-INST-008
+Pre Inspection meeting
+Submission, Review & Approval of data sheet, GAD,
+ITP & all other Procedures as per VDRL
+Kick off Meeting
+Activity Description
+H H	
+Datasheets, GAD, PO & Project
+Specifications
+Datasheets, GAD, PO & Project
+Specifications MOM --
+Project No:
+Doc.No:
+Inspection and Test Plan (ITP)
+Act.No.:
+H: Hold; W10%: Witness on 10% per type,size ,rating; R: Review; M: Monitoring; A: Approval ; W : 100% Witness; RW-Random witness-10% witness on total order quantity per inspection offer lot.
+Notification Period: Minimum of 14 days notice for “HOLD” and “WITNESS” points.
+Reference Document
+R
+EN10204 3.2
+Material Test
+certificate
+H W W
+Project Name: ADNOC SE AiP5 PROJECT (ON PLOT) – ASAB/SAHIL (PACKAGE 1)
+A	--	H	--
+A	--	H	--
+Acceptance Criteria Verifying
+Document
+Customer PO, data
+sheets / GAD / ITP/
+MOM
+Quality Intervention
+Remarks
+MOM	Purchase Order
+Sub Vendor KSB
+TPIA (applicable
+where 3.2
+certification
+required)
+Archirodon
+Purchase Order
+Customer PO, data sheets / GAD /
+ITP/ All documents as per VDRL
+W
+Receiving& Sampling of
+test bar
+Chemical Analysis
+Approved data sheet / ASTM A 216 Gr. WCC, ASTM A 352 Gr. LCC, ASTM
+A 494 CU5MCuC(N08826) & A 995 Gr.6A (CD3MWCuN) / Forging Equivalents
+AGES-SP-04-002, AGES-SP-09-003, AGES-SP-07-003/ NACE MR0175 /
+Approved GAD
+Pitting Corrosion
+Approved data sheet / ASTM A 352 Gr. LCC / AGES-SP-04-002, AGES-SP-09-
+003, AGES-SP-07-003/ NACE MR0175 / Approved GAD
+Approved data sheet / A 995 Gr.6A (CD3MWCuN) / A 494 CU5MCuC(N08826
+/ AGES-SP-04-002, AGES-SP-09-003, AGES-SP-07-003/ NACE MR0175 /
+Approved GAD
+For DSS material G48 method A shall be acceptance criteria(.For Inconel
+material G28 method A shall be acceptance criteria(Acceptance criteria of
+corrosion rate < 0.914 mm per year and no preferential attack in grain
+boundaries at 50 X magnification for inconel material)
+EN10204 3.2
+Material Test
+certificate
+H W	
+Body & Bonnet
+(Castings /Forgings)
+Mechanical Testing(Yield
+strength,Tensile stress,
+Elongation & Hardness
+check)
+Approved data sheet / ASTM A 216 Gr. WCC, ASTM A 352 Gr. LCC, ASTM
+A 494 CU5MCuC(N08826) & A 995 Gr.6A (CD3MWCuN) / Forging Equivalents
+AGES-SP-04-002, AGES-SP-09-003, AGES-SP-07-003/ NACE MR0175 /
+Approved GAD
+H R	
+Body & Bonnet
+(Castings /Forgings) Heat treatment
+Approved data sheet / ASTM A 216 Gr. WCC, ASTM A 352 Gr. LCC, ASTM
+A 494 CU5MCuC(N08826) & A 995 Gr.6A (CD3MWCuN) / Forging Equivalents
+AGES-SP-04-002, AGES-SP-09-003, AGES-SP-07-003/ NACE MR0175 /
+Approved GAD
+Customer PO, data sheets / GAD / ITP/
+All documents as per VDRL
+H W
+H W	Report
+EN10204 3.2
+Material Test
+certificate
+Approved data sheet / ASTM A 216 Gr. WCC, ASTM A 352 Gr. LCC, ASTM
+A 494 CU5MCuC(N08826) & A 995 Gr.6A (CD3MWCuN) / Forging Equivalents
+AGES-SP-04-002, AGES-SP-09-003, AGES-SP-07-003/ NACE MR0175 /
+Approved GAD
+INCOMING INSPECTION (BODY & BONNET)
+Body & Bonnet
+(Castings /Forgings)
+Pouring of casting / Raw
+material identification for
+forgings
+Approved data sheet / ASTM A 216 Gr. WCC, ASTM A 352 Gr. LCC, ASTM
+A 494 CU5MCuC(N08826) & A 995 Gr.6A (CD3MWCuN) / Forging Equivalents
+AGES-SP-04-002, AGES-SP-09-003, AGES-SP-07-003/ NACE MR0175 /
+Approved GAD
+H
+Body & Bonnet
+(Castings /Forgings)
+Body & Bonnet
+(Castings /Forgings)
+W
+W W	Report
+R
+Item / Equipment
+W W
+EN10204 3.2
+Material Test
+certificate
+H W W W
+W W
+Control Valves INDIA
+W W
+Inspection
+Level
+W
+Body & Bonnet
+(Castings /Forgings)
+Impact Testing(at -46 deg
+celsius & As per
+datasheet)
+Body & Bonnet
+(Castings /Forgings)
+EN10204 3.2
+Material Test
+certificate
+Body & Bonnet
+(Castings /Forgings)
+Surface Quality Check
+(For Castings)
+EN10204 3.2
+Material Test
+certificate
+H W
+MSS SP 55
+ASTM A 216 Gr. WCC, ASTM A 352 Gr. LCC, ASTM A 494
+CU5MCuC(N08826) & A 995 Gr.6A (CD3MWCuN)
+H W
+Page 1 of 7
+P30339B-30-99-52-4607 Rev.No.: 2 Page 	5 of 13
+
+--- PAGE 17 ---
+
+Location:
+Page:
+Criticality
+Rating 1 2 3 4 Certification 3.2 3.1 2.2 2.1 I II III IV
+ADNOC
+Onshore
+Extent of
+Examina-tion
+PO No.:
+Supplier
+P30339B
+KSB MIL Controls Limited, Kerala, India
+KSB MIL Sale order number : CD13E (ITP CV-L2-4817 Rev 03)
+04108-PM-INST-008
+Activity Description
+Project No:
+Doc.No:
+Inspection and Test Plan (ITP)
+Act.No.:
+H: Hold; W10%: Witness on 10% per type,size ,rating; R: Review; M: Monitoring; A: Approval ; W : 100% Witness; RW-Random witness-10% witness on total order quantity per inspection offer lot.
+Notification Period: Minimum of 14 days notice for “HOLD” and “WITNESS” points.
+Reference Document
+Project Name: ADNOC SE AiP5 PROJECT (ON PLOT) – ASAB/SAHIL (PACKAGE 1)
+Acceptance Criteria Verifying
+Document
+Quality Intervention
+Remarks	
+Sub Vendor KSB
+TPIA (applicable
+where 3.2
+certification
+required)
+Archirodon
+Item / Equipment Control Valves INDIA
+Inspection
+Level
+2.9 As per approved
+data sheet W
+3
+3.1 100% W
+During raw
+material
+identification
+stage,Heat
+number
+punching on the
+rod shall be
+correlated by
+TPI with respect
+to ROD Material
+TC and
+traceability shall
+be ensured.
+3.2 100% R
+3.2 cerification is
+NA for rods.For
+rods/bar
+EN10204 3.1
+MTC shall be
+issued and shall
+be tested at
+NABL
+accredited
+lab.3.1 TC For
+trim parts shall
+be from Bar
+stock (from
+original
+manufacturer or
+ISO /IEC/NABL
+approved LAB).
+Body & Bonnet- ASTM A
+216 Gr. WCC, ASTM A
+352 Gr. LCC, ASTM A 494
+CU5MCuC(N08826) & A
+995 Gr.6A (CD3MWCuN) /
+Forging Equivalents
+(Castings /Forgings)
+Non destructive testing
+for castings
+- Radiographic Testing at
+critical areas as per
+ASME B16.34 for
+castings.
+- Ultrasonic Testing for
+Forgings
+- DPT Test for Stainless
+Steel
+- MPT for Carbon steel
+/Alloy Steel (Wet
+Fluorescent)
+Trims ( Plug, Seat,
+Cage,Plug Stem as
+applicable)
+Receiving& Sampling of
+test bar(applicable for
+castings and forgings)
+Approved data sheet / ASTM A 351 Gr. CF8M / ASTM A 494 CU5MCuC /
+ASTM B425 UNS N08825 / A 995 Gr.6A (CD3MWCuN) / SS316 / SS316L /
+ASTM B443 UNS N06625 / DUPLEX S32760 / Inconel 718 / INCONEL 825 / A
+182 GR F61 / AGES-SP-04-002, AGES-SP-09-003, NACE MR0175 / AGES-
+SP-07-003/ Approved GAD
+Trims ( Plug, Seat,
+Cage,Plug Stem as
+applicable)
+Heat Treatment
+Approved data sheet / ASTM A 351 Gr. CF8M / ASTM A 494 CU5MCuC /
+ASTM B425 UNS N08825 / A 995 Gr.6A (CD3MWCuN) / SS316 / SS316L /
+ASTM B443 UNS N06625 / DUPLEX S32760 / Inconel 718 / INCONEL 825 / A
+182 GR F61 / AGES-SP-04-002, AGES-SP-09-003, NACE MR0175 / AGES-
+SP-07-003/ Approved GAD
+INCOMING INSPECTION (TRIM PARTS)
+NDT Report & RT
+Film
+H W W W	Report
+H R R R
+H W W W
+EN10204 3.2
+Material Test
+certificate
+ASME Sec V, ASME B16.34/ Approved NDE Procedure/AGES-SP-07-003 &
+AGES-SP-09-003
+AGES-SP-07-007
+Page 2 of 7
+P30339B-30-99-52-4607 Rev.No.: 2 	Page 	6 OF 13
+
+--- PAGE 18 ---
+
+Location:
+Page:
+Criticality
+Rating 1 2 3 4 Certification 3.2 3.1 2.2 2.1 I II III IV
+ADNOC
+Onshore
+Extent of
+Examina-tion
+PO No.:
+Supplier
+P30339B
+KSB MIL Controls Limited, Kerala, India
+KSB MIL Sale order number : CD13E (ITP CV-L2-4817 Rev 03)
+04108-PM-INST-008
+Activity Description
+Project No:
+Doc.No:
+Inspection and Test Plan (ITP)
+Act.No.:
+H: Hold; W10%: Witness on 10% per type,size ,rating; R: Review; M: Monitoring; A: Approval ; W : 100% Witness; RW-Random witness-10% witness on total order quantity per inspection offer lot.
+Notification Period: Minimum of 14 days notice for “HOLD” and “WITNESS” points.
+Reference Document
+Project Name: ADNOC SE AiP5 PROJECT (ON PLOT) – ASAB/SAHIL (PACKAGE 1)
+Acceptance Criteria Verifying
+Document
+Quality Intervention
+Remarks	
+Sub Vendor KSB
+TPIA (applicable
+where 3.2
+certification
+required)
+Archirodon
+Item / Equipment Control Valves INDIA
+Inspection
+Level
+3.3 One sample per
+heat W
+3.2 cerification is
+NA for rods.For
+rods/bar
+EN10204 3.1
+MTC shall be
+issued and shall
+be tested at
+NABL
+accredited
+lab.3.1 TC For
+trim parts shall
+be from Bar
+stock (from
+original
+manufacturer or
+ISO /IEC/NABL
+approved LAB).
+3.4
+One sample per
+heat & heat
+treatment batch
+W
+3.5
+One sample per
+heat & heat
+treatment batch
+R
+3.6
+One sample per
+heat & heat
+treatment batch
+R
+4
+4.1 100% R
+4.2 100% W
+Approved data sheet / ASTM A 351 Gr. CF8M / ASTM A 494 CU5MCuC /
+ASTM B425 UNS N08825 / A 995 Gr.6A (CD3MWCuN) / SS316 / SS316L /
+ASTM B443 UNS N06625 / DUPLEX S32760 / Inconel 718 / INCONEL 825 / A
+182 GR F61 / AGES-SP-04-002, AGES-SP-09-003, NACE MR0175 / AGES-
+SP-07-003/ Approved GAD
+Trims ( Plug, Seat,
+Cage,Plug Stem as
+applicable)
+Chemical properties
+Trims ( Plug, Seat,
+Cage,Plug Stem as
+applicable)
+Mechanical Testing(Yield
+strength,Tensile stress,
+Elongation & Hardness
+check)
+Approved data sheet / ASTM A 351 Gr. CF8M / ASTM A 494 CU5MCuC /
+ASTM B425 UNS N08825 / A 995 Gr.6A (CD3MWCuN) / SS316 / SS316L /
+ASTM B443 UNS N06625 / DUPLEX S32760 / Inconel 718 / INCONEL 825 / A
+182 GR F61 / AGES-SP-04-002, AGES-SP-09-003, NACE MR0175 / AGES-
+SP-07-003/ Approved GAD
+EN10204 3.2
+Material Test
+certificate
+H
+EN10204 3.2
+Material Test
+certificate
+H W W W
+W W W
+Trims ( Plug, Seat,
+Cage,Plug Stem as
+applicable)
+Pitting Corrosion
+For DSS material G48 method A
+For Inconel material G28 method A
+Approved data sheet / A 995 Gr.6A (CD3MWCuN) / DUPLEX S32760 / AGES-
+SP-04-002, AGES-SP-09-003, NACE MR0175 / AGES-SP-07-003/ Approved
+GAD
+H R
+INCOMING INSPECTION (CLADDING)
+Approved data sheet / Approved GAD / ASTM standards / MESC SPE 77/302
+version 2020/ AGES-SP-07-007
+EN10204 3.2
+Material Test
+certificate/Report
+H R -- R	Report
+R R
+EN10204 3.2
+Material Test
+certificate
+H W W W
+Trims ( Plug, Seat,
+Cage,Plug Stem as
+applicable)
+Intergranular corrosion
+test as per ASTM A262
+practice E for austenitic
+stainless materials
+Cladding(Body, Bonnet) Material Conformity /
+Approved WPS
+Approved data sheet / ASTM A 351 Gr. CF8M / SS316 / SS316L / AGES-SP-
+04-002, AGES-SP-09-003, NACE MR0175 / AGES-SP-07-003/ Approved
+GAD
+Approved WPS / Approved data sheet / Approved GAD / ASTM standards /
+AGES-SP-07-007/AGES-SP-09-003 & AGES-SP-07-003
+H R R R
+Reports
+Inspection and testing after cladding
+1.LPT(Liquid Penetrant Testing)
+2.UT(Ultrasonic Testing)- Disbondment - Partial UT
+shall be done wherever 100% UT is not feasible due to
+space constraints.
+3.Visual&Thickness measurement
+4.PMI test
+5.Hardness
+Page 3 of 7
+P30339B-30-99-52-4607 Rev.No.: 2 	Page 7 OF 13
+
+--- PAGE 19 ---
+
+Location:
+Page:
+Criticality
+Rating 1 2 3 4 Certification 3.2 3.1 2.2 2.1 I II III IV
+ADNOC
+Onshore
+Extent of
+Examina-tion
+PO No.:
+Supplier
+P30339B
+KSB MIL Controls Limited, Kerala, India
+KSB MIL Sale order number : CD13E (ITP CV-L2-4817 Rev 03)
+04108-PM-INST-008
+Activity Description
+Project No:
+Doc.No:
+Inspection and Test Plan (ITP)
+Act.No.:
+H: Hold; W10%: Witness on 10% per type,size ,rating; R: Review; M: Monitoring; A: Approval ; W : 100% Witness; RW-Random witness-10% witness on total order quantity per inspection offer lot.
+Notification Period: Minimum of 14 days notice for “HOLD” and “WITNESS” points.
+Reference Document
+Project Name: ADNOC SE AiP5 PROJECT (ON PLOT) – ASAB/SAHIL (PACKAGE 1)
+Acceptance Criteria Verifying
+Document
+Quality Intervention
+Remarks	
+Sub Vendor KSB
+TPIA (applicable
+where 3.2
+certification
+required)
+Archirodon
+Item / Equipment Control Valves INDIA
+Inspection
+Level
+5
+5.1 100% R
+5.2 100% R
+5.3 Per Type R
+5.4 Per Type R
+6
+6.1 100% W
+6.2 100% W (10%)
+6.3 100% W (10%)
+6.4 On Sample Pad R
+7
+7.1 100% W
+7.2 100% W
+7.3 100% W
+100% W
+Accessories
+Smart positioner, Air Filter
+Regulator, Pressure Gauge,
+Relief Valve, Air filter,
+Solenoid Valve, Limit switch
+& Volume booster)
+Hazardous area
+certiifcate,Degree of
+protection (if specified in
+datasheet)
+Material Conformity
+INCOMING INSPECTION (BOUGHT OUT ITEMS)
+Approved data sheet / ASTM standards
+/AGES-SP-09-005
+Approved data sheet / ASTM
+standards
+EN 10204 3.1 MTC
+required for
+fasteners
+H R R R	Body - Bonnet Fasteners Material Conformity/ PO/
+MR/ Project Specs
+Approved data sheet and Approved
+GAD Approved data sheet TYP/IECEX/IP 66
+Certification H R R R
+Approved data sheet/ Approved gad/
+PO/ MR/ Project Specs/ International
+standards
+Approved data sheet Report H R R R
+IN PROCESS INSPECTION
+ASME B16.34 / ISA S 75.19
+(No Leak at 1.5 times rated working
+pressure) / AGES-SP-04-002, IEC-
+60534-4 / Approved GAD / Approved
+test procedure
+ASME B16.34 / ISA S 75.19
+(No Leak at 1.5 times rated working
+pressure)
+TC -- H W W
+Certification for positioner
+a) Shell pressure Test
+Body, Bonnet & Trims after
+machining
+c) Material check - PMI
+(Applicable for body,
+bonnet and trim parts as
+per datasheet.
+Test will be done with
+portable XRF)
+d) Hardness check on
+Hard-faced components
+(Stellite 6)
+-- H W (10%) W (10%)	
+ASME Sec V, ASME B16.34/
+Approved NDE Procedure
+ASME Sec V, ASME B16.34/
+Approved NDE Procedure Report	b) DPT after machining
+ASTM standards / Approved procedure ASTM standards / Approved
+procedure Report -- H W (10%) W (10%)
+ASME Sec IX
+WPS / WPQ / PQR / ASME Sec IX,
+Stellite thickness 1.9 mm minimum
+after final machining
+Report -- H R R
+ASSEMBLY TEST (VALVE WITH ACTUATOR)
+-- W	
+No Leak at 110% of rated pressure with
+water / Approved test procedure
+No Leak at 110% of rated pressure
+with water / Approved test procedure TC H W	
+a) Body mount Leakage
+test
+FCI 70.2 / Leak class as per approved
+data sheet / Approved test procedure
+Assembled Valve FCI 70.2 / Leak class as per
+approved data sheet / Approved test
+procedure
+TC -- H W W
+No Leak at 1.2 times of actuator
+supply pressure TC -- H W W
+b) Seat Leakage
+a) Strength & Leakage
+TC --	
+b) Pneumatic circuit leak
+test(Tubing Leak)
+Leak check at 1.2 times of actuator
+supply pressure
+No Leak at 1.2 times of actuator
+supply pressure H W W
+Actuator Chamber
+Leak check at 1.2 times of actuator
+supply pressure
+Actuator spring Material Conformity/ PO/
+MR/ Project Specs Approved data sheet / ASTM standards Approved data sheet / ASTM
+standards EN 10204 3.1 MTC H R R R
+Page 4 of 7
+P30339B-30-99-52-4607 Rev.No.: 2 	Page 8OF 13
+
+--- PAGE 20 ---
+
+Location:
+Page:
+Criticality
+Rating 1 2 3 4 Certification 3.2 3.1 2.2 2.1 I II III IV
+ADNOC
+Onshore
+Extent of
+Examina-tion
+PO No.:
+Supplier
+P30339B
+KSB MIL Controls Limited, Kerala, India
+KSB MIL Sale order number : CD13E (ITP CV-L2-4817 Rev 03)
+04108-PM-INST-008
+Activity Description
+Project No:
+Doc.No:
+Inspection and Test Plan (ITP)
+Act.No.:
+H: Hold; W10%: Witness on 10% per type,size ,rating; R: Review; M: Monitoring; A: Approval ; W : 100% Witness; RW-Random witness-10% witness on total order quantity per inspection offer lot.
+Notification Period: Minimum of 14 days notice for “HOLD” and “WITNESS” points.
+Reference Document
+Project Name: ADNOC SE AiP5 PROJECT (ON PLOT) – ASAB/SAHIL (PACKAGE 1)
+Acceptance Criteria Verifying
+Document
+Quality Intervention
+Remarks	
+Sub Vendor KSB
+TPIA (applicable
+where 3.2
+certification
+required)
+Archirodon
+Item / Equipment Control Valves INDIA
+Inspection
+Level
+7.4 100% W
+7.5 100% W
+7.6 100% W
+7.7 100% W
+Positioner
+calibration shall
+be done along
+with valve
+performance.
+7.8 100% W
+7.9 100% W
+7.10 100% W
+7.11 One per type A
+7.12
+One valve per
+type. sampling as
+per ISO 15848-2.
+W
+8
+8.1 Each paint
+system R
+8.2 PQT for each
+paint system R
+8.3 Every Batch R
+8.4 Before starting,
+Every 2 hours R
+Approved test procedure / AGES-SP-
+04-002, IEC-60534-4 TC -- H W W
+c) Stroke Checking /
+Opening & Closing Time
+Approved test procedure / AGES-SP-
+04-002, IEC-60534-4 TC -- H W W
+Approved data sheet
+Approved data sheet - -- H W W
+Approved data sheet TC -- H W W
+d) Accessories/Positioner
+calibration
+e) Failure action test /
+Dead band test
+Operational Test
+Approved test procedure / AGES-SP-04-
+002, IEC-60534-4
+Approved test procedure / AGES-SP-
+04-002, IEC-60534-4 TC -- H W
+Approved test procedure / AGES-SP-04-
+002, IEC-60534-4
+Approved test procedure / AGES-SP-
+04-002, IEC-60534-4 TC -- H W
+b) Linearity
+c) Hysteresis
+Approved data sheet /AGES-SP-04-
+002, IEC-60534-4
+Approved data sheet / AGES-SP-04-
+002, IEC-60534-4 TC -- H W
+Approved test procedure / AGES-SP-04-
+002, IEC-60534-4
+R A
+W
+W
+W
+Leakage
+Leakage
+Fugitive Emission
+Production test
+Fugitive Emission type test
+(Review of test certificate)
+Approved test procedure / AGES-SP-04-
+002, IEC-60534-4
+Approved Procedure/ As per ISO
+15848-1 / As per datasheet FE type test report
+-- H
+Approved data sheet / AGES-SP-04-
+002, IEC-60534-4
+e) Dead band check
+f) Functional test of
+position transmitters, limit
+switches, SOV as
+applicable.
+Approved Procedure/ As per ISO 15848-
+2 / As per datasheet
+Approved Procedure/ As per ISO
+15848-2 Limit Class B/ As per
+datasheet
+TC
+-- H	
+Approved Procedure/ As per ISO 15848-
+1 / As per datasheet
+W W
+Painting and allied activities
+Surface preparation and
+Painting Paint Material Selection AGES-SP-07-004,
+ISO 12944-9 Specification and Product Data Sheet
+Paint Manufacturer
+Compatibility
+Tests/Letter
+-- H R R
+Surface preparation and
+Painting
+Pre-production / Repair
+Qualification
+Test
+AGES-SP-07-004/ASTM D4228
+Specification and Product Data Sheet
+Requirements/PQT shall be done on
+sample pad of dimension
+300mm*300mm
+RFI / Report -- H R R
+Surface preparation and
+Painting
+Incoming Abrasives /
+Paint Material
+inspection (Verify storage,
+container
+integrity, and shelf life)
+ASTM D4940, Data sheet AGES-SP-
+07-004/ Visual
+Specification and Product Data Sheet
+Requirments,Storage as per Paint
+datasheet(TDS)
+Conductivity ≤ 150 μmS/cm shall be
+measured at ambient temperature.
+RFI / Report -- H R R
+Surface preparation and
+Painting Environmental Conditions ISO 8502-4 As per clause 12.1 of AGES-SP-07-
+004 RFI / Report -- H R R
+Page 5 of 7
+P30339B-30-99-52-4607 Rev.No.: 2 Page 	9 OF 13
+
+--- PAGE 21 ---
+
+Location:
+Page:
+Criticality
+Rating 1 2 3 4 Certification 3.2 3.1 2.2 2.1 I II III IV
+ADNOC
+Onshore
+Extent of
+Examina-tion
+PO No.:
+Supplier
+P30339B
+KSB MIL Controls Limited, Kerala, India
+KSB MIL Sale order number : CD13E (ITP CV-L2-4817 Rev 03)
+04108-PM-INST-008
+Activity Description
+Project No:
+Doc.No:
+Inspection and Test Plan (ITP)
+Act.No.:
+H: Hold; W10%: Witness on 10% per type,size ,rating; R: Review; M: Monitoring; A: Approval ; W : 100% Witness; RW-Random witness-10% witness on total order quantity per inspection offer lot.
+Notification Period: Minimum of 14 days notice for “HOLD” and “WITNESS” points.
+Reference Document
+Project Name: ADNOC SE AiP5 PROJECT (ON PLOT) – ASAB/SAHIL (PACKAGE 1)
+Acceptance Criteria Verifying
+Document
+Quality Intervention
+Remarks	
+Sub Vendor KSB
+TPIA (applicable
+where 3.2
+certification
+required)
+Archirodon
+Item / Equipment Control Valves INDIA
+Inspection
+Level
+8.5 100% R
+8.6 Every 2 hours /
+Twice per day R
+8.7 100% RW
+8.8 Spot checks R
+8.9 Spot checks R
+8.10 Spot checks R
+8.11 100% R
+8.12
+Methodically
+during application R
+8.13 100% of surfaces
+W (10%)
+(Refer
+Note 5)
+Free of oil, grease and other
+contaminants RFI / Report -- H R R	
+Surface preparation and
+Painting
+Pre-cleaning of surfaces /
+Solvent
+cleaning
+SSPC-SP 1
+Surface preparation and
+Painting Compressed Air Quality ASTM D4285 Free of oil and moisture RFI / Report -- H R R
+Surface preparation and
+Painting
+Roughness / Profile &
+Masking NACE SP0287
+Conform to the grade specified in the
+applicable
+painting system
+RFI / Report -- H R R
+Surface preparation and
+Painting
+Blasting /Surface
+preparation checking
+SSPC-VIS 1 Conform to the grade specified in the
+applicable
+Painting System
+RFI / Report -- H RW RW
+Surface preparation and
+Painting Dust test ISO 8502-3 Maximum rating (1), Dust class (2) RFI / Report -- H R R
+Surface preparation and
+Painting Water Soluble Salts ISO 8502-6/9 ≤ 2 μmg/cm2 (20 mg/m2)
+BRESLE kit procedure only. RFI / Report -- H RW RW
+Surface preparation and
+Painting
+Verify correct Mixing
+Ratio Manufacturer Data sheet
+Mixing shall be completed using
+factory proportioned containers and
+as per paint manufaturer
+recommendation only
+RFI / Report -- H R R
+Surface preparation and
+Painting WFT Metallic Comb Gauge, ISO 2808 According to specified DFT FOR
+EACH COAT RFI / Report -- H R R
+Specified DFT FOR EACH COAT /No
+sagging, contaminations, orange peel,
+cracking, blistering, rust, damages
+and any other defects(Witness
+applicable for only final DFT,other
+Stages(primer,intermediate dft shall
+be reviewed only)
+RFI / Report -- H W (10%)
+(Refer Note 5)
+W (10%)
+Painting
+Page 6 of 7
+P30339B-30-99-52-4607 Rev.No.: 2
+Surface preparation and
+(Refer Note 5)
+Final DFT /
+ISO 19840 / Visual
+and ISO 4628-1 to 6
+Visual Examination
+Page 	10 OF 13
+
+--- PAGE 22 ---
+
+Location:
+Page:
+Criticality
+Rating 1 2 3 4 Certification 3.2 3.1 2.2 2.1 I II III IV
+ADNOC
+Onshore
+Extent of
+Examina-tion
+PO No.:
+Supplier
+P30339B
+KSB MIL Controls Limited, Kerala, India
+KSB MIL Sale order number : CD13E (ITP CV-L2-4817 Rev 03)
+04108-PM-INST-008
+Activity Description
+Project No:
+Doc.No:
+Inspection and Test Plan (ITP)
+Act.No.:
+H: Hold; W10%: Witness on 10% per type,size ,rating; R: Review; M: Monitoring; A: Approval ; W : 100% Witness; RW-Random witness-10% witness on total order quantity per inspection offer lot.
+Notification Period: Minimum of 14 days notice for “HOLD” and “WITNESS” points.
+Reference Document
+Project Name: ADNOC SE AiP5 PROJECT (ON PLOT) – ASAB/SAHIL (PACKAGE 1)
+Acceptance Criteria Verifying
+Document
+Quality Intervention
+Remarks	
+Sub Vendor KSB
+TPIA (applicable
+where 3.2
+certification
+required)
+Archirodon
+Item / Equipment Control Valves INDIA
+Inspection
+Level
+8.14 Spot checks W (10%)
+8.15 One sample per
+paint scheme R
+8.16
+Aleast 3 locations
+-one per paint
+scheme on
+sample pad
+W
+9
+9.1 100% W
+9.2 100% W (10%)
+9.3 100% R
+9.4 100% A
+Product 3.2 certification Review Approved data sheet & drawings Approved data sheet & drawings 3.2 COC --
+Signed on Behalf of:
+11-08-2026
+Gautham Sai S	--
+--	Date:
+Name:
+--	Signature
+ADNOC Onshore / Representative	
+ARCHIRODON /
+Representative (TPIA)	
+TPIA	Vendor	Sub-vendor
+W (10%)
+Overall dimension, Name
+plate details, Visual &
+Marking
+Surface preparation and
+Painting Free of holidays and pinholes RFI / Report -- H R R
+FINAL INSPECTION
+Visual & Dimensions Approved data sheet & drawings Report	Approved data sheet & drawings
+H A A
+Approved Procedure Report
+ISO 4624 (pull-of test) ASTM D4541
+To be performed on test panels
+Minimum value > 5 MPa for Zinc
+primer-based and >7 MPa for non-
+Zinc based primer system
+RFI / Report -- H W W
+H R R
+-- H W W
+DFT ≤ 500 LV Wet sponge
+Notes :
+1) Certification shall be as per EN10204 Type 3.2 for castings / forgings. 3.2 certification is not applicable for components made from bars or rods. For such items, chemical,mechanical,hardness, corrosion tests (as applicable) will be retested at ISO/IEC accredited lab and shall be offered for witness.
+2) Stock Material Request Guidelines doc no 30-99-97-1612 shall be followed.
+3) For DSS supplier shall be NORSOK M650 or ISO 17782
+4) Scope of Corrosion test witness (wherever applicable) shall be loading and unloading only.
+5) Witness shall be 10% per type per size per rating and paint scheme.
+Valve test reports & Inspection
+documents,MRB Index	
+MRB review & approval	Final MRB
+All inspection and testing activities completed as per the requirements above, and accordingly the Inspection Release Note Issued.
+Approved Procedure
+Customer's P.O./ Inspection
+documents
+Soundness of Packing
+Issue of IRN
+Packing
+Inspection Release
+Valve test reports & Inspection
+documents MRB
+--	
+Customer's P.O./ Inspection
+documents IRN
+-- H W (10%) W (10%)
+Surface preparation and
+Painting
+Surface preparation and
+Painting
+(if applicable) Curing of
+Inorganic Zinc
+Silicate Primer using MEK
+solvent Rub Test
+ASTM D4752 Conform to Level 5 RFI / Report -- H W (10%)
+Holiday Testing
+Adhesion Testing
+Page 7 of 7
+P30339B-30-99-52-4607 Rev.No.: 2
+-- H A	A	9.5 100% A
+Page 	11 OF 13
+
+--- PAGE 23 ---
+
+ITEM NO TAG NO VALVE SERIES VALVE SIZE (IN) BODY MATERIAL BODY RATING AREA
+1 16-01-LCV-2803-01A 41300 3 ASTM A 494 CU5MCuC(N08826) 600 SAHIL
+2 16-01-LCV-2803-01B 41300 3 ASTM A 494 CU5MCuC(N08826) 600 SAHIL
+3 16-01-LCV-2803-36A 41100 2 ASTM A 494 CU5MCuC(N08826) 600 SAHIL
+4 16-01-LCV-2803-36B 41100 2 ASTM A 494 CU5MCuC(N08826) 600 SAHIL
+5 16-01-LCV-2803-38A 41100 2 ASTM A 494 CU5MCuC(N08826) 600 SAHIL
+6 16-01-LCV-2803-38B 41100 2 ASTM A 494 CU5MCuC(N08826) 600 SAHIL
+7 16-01-LCV-2812-01A 41300 3 ASTM A 494 CU5MCuC(N08826) 600 SAHIL
+8 16-01-LCV-2812-01B 41300 3 ASTM A 494 CU5MCuC(N08826) 600 SAHIL
+9 16-01-LCV-2813-01A 41100 2 ASTM A 494 CU5MCuC(N08826) 1500 SAHIL
+10 16-01-LCV-2813-01B 41100 2 ASTM A 494 CU5MCuC(N08826) 1500 SAHIL
+11 16-01-PCV -2405-03A 21100 2 ASTM A 216 Gr. WCC 300 SAHIL
+12 16-01-PCV -2405-03B 21100 6 ASTM A 216 Gr. WCC 300 SAHIL
+13 16-01-PCV-2803-37A 41300 8 ASTM A 352 Gr. LCC 600 SAHIL
+14 16-01-PCV-2803-37B 41300 8 ASTM A 352 Gr. LCC 600 SAHIL
+15 16-01-TCV -2811-02A 41900 14 ASTM A 352 Gr. LCC 300 SAHIL
+16 16-01-TCV -2811-02B 41900 18 ASTM A 352 Gr. LCC 300 SAHIL
+17 16-01-TCV -2812-18A 41900 12 ASTM A 352 Gr. LCC 600 SAHIL
+18 16-01-TCV -2812-18B 41900 12 ASTM A 352 Gr. LCC 600 SAHIL
+19 16-01-TCV -2813-58A 41900 8 ASTM A 352 Gr. LCC 1500 SAHIL
+20 16-01-TCV-2813-58B 41900 10 ASTM A 352 Gr. LCC 1500 SAHIL
+21 14-01-FCV-0200-03A 41600 14 ASTM A 216 Gr. WCC 600 ASAB
+22 14-01-FCV-0200-03B 41600 14 ASTM A 216 Gr. WCC 600 ASAB
+23 14-01-FCV-0200-04A 41600 16 ASTM A 216 Gr. WCC 900 ASAB
+24 14-01-FCV-0200-04B 41600 16 ASTM A 216 Gr. WCC 900 ASAB
+25 14-01-FCV-0305-07 33300 24 ASTM A 352 Gr. LCC + CLAD UNS N06625 300 ASAB
+26 14-01-FCV-0305-09 33300 20 ASTM A 216 Gr. WCC 300 ASAB
+27 14-01-FCV-0705-04A 21700 4 ASTM A 216 Gr. WCC 300 ASAB
+28 14-01-FCV -0705-04B 41600 20 ASTM A 216 Gr. WCC 300 ASAB
+29 14-01-FCV -0709-01 41600 10 ASTM A 216 Gr. WCC 300 ASAB
+30 14-01-FCV-0710-01 41600 10 ASTM A 216 Gr. WCC 300 ASAB
+31 14-01-FCV-0907-01 41600 8 ASTM A 216 Gr. WCC 300 ASAB
+32 14-01-FCV-1006-01 91600 6 ASTM A 216 Gr. WCC 600 ASAB
+33 14-01-FCV-1007-01 91600 6 ASTM A 216 Gr. WCC 600 ASAB
+34 14-01-FCV-1225-01 41600 8 ASTM A 216 Gr. WCC 300 ASAB
+35 14-01-FCV-1226-01 41600 8 ASTM A 216 Gr. WCC 300 ASAB
+36 14-01-FCV -1300-02A 41600 12 ASTM A 216 Gr. WCC 900 ASAB
+37 14-01-FCV -1300-02B 41600 12 ASTM A 216 Gr. WCC 900 ASAB
+38 14-01-FCV-1300-03A 41600 12 ASTM A 216 Gr. WCC 900 ASAB
+39 14-01-FCV-1300-03B 41600 12 ASTM A 216 Gr. WCC 900 ASAB
+40 14-01-FCV-2435-01 21100 6 Duplex-SS (A 995 Gr.6A (CD3MWCuN)) 300 ASAB
+41 14-01-FCV-2436-01 21100 6 Duplex-SS (A 995 Gr.6A (CD3MWCuN)) 300 ASAB
+42 14-01-FCV-2437-01 78000 6 Duplex-SS (A 995 Gr.6A (CD3MWCuN)) 1500 ASAB
+43 14-01-FCV-2438-01 78000 6 Duplex-SS (A 995 Gr.6A (CD3MWCuN)) 1500 ASAB
+44 14-01-FCV-2439-01 21100 6 Duplex-SS (A 995 Gr.6A (CD3MWCuN)) 300 ASAB
+45 14-01-FCV-2440-01 78000 6 Duplex-SS (A 995 Gr.6A (CD3MWCuN)) 1500 ASAB
+46 14-01-LCV-0305-01 41600 12 ASTM A 216 Gr. WCC 300 ASAB
+47 14-01-LCV -0305-02 41600 16 ASTM A 352 Gr. LCC + CLAD UNS N06625 300 ASAB
+48 14-01-LCV-0405-02 21100 6 ASTM A 352 Gr. LCC + CLAD UNS N06625 300 ASAB
+49 14-01-LCV -0709-01 41600 14 ASTM A 216 Gr. WCC 300 ASAB
+50 14-01-PCV-0305-01 33300 30 ASTM A 216 Gr. WCC 300 ASAB
+51 14-01-PCV-0305-02 41300 20 ASTM A 216 Gr. WCC 300 ASAB
+52 14-01-PCV-0305-09 41300 20 ASTM A 216 Gr. WCC 300 ASAB
+53 14-01-PCV-0405-01 41300 12 ASTM A 216 Gr. WCC 300 ASAB
+54 14-01-PCV-0405-04 33300 14 ASTM A 216 Gr. WCC 300 ASAB
+ANNEXURE-1
+
+--- PAGE 24 ---
+
+55 14-01-PCV-0705-07 33300 24 ASTM A 216 Gr. WCC 300 ASAB
+56 14-01-PCV-0705-08 33300 30 ASTM A 216 Gr. WCC 300 ASAB
+57 14-01-PCV -0804-08A 41300 6 ASTM A 216 Gr. WCC 300 ASAB
+58 14-01-PCV-0804-08B 33300 12 ASTM A 216 Gr. WCC 300 ASAB
+59 14-01-PCV-1105-01A 21700 4 ASTM A 216 Gr. WCC 300 ASAB
+60 14-01-PCV-1105-01B 33300 10 ASTM A 216 Gr. WCC 300 ASAB
+61 14-01-PCV-3700-01A 33300 30 ASTM A 216 Gr. WCC 300 ASAB
+62 14-01-PCV-3700-01B 33300 30 ASTM A 216 Gr. WCC 300 ASAB
+63 14-01-TCV-0410-45 41900 12 ASTM A 216 Gr. WCC 300 ASAB
+64 14-01-HCV-0305-01 41600 2 Duplex-SS (A 995 Gr.6A (CD3MWCuN)) 300 ASAB
+65 14-01-HCV-0305-02 21100 3 Duplex-SS (A 995 Gr.6A (CD3MWCuN)) 300 ASAB
+66 14-01-HCV-0405-01 21100 3 Duplex-SS (A 995 Gr.6A (CD3MWCuN)) 300 ASAB
+67 14-01-HCV -0804-01 21100 3 Duplex-SS (A 995 Gr.6A (CD3MWCuN)) 300 ASAB
+68 14-01-HCV -1105-01 41600 2 Duplex-SS (A 995 Gr.6A (CD3MWCuN)) 300 ASAB
+69 14-01-FCV-6006-01 41900 16 Duplex-SS (A 995 Gr.6A (CD3MWCuN)) 300 ASAB
+70 14-01-PCV-1004-17 41900 18 ASTM A 216 Gr. WCC 600 ASAB
+71 14-01-FCV-1601-01A 41600 24 ASTM A 216 Gr. WCC 600 ASAB
+72 14-01-FCV-1601-01B 41600 24 ASTM A 216 Gr. WCC 600 ASAB
+73 14-01-FCV-0200-01A 41600 14 ASTM A 216 Gr. WCC 600 ASAB
+74 14-01-FCV-0200-01B 41600 14 ASTM A 216 Gr. WCC 600 ASAB
+75 16-01-PCV-3100-13 41600 3 ASTM A 352 Gr. LCC 1500 ASAB

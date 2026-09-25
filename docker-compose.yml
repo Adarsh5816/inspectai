@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  inspectai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: inspectai-app
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - DATABASE_URL=file:/app/storage/dev.db
+      - STORAGE_DIR=/app/storage
+      - TEMPLATES_DIR=/app/templates
+      - JWT_SECRET=inspectai-production-super-secret-key-2026
+    volumes:
+      - inspectai-data:/app/storage
+
+volumes:
+  inspectai-data:

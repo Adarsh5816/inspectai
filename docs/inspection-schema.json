@@ -1,0 +1,216 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "InspectionRecordSchema",
+  "description": "Schema for complete inspection state, checklist items, measurements, photos, and validation results",
+  "type": "object",
+  "required": [
+    "inspection_id",
+    "project_number",
+    "report_number",
+    "inspection_dates",
+    "items",
+    "activities",
+    "results",
+    "validation_status"
+  ],
+  "properties": {
+    "inspection_id": { "type": "string", "format": "uuid" },
+    "project_number": { "type": "string" },
+    "report_number": { "type": "string" },
+    "customer": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "contact_person": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "supplier": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "contact_person": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "inspection_type": { "type": "string" },
+    "inspection_location": { "type": "string" },
+    "inspection_dates": {
+      "type": "array",
+      "items": { "type": "string", "format": "date" }
+    },
+    "hours_and_distance": {
+      "type": "object",
+      "properties": {
+        "inspection_hours": { "type": "number", "default": 8.0 },
+        "travel_hours": { "type": "number", "default": 0.0 },
+        "travel_distance_km": { "type": "number", "default": 0.0 }
+      }
+    },
+    "attendees": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "company": { "type": "string" },
+          "represented_org": { "type": "string" },
+          "title": { "type": "string" }
+        },
+        "required": ["name", "company", "represented_org", "title"]
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item_id": { "type": "string", "format": "uuid" },
+          "po_item_no": { "type": "string" },
+          "tag_number": { "type": "string" },
+          "serial_number": { "type": "string" },
+          "job_no": { "type": ["string", "null"] },
+          "product_name": { "type": "string" },
+          "description": { "type": "string" },
+          "ordered_qty": { "type": "integer" },
+          "presented_qty": { "type": "integer" },
+          "accepted_this_visit": { "type": "integer" },
+          "accepted_to_date": { "type": "integer" }
+        },
+        "required": ["item_id", "po_item_no", "tag_number", "serial_number"]
+      }
+    },
+    "activities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "activity_id": { "type": "string", "format": "uuid" },
+          "clause_number": { "type": "string" },
+          "activity_name": { "type": "string" },
+          "acceptance_criteria": { "type": "string" },
+          "reference_document": { "type": ["string", "null"] },
+          "intervention_level": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "IN_PROGRESS",
+              "ACCEPTABLE",
+              "NOT_ACCEPTABLE",
+              "ON_HOLD",
+              "NOT_APPLICABLE",
+              "REQUIRES_REVIEW"
+            ]
+          }
+        },
+        "required": ["activity_id", "clause_number", "activity_name", "status"]
+      }
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "result_id": { "type": "string", "format": "uuid" },
+          "item_id": { "type": "string", "format": "uuid" },
+          "activity_id": { "type": "string", "format": "uuid" },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACCEPTABLE",
+              "NOT_ACCEPTABLE",
+              "ON_HOLD",
+              "NOT_APPLICABLE",
+              "REQUIRES_REVIEW"
+            ]
+          },
+          "test_medium": { "type": ["string", "null"] },
+          "test_pressure": { "type": ["number", "null"] },
+          "pressure_unit": { "type": ["string", "null"] },
+          "holding_time_min": { "type": ["number", "null"] },
+          "leakage_observed": { "type": ["string", "null"] },
+          "stroke_open_sec": { "type": ["number", "null"] },
+          "stroke_close_sec": { "type": ["number", "null"] },
+          "ambient_temp_c": { "type": ["number", "null"] },
+          "humidity_pct": { "type": ["number", "null"] },
+          "lux_level": { "type": ["number", "null"] },
+          "remarks": { "type": ["string", "null"] },
+          "confirmed_by_user": { "type": "boolean" },
+          "entered_via": { "type": "string" },
+          "photo_ids": {
+            "type": "array",
+            "items": { "type": "string", "format": "uuid" }
+          }
+        },
+        "required": ["result_id", "item_id", "activity_id", "status", "confirmed_by_user"]
+      }
+    },
+    "instruments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": { "type": "string" },
+          "serial_no": { "type": "string" },
+          "calibration_cert_no": { "type": "string" },
+          "expiry_date": { "type": "string", "format": "date" },
+          "is_valid": { "type": "boolean" }
+        },
+        "required": ["description", "serial_no", "calibration_cert_no", "expiry_date", "is_valid"]
+      }
+    },
+    "photos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "photo_id": { "type": "string", "format": "uuid" },
+          "storage_url": { "type": "string" },
+          "category": { "type": "string" },
+          "caption": { "type": "string" },
+          "tag_number": { "type": ["string", "null"] },
+          "clause_number": { "type": ["string", "null"] },
+          "confirmed": { "type": "boolean" }
+        },
+        "required": ["photo_id", "category", "caption", "confirmed"]
+      }
+    },
+    "observations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item": { "type": "string" },
+          "obs_type": { "type": "string", "enum": ["POSITIVE", "NEGATIVE"] },
+          "criticality": { "type": "string", "enum": ["CRITICAL", "NON_CRITICAL"] },
+          "category": { "type": "string" },
+          "comments": { "type": "string" }
+        },
+        "required": ["obs_type", "criticality", "category", "comments"]
+      }
+    },
+    "validation_status": {
+      "type": "object",
+      "properties": {
+        "is_valid_for_draft": { "type": "boolean" },
+        "is_valid_for_final": { "type": "boolean" },
+        "errors": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["is_valid_for_draft", "is_valid_for_final", "errors", "warnings"]
+    }
+  }
+}

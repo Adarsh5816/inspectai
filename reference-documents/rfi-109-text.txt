@@ -1,0 +1,247 @@
+Pages: 5
+
+--- PAGE 1 ---
+
+Internal#
+Criticality Rating:
+Phone:
+Fax:
+Time:
+Rejected
+Attachment:
+Discipline:
+If Others (Specify)
+Inspection Details
+I
+Date:
+Description
+Material Certification 3.2
+CONTRACTOR PO: 04108-PM-INST-008
+Contact Person:
+10-Sep-26 RFI No: 	P30339B-RFI-INST-008-ARC-INT-KSB-
+0109 Rev.0
+Equipment /
+Materials /
+Activities
+Request for Inspection (RFI)
+ASSEMBLY TEST (VALVE WITH ACTUATOR) - 02 Tag Nos.
+7.1 (a) - Body mount Leakage test
+7.2 (b) - Seat Leakage
+7.3 - Actuator Chamber - Strength & Leakage
+7.4 (a) - Stroke Checking / Opening & Closing Time
+7.5 (b) - Linearity
+7.6 (c) - Hysteresis
+7.7 (d) - Accessories
+7.8 (e) - Failure action test / Dead band test
+7.9 (e) - Dead band check
+7.10 (f) - Functional test of position transmitters, limit switches, SOV as applicable.
+7.12 - Fugitive Emission Production test - Leakage
+8.13 - Final DFT / Visual Examination
+8.14 - (if applicable) Curing of Inorganic Zinc Silicate Primer using MEK solvent Rub Test
+8.15 - Holiday Testing
+8.16 - Adhesion Testing
+FINAL INSPECTION
+9.1 - Overall dimension, Name plate details, Visual 	& Marking - Visual & Dimensions
+9.2 - Packing
+9.3 - Product 3.2 certification - Review
+9.4 - Inspection Release - Issue of IRN
+And all review activities as per approved ITP.
+Inspection Class
+Vendor	Sub-Contractor	EPC Contractor
+Others
+Piping / Pipeline	Welding
+Painting	Structural
+Instruments
+Mechanical
+Electrical
+Telecom
+Civil
+Project:
+Project No.:
+1
+EPC for SE AiP5 Project (On plot) - ASAB/SAHIL (Package 1)
+P30339B
+RFI Originator
+ADNOC Onshore	TPIA
+P30339B-30-99-52-
+4607 ITP Activity Ref:
+Witness- 7.1,
+7.2, 7.4, 7.5,
+7.6, 7.7, 7.8,
+7.9, 7.10, 7.12,
+8.13, 8.14,
+8.16, 9.1, 9.2
+Review- 7.3,
+8.15, 9.3
+Approval- 9.4
+Inspection Location:
+KSB MIL CONTROLS LIMITED
+Meladoor, Annamanada - 680741,
+Kerala, India.
+Mr. Gautham Sai S
+QA Inspection Incharge
+Tel.: +91 480 2695817, Mob: +91 70129 06581
+E-mail : Gautham.Sai@ksb.com
+09:00 AM to 06:00 PM (IST)	15th , 16th , 17th & 22nd Sep 2026
+Alex.Davis@ksb.com
+Sreejith.A@ksb.com
+Mr. Alex Davis (KSB MIL Contract Management)
+Mr. Sreejith A. (KSB MIL QA)
+EPC Quality
+ITP Ref. No:
+Remarks:
+First Inspection
+Date:
+Inspection Date:
+E-mail:
+Required Re-inspecti	Cancelled	Accepted with Comments on
+Cancelled	Rejected	Accepted
+Inspection Attendance & Closing Out
+Signature:
+Title:
+Name:
+EPC Con/Subcon
+Issued By EPC
+Con/Subcon ADNOC Onshore Acknowledgemen	Reviewed By EPC Quality t
+Alex Davis
+Project Coordinator
+10-Sep-26
+Accepted
+Inspection Results
+Signature:
+Designation:
+Name:
+Remarks:
+Re-inspection
+Date:
+ARCHIRODON
+Final Inspection	FAT	Stage Inspection	Stock Materials	Pre-Inspection Meeting
+ADNOC Onshore
+TPIA
+EPC Contractor
+Vendor / Subcon
+ADNOC Onshore
+TPIA
+EPC Contractor
+Vendor / Subcontractor
+ADNOC Onshore
+TPIA
+EPC Contractor
+Vendor / Subcontractor
+Hold Witness Review
+Tel.: +91 480 2695832, Mob: +91 9746167097
+Tel.: +91 480 2695842, Mob: +91 9432487337
+Mr. Hossam
+Project Quality Manager
+05-Aug-26
+
+--- PAGE 2 ---
+
+Internal
+Annexure (P30339B_RFI -0109_REV-0)
+ITP
+Act#
+Activities Inspection Dates 3.2 TPI ARCO TPI ADNOC TPI Remarks / Location
+7.1 (a) Body mount Leakage test 15th & 16th
+September 2026
+W W W Vendor Location:
+KSB MIL Controls Limited
+7.2 (b) Seat Leakage 15th & 16th
+September 2026
+W W W Vendor Location:
+KSB MIL Controls Limited
+7.3 Actuator Chamber - Strength &
+Leakage
+15th & 16th
+September 2026
+R R R Vendor Location:
+KSB MIL Controls Limited
+7.4 (a) Stroke Checking / Opening & Closing
+Time
+15th , 16th & 17th
+September 2026
+W W W Vendor Location:
+KSB MIL Controls Limited
+7.5 (b) Linearity 15th , 16th & 17th
+September 2026
+W W W Vendor Location:
+KSB MIL Controls Limited
+7.6 (c) Hysteresis 15th , 16th & 17th
+September 2026
+W W W Vendor Location:
+KSB MIL Controls Limited
+7.7 (d) Accessories 15th , 16th & 17th
+September 2026
+W W W Vendor Location:
+KSB MIL Controls Limited
+7.8 (e) Failure action test / Dead band test 15th , 16th & 17th
+September 2026
+W W W Vendor Location:
+KSB MIL Controls Limited
+7.9 (e) Dead band check 15th , 16th & 17th
+September 2026
+W W W Vendor Location:
+KSB MIL Controls Limited
+7.10 (f) Functional test of position
+transmitters, limit switches, SOV as
+applicable.
+15th , 16th & 17th
+September 2026
+W W W Vendor Location:
+KSB MIL Controls Limited
+7.12 Fugitive Emission Production test -
+Leakage
+15th , 16th & 17th
+September 2026
+W W W Vendor Location:
+KSB MIL Controls Limited
+8.13 Final DFT / Visual Examination 22nd September 2026 W (10%)
+(Refer Note
+5)
+W (10%)
+(Refer
+Note 5)
+W (10%)
+(Refer Note
+5)
+Vendor Location:
+KSB MIL Controls Limited
+
+--- PAGE 3 ---
+
+Internal
+8.14 (if applicable) Curing of Inorganic
+Zinc Silicate Primer using MEK
+solvent Rub Test
+22nd September 2026 W (10%) W (10%) W (10%) Vendor Location:
+KSB MIL Controls Limited
+8.15 Holiday Testing 22nd September 2026 R R R Vendor Location:
+KSB MIL Controls Limited
+8.16 Adhesion Testing 22nd September 2026 W W W Vendor Location:
+KSB MIL Controls Limited
+9.1 Overall dimension, Name plate
+details, Visual & Marking - Visual &
+Dimensions
+17th & 22nd
+September 2026
+W W W Vendor Location:
+KSB MIL Controls Limited
+9.2 Packing 22nd September 2026 W (10%) W (10%) W (10%) Vendor Location:
+KSB MIL Controls Limited
+9.3 Product 3.2 certification - Review 22nd September 2026 H A R Vendor Location:
+KSB MIL Controls Limited
+9.4 Inspection Release - Issue of IRN 22nd September 2026 A A A Vendor Location:
+KSB MIL Controls Limited
+
+--- PAGE 4 ---
+
+Internal#
+Annexure-1
+PO SL NO TAG NO VALVE SL NO JOB VALVE DETAILS QTY
+'79 14-01-FCV-1601-01A 25009567 CD13E085 24''-41611 ASME #600 RF Gr WCC CV=4500 58 24'' 1
+'80 14-01-FCV-1601-01B 25009568 CD13E086 24''-41611 ASME #600 RF Gr WCC CV=4500 58 24'' 1
+
+--- PAGE 5 ---
+
+Internal#
+ANNEXURE-2
