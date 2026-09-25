@@ -1,5 +1,5 @@
 # Stage 1: Build Frontend Client
-FROM node:20-alpine AS client-builder
+FROM node:20-slim AS client-builder
 WORKDIR /app/client
 COPY client/package*.json ./
 RUN npm ci
@@ -7,7 +7,8 @@ COPY client/ ./
 RUN npm run build
 
 # Stage 2: Build Backend Server
-FROM node:20-alpine AS server-builder
+FROM node:20-slim AS server-builder
+RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app/server
 COPY server/package*.json ./
 RUN npm ci
@@ -16,7 +17,8 @@ RUN npx prisma generate
 RUN npm run build
 
 # Stage 3: Production Runner
-FROM node:20-alpine AS runner
+FROM node:20-slim AS runner
+RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -43,4 +45,4 @@ RUN mkdir -p /app/storage/documents /app/storage/photos /app/storage/reports
 
 EXPOSE 4000
 
-CMD ["sh", "-c", "cd server && npx prisma db push && node dist/index.js"]
+CMD ["sh", "-c", "cd server && npx prisma db push --skip-generate --accept-data-loss && node dist/index.js"]
