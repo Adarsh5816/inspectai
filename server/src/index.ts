@@ -113,8 +113,16 @@ app.post('/api/instruments/calibration', auth, async (req, res) => {
 });
 
 // Static files (frontend in production)
-const clientDist = path.resolve(__dirname, '../../client/dist');
-if (fs.existsSync(clientDist)) {
+const candidatePaths = [
+  process.env.CLIENT_DIST,
+  path.resolve(__dirname, '../../client/dist'),
+  path.resolve(__dirname, '../client/dist'),
+  path.resolve(__dirname, './client/dist'),
+].filter(Boolean) as string[];
+
+const clientDist = candidatePaths.find(p => fs.existsSync(p));
+if (clientDist) {
+  console.log(`📦 Serving frontend from: ${clientDist}`);
   app.use(express.static(clientDist));
   app.get('*', (_req, res) => {
     res.sendFile(path.join(clientDist, 'index.html'));
@@ -132,4 +140,21 @@ app.listen(PORT, () => {
   console.log(`🚀 INSPECTAI server running on http://localhost:${PORT}`);
   console.log(`   Storage: ${storageDir}`);
   console.log(`   Templates: ${process.env.TEMPLATES_DIR || path.resolve(__dirname, '../../templates')}`);
+
+  // Auto-seed default admin if database is empty
+  prisma.user.findFirst().then(async (u) => {
+    if (!u) {
+      console.log('🌱 Seeding initial admin user (admin@inspectai.com)...');
+      await prisma.user.create({
+        data: {
+          email: 'admin@inspectai.com',
+          passwordHash: 'admin123',
+          fullName: 'Admin User',
+          role: 'ADMIN',
+          organization: 'Intertek',
+        },
+      });
+      console.log('✅ Initial admin user created.');
+    }
+  }).catch(() => {});
 });

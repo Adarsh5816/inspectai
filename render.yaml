@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: inspectai
+    runtime: docker
+    dockerfilePath: Dockerfile
+    plan: free
+    region: oregon
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        value: file:/app/storage/dev.db
+      - key: STORAGE_DIR
+        value: /app/storage
+      - key: TEMPLATES_DIR
+        value: /app/templates

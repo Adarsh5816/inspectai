@@ -50,6 +50,7 @@ export class ReportService {
       where: { id: inspectionId },
       include: {
         project: true,
+        inspector: true,
         items: true,
         activities: true,
         results: { include: { item: true, activity: true } },
@@ -129,7 +130,7 @@ export class ReportService {
     docXml = this.setCellValueAfterLabel(docXml, 'RECOMMENDED ACTION:', inspection.recommendedAction || 'NA');
 
     // Yellow highlights: Inspector Name & Signature Date
-    const inspectorName = inspection.inspector?.name || 'Inspection Engineer';
+    const inspectorName = inspection.inspector?.fullName || 'Inspection Engineer';
     docXml = docXml.replace(/<w:highlight w:val="yellow"\/>\s*<w:t>XXXXXXX<\/w:t>/g, `<w:t>${escapeXml(inspectorName)}</w:t>`);
     docXml = docXml.replace(/<w:t>XXXXXXX<\/w:t>/g, `<w:t>${escapeXml(inspectorName)}</w:t>`);
     docXml = docXml.replace(/<w:highlight w:val="yellow"\/>\s*<w:t>XXXXXXXX<\/w:t>/g, `<w:t>${escapeXml(dateLong)}</w:t>`);
@@ -682,7 +683,7 @@ ${rowsXml}
   /**
    * Embed uploaded photos into Word DOCX and build clean 2-column photo table
    */
-  private async embedUploadedPhotos(zip: JSZip, photos: any[]): string {
+  private async embedUploadedPhotos(zip: JSZip, photos: any[]): Promise<string> {
     // 1. Update relationships
     const relsPath = 'word/_rels/document.xml.rels';
     let relsXml = await zip.file(relsPath)!.async('string');
