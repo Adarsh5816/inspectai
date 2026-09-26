@@ -37,6 +37,8 @@ router.get('/:id', async (req, res) => {
       where: { id: req.params.id },
       include: {
         project: true,
+        rfiDocument: true,
+        itpDocument: true,
         items: true,
         activities: true,
         results: { include: { item: true, activity: true } },
