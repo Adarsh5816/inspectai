@@ -1,10 +1,103 @@
+import fs from 'fs';
 import path from 'path';
+import * as XLSX from 'xlsx';
 import prisma from '../db/prisma';
 
 export class DocumentService {
   /**
-   * Process a document: extract text from PDF, parse structured data,
-   * and save the extraction record.
+   * Extract raw text and metadata (page/sheet count) from various file formats:
+   * .pdf, .docx, .doc, .xlsx, .xls, .csv
+   */
+  public async extractTextFromFile(filePath: string): Promise<{ rawText: string; pageCount: number }> {
+    const absPath = path.resolve(filePath);
+    const ext = path.extname(absPath).toLowerCase();
+
+    if (ext === '.pdf') {
+      const { PDFParse } = require('pdf-parse');
+      const p = new PDFParse({ url: absPath });
+      try {
+        let pageCount = 1;
+        try {
+          const info = await p.getInfo();
+          pageCount = info.total || 1;
+        } catch { /* info optional */ }
+
+        const textResult = await p.getText();
+        let rawText = '';
+        if (textResult.pages) {
+          rawText = textResult.pages.map((pg: any) => pg.text || '').join('\n\n');
+        } else if (typeof textResult === 'string') {
+          rawText = textResult;
+        } else {
+          rawText = JSON.stringify(textResult);
+        }
+        return { rawText, pageCount };
+      } finally {
+        await p.destroy();
+      }
+    }
+
+    if (ext === '.xlsx' || ext === '.xls') {
+      const wb = XLSX.readFile(absPath);
+      let rawText = '';
+      for (const sheetName of wb.SheetNames) {
+        const sheet = wb.Sheets[sheetName];
+        const csv = XLSX.utils.sheet_to_csv(sheet);
+        rawText += `\n--- Sheet: ${sheetName} ---\n` + csv + '\n';
+      }
+      return { rawText, pageCount: wb.SheetNames.length };
+    }
+
+    if (ext === '.csv') {
+      const rawText = fs.readFileSync(absPath, 'utf8');
+      return { rawText, pageCount: 1 };
+    }
+
+    if (ext === '.doc' || ext === '.docx') {
+      try {
+        const WordExtractor = require('word-extractor');
+        const extractor = new WordExtractor();
+        const extracted = await extractor.extract(absPath);
+        const rawText = [
+          extracted.getHeaders({ includeFooters: false }),
+          extracted.getBody(),
+          extracted.getFooters()
+        ].filter(Boolean).join('\n\n');
+        return { rawText: rawText || extracted.getBody(), pageCount: 1 };
+      } catch (docErr) {
+        // Fallback for docx using JSZip
+        if (ext === '.docx') {
+          const JSZip = require('jszip');
+          const zip = await JSZip.loadAsync(fs.readFileSync(absPath));
+          const xml = await zip.file('word/document.xml')?.async('string');
+          if (xml) {
+            const rawText = xml
+              .replace(/<w:br[^>]*\/?>/gi, '\n')
+              .replace(/<w:tab[^>]*\/?>/gi, '\t')
+              .replace(/<\/w:p>/gi, '\n')
+              .replace(/<\/w:tr>/gi, '\n')
+              .replace(/<\/w:tc>/gi, '\t')
+              .replace(/<[^>]+>/g, '')
+              .replace(/&amp;/g, '&')
+              .replace(/&lt;/g, '<')
+              .replace(/&gt;/g, '>')
+              .replace(/&quot;/g, '"')
+              .replace(/&apos;/g, "'");
+            return { rawText, pageCount: 1 };
+          }
+        }
+        throw docErr;
+      }
+    }
+
+    // Default plain text fallback
+    const rawText = fs.readFileSync(absPath, 'utf8');
+    return { rawText, pageCount: 1 };
+  }
+
+  /**
+   * Process a document: extract text from file (.pdf, .docx, .doc, .xlsx, .csv),
+   * parse structured data, and save the extraction record.
    */
   async processDocument(documentId: string, filePath: string, documentType: string) {
     let extractedData: any = {};
@@ -13,63 +106,37 @@ export class DocumentService {
 
     const absPath = path.resolve(filePath);
 
-    if (filePath.toLowerCase().endsWith('.pdf')) {
-      try {
-        const { PDFParse } = require('pdf-parse');
-        const p = new PDFParse({ url: absPath });
+    try {
+      const extractResult = await this.extractTextFromFile(absPath);
+      rawText = extractResult.rawText;
+      const pageCount = extractResult.pageCount;
 
-        try {
-          // Get info
-          let pageCount = 0;
-          try {
-            const info = await p.getInfo();
-            pageCount = info.total || 0;
-          } catch { /* info optional */ }
-
-          // Get text
-          const textResult = await p.getText();
-          if (textResult.pages) {
-            rawText = textResult.pages.map((pg: any) => pg.text || '').join('\n\n');
-          } else if (typeof textResult === 'string') {
-            rawText = textResult;
-          } else {
-            rawText = JSON.stringify(textResult);
-          }
-
-          // Update page count
-          if (pageCount > 0) {
-            await prisma.document.update({ where: { id: documentId }, data: { pageCount } }).catch(() => {});
-          }
-
-          // Parse based on document type
-          if (documentType === 'RFI') {
-            extractedData = this.parseRFI(rawText);
-            confidence = 0.92;
-          } else if (documentType === 'ITP') {
-            extractedData = this.parseITP(rawText);
-            confidence = 0.90;
-          } else if (documentType === 'CALIBRATION_CERTIFICATE') {
-            extractedData = this.parseCalibration(rawText);
-            confidence = 0.88;
-          } else {
-            extractedData = {
-              documentType,
-              textPreview: rawText.substring(0, 2000),
-              totalLength: rawText.length,
-            };
-          }
-        } finally {
-          await p.destroy();
-        }
-      } catch (err: any) {
-        console.error('PDF extraction error:', err.message);
-        extractedData = { error: err.message, documentType };
-        confidence = 0.0;
+      // Update page count
+      if (pageCount > 0) {
+        await prisma.document.update({ where: { id: documentId }, data: { pageCount } }).catch(() => {});
       }
-    } else {
-      // Non-PDF files
-      extractedData = { documentType, note: 'Non-PDF file - manual review required' };
-      confidence = 0.5;
+
+      // Parse based on document type
+      if (documentType === 'RFI') {
+        extractedData = this.parseRFI(rawText);
+        confidence = 0.92;
+      } else if (documentType === 'ITP') {
+        extractedData = this.parseITP(rawText);
+        confidence = 0.90;
+      } else if (documentType === 'CALIBRATION_CERTIFICATE') {
+        extractedData = this.parseCalibration(rawText);
+        confidence = 0.88;
+      } else {
+        extractedData = {
+          documentType,
+          textPreview: rawText.substring(0, 2000),
+          totalLength: rawText.length,
+        };
+      }
+    } catch (err: any) {
+      console.error('Document extraction error:', err.message);
+      extractedData = { error: err.message, documentType };
+      confidence = 0.0;
     }
 
     // Save extraction
@@ -86,22 +153,18 @@ export class DocumentService {
   }
 
   /**
-   * Extract data directly from PDF without database persistence (useful for preview/testing)
+   * Extract data directly from file without database persistence (useful for preview/testing)
    */
   public async extractDataFromPDF(filePath: string, documentType: string): Promise<any> {
-    const absPath = path.resolve(filePath);
-    const { PDFParse } = require('pdf-parse');
-    const p = new PDFParse({ url: absPath });
-    try {
-      const textResult = await p.getText();
-      const rawText = textResult.pages ? textResult.pages.map((pg: any) => pg.text || '').join('\n\n') : (typeof textResult === 'string' ? textResult : JSON.stringify(textResult));
-      if (documentType === 'RFI') return this.parseRFI(rawText);
-      if (documentType === 'ITP') return this.parseITP(rawText);
-      if (documentType === 'CALIBRATION_CERTIFICATE') return this.parseCalibration(rawText);
-      return { rawText };
-    } finally {
-      await p.destroy();
-    }
+    return this.extractDataFromFile(filePath, documentType);
+  }
+
+  public async extractDataFromFile(filePath: string, documentType: string): Promise<any> {
+    const { rawText } = await this.extractTextFromFile(filePath);
+    if (documentType === 'RFI') return this.parseRFI(rawText);
+    if (documentType === 'ITP') return this.parseITP(rawText);
+    if (documentType === 'CALIBRATION_CERTIFICATE') return this.parseCalibration(rawText);
+    return { rawText };
   }
 
   /**
@@ -112,16 +175,16 @@ export class DocumentService {
 
     // 1. Project Name (e.g. EPCM FOR BAB & BU HASA AiP5 OFF-PLOT FACILITIES PROJECT)
     const projNameMatch = text.match(/(EPCM\s+FOR\s+[A-Za-z0-9\s&]+?PROJECT)/i) ||
-                          text.match(/Subject\s*:\s*([^\n\r]+?)(?=\s+ADNOC|\s*[\r\n]|$)/i);
+                          text.match(/(?:Project\s*Name|Subject)\s*[:,\s]+\s*([^\r\n,]+)/i);
     if (projNameMatch) result.projectName = projNameMatch[1].replace(/\s+/g, ' ').trim();
 
     // 2. Project number: P30350 or P30339B
-    const projMatch = text.match(/PROJECT\s*No[.:]*\s*(P\d{4,6}[A-Z]?)/i) ||
-                      text.match(/(?:Project No[.:]*|Project:)\s*(P\d{4,6}\w*)/i);
+    const projMatch = text.match(/PROJECT\s*No[.:,]*\s*(P\d{4,6}[A-Z]?)/i) ||
+                      text.match(/(?:Project\s*No[.:,]*|Project:)\s*(P\d{4,6}\w*)/i);
     if (projMatch) result.projectNumber = projMatch[1].trim();
 
     // 3. RFI number: matches "RFI No: ...", "RFI-P30350...", or "P30339B-RFI-..."
-    const rfiHeaderMatch = text.match(/RFI\s*No[.:\s]*\s*([A-Za-z0-9\-_\s\n]+?)(?=\s+Rev|\s+Equipment|\s+Materials|\n\s*\n|$)/i);
+    const rfiHeaderMatch = text.match(/RFI\s*No[.:,\s]*\s*([A-Za-z0-9\-_\s\n\/]+?)(?=\s+Rev|\s+Equipment|\s+Materials|,|\n\s*\n|$)/i);
     if (rfiHeaderMatch) {
       result.rfiNumber = rfiHeaderMatch[1].replace(/[\r\n\t\s]+/g, '').trim();
     } else {
@@ -130,21 +193,23 @@ export class DocumentService {
     }
 
     // 4. PO Number: e.g. "VENDOR PO NO.: P-AiP5-12-IC15-003" or "04108-PM-INST-008"
-    const poMatch = text.match(/VENDOR\s+PO\s+NO[.:]*\s*([A-Za-z0-9\-]+)/i) ||
-                    text.match(/CONTRACTOR\s+PO[.:]*\s*(\S+)/i) ||
-                    text.match(/PO\s+NO[.:]*\s*(P-[A-Za-z0-9\-]+|\d{4,}[\w\-]*)/i);
+    const poMatch = text.match(/VENDOR\s+PO\s+NO[.:,\s]*\s*([A-Za-z0-9\-]+)/i) ||
+                    text.match(/CONTRACTOR\s+PO[.:,\s]*\s*(\S+)/i) ||
+                    text.match(/PO\s+NO[.:,\s]*\s*(P-[A-Za-z0-9\-]+|\d{4,}[\w\-]*)/i);
     if (poMatch) result.poNumber = poMatch[1].trim();
 
     // 5. Supplier
-    const supplierMatch = text.match(/(?:KSB MIL CONTROLS LIMITED|KSB MIL Controls Limited)/i);
-    if (supplierMatch) result.supplierName = supplierMatch[0];
+    const supplierMatch = text.match(/(?:KSB MIL CONTROLS LIMITED|KSB MIL Controls Limited)/i) ||
+                          text.match(/Supplier\s*[:,\s]+\s*([^\r\n,]+)/i);
+    if (supplierMatch) result.supplierName = (supplierMatch[1] || supplierMatch[0]).trim();
 
     // 6. Inspection dates
-    const dateMatch = text.match(/(\d{1,2}(?:st|nd|rd|th)?\s*[,&]\s*\d{1,2}(?:st|nd|rd|th)?.*?\d{4})/i);
+    const dateMatch = text.match(/(\d{1,2}(?:st|nd|rd|th)?\s*[,&]\s*\d{1,2}(?:st|nd|rd|th)?.*?\d{4})/i) ||
+                      text.match(/Inspection\s*Date[s]?\s*[:,\s]+\s*([^\r\n,]+)/i);
     if (dateMatch) result.inspectionDates = dateMatch[1].trim();
 
     // 7. ITP Reference: e.g. "CV-L2-4441 QAP R3/SO" or "P30350-12-99-97-4786"
-    const itpQapMatch = text.match(/ITP\s*NO[.:\s]*\s*([A-Za-z0-9\-_\s\/]+?)(?=\s+REF|\s+REV|\s+VENDOR|\n\s*\n|$)/i);
+    const itpQapMatch = text.match(/ITP\s*NO[.:,\s]*\s*([A-Za-z0-9\-_ \/]+?)(?=\s+REF|\s+REV|\s+VENDOR|,|\r|\n|$)/i);
     const itpFallbackMatch = text.match(/(P\d+[A-Z]?-\d+-\d+-\d+-\d+)/);
     if (itpQapMatch) {
       result.itpReference = itpQapMatch[1].replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -154,12 +219,13 @@ export class DocumentService {
 
     // 8. Materials / Equipment description: e.g. "CONTROL VALVES (BUHASA)" or "SUPPLY OF CONTROL VALVE"
     const matMatch = text.match(/REQUEST\s+FOR\s+INSPECTION\s*\(RFI\)\s*([A-Za-z0-9\s\(\)]+?)(?=\s+RFI\s+No|\n|$)/i) ||
-                     text.match(/SUPPLY\s+OF\s+([A-Za-z0-9\s]+?)(?=\s+Document|\s+Rev|\n|$)/i);
+                     text.match(/SUPPLY\s+OF\s+([A-Za-z0-9\s]+?)(?=\s+Document|\s+Rev|\n|$)/i) ||
+                     text.match(/(?:Materials?|Equipment)\s*(?:Inspected)?\s*[:,\s]+\s*([^\r\n,]+)/i);
     if (matMatch) result.materialDescription = matMatch[1].replace(/\s+/g, ' ').trim();
 
     // Activities - ITP clause references with sub-clauses
     const activities: any[] = [];
-    const activityRegex = /(\d+\.\d+(?:\s*\([a-z]\))?)\s*[-–]?\s*([A-Za-z][^\n]{3,90})/g;
+    const activityRegex = /(\d+\.\d+(?:\s*\([a-z]\))?)\s*[-–,\t]?\s*([A-Za-z][^\n,]{3,90})/g;
     let match;
     while ((match = activityRegex.exec(text)) !== null) {
       const clause = match[1].trim();
@@ -234,7 +300,45 @@ export class DocumentService {
       }
     }
 
-    // Format 3: Generic Tag detection if items still empty:
+    // Helper to identify equipment tag numbers
+    const isTagNumber = (s: string) => {
+      if (!s || s.length < 5) return false;
+      if (/^(?:rfi|itp|po|project|item|sl|rev|qap|iso|vendor)/i.test(s)) return false;
+      return /^\d{2}-\d{2}-[A-Za-z0-9\-]+$/.test(s) || /^\d{2}-[A-Za-z]{2,4}-[A-Za-z0-9\-]+$/.test(s);
+    };
+
+    // Format 3: Delimited row style (CSV / Excel / Word table tabs)
+    const lines = text.split(/\r?\n/);
+    for (const line of lines) {
+      const parts = line.split(/[,;\t]/).map(p => p.trim().replace(/^["']|["']$/g, ''));
+      if (parts.length >= 2) {
+        const tagIdx = parts.findIndex(p => isTagNumber(p));
+        if (tagIdx !== -1) {
+          const rawTag = parts[tagIdx];
+          if (!items.some(i => i.tagNumber === rawTag)) {
+            const itemNo = tagIdx > 0 && /^\d+$/.test(parts[0]) ? parts[0] : `${items.length + 1}`;
+            const serialNo = (parts[tagIdx + 1] && !parts[tagIdx + 1].toLowerCase().includes('valve')) ? parts[tagIdx + 1] : '';
+            const desc = parts.find(p => /valve|pipe|fitting|flange/i.test(p)) || 'Control Valve';
+            items.push({
+              poItemNo: `'${itemNo}`,
+              tagNumber: rawTag,
+              serialNumber: serialNo,
+              jobNo: '',
+              itemName: desc,
+              sizeInch: "24''",
+              rating: 'ASME #600 RF',
+              bodyMaterial: 'Gr WCC',
+              orderedQty: 1,
+              presentedQty: 1,
+              acceptedThisVisit: 1,
+              acceptedToDate: 1,
+            });
+          }
+        }
+      }
+    }
+
+    // Format 4: Generic Tag detection if items still empty:
     if (items.length === 0) {
       const tagRegex = /\b(\d{2}-\d{2}-[A-Za-z]{2,4}\s*-\s*\d{4}\s*-\s*\d{2}[A-Za-z]?)\b/g;
       while ((match = tagRegex.exec(text)) !== null) {

@@ -364,7 +364,7 @@ function ProjectDetailPage() {
           <h2 className="font-semibold text-slate-800">Documents (RFI, ITP, Calibration, etc.)</h2>
           <label className={`bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 cursor-pointer font-medium ${uploading ? 'opacity-50' : ''}`}>
             {uploading ? 'Uploading...' : '📤 Upload Document'}
-            <input type="file" accept=".pdf,.docx,.doc" onChange={handleUpload} className="hidden" />
+            <input type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.csv" onChange={handleUpload} className="hidden" />
           </label>
         </div>
         {documents.length === 0 ? <p className="text-slate-500 text-sm">No documents uploaded yet.</p> : (
@@ -1207,8 +1207,8 @@ function ActivitiesTab({ inspection, onReload }: any) {
 
             <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
               <label className={`bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl text-sm font-medium cursor-pointer transition ${uploadingRfi ? 'opacity-50' : ''}`}>
-                {uploadingRfi ? 'Uploading...' : '📤 Upload New RFI (.pdf)'}
-                <input type="file" accept=".pdf" onChange={handleUploadAndImportRfi} className="hidden" />
+                {uploadingRfi ? 'Uploading...' : '📤 Upload New RFI (.pdf, .docx, .doc, .xlsx, .csv)'}
+                <input type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.csv" onChange={handleUploadAndImportRfi} className="hidden" />
               </label>
               <button onClick={() => setShowRfiModal(false)} className="text-slate-500 hover:text-slate-700 text-sm font-medium">Cancel</button>
             </div>
