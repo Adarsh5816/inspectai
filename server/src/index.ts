@@ -135,6 +135,32 @@ app.use((err: any, _req: any, res: any, _next: any) => {
   res.status(500).json({ error: err.message || 'Internal server error' });
 });
 
+// Ensure SQLite database directory & file exist
+const dbUrl = process.env.DATABASE_URL || '';
+if (dbUrl.startsWith('file:')) {
+  const dbFilePath = path.resolve(dbUrl.replace(/^file:/, ''));
+  const dbDir = path.dirname(dbFilePath);
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
+  if (!fs.existsSync(dbFilePath)) {
+    const candidateSeeds = [
+      path.resolve(__dirname, '../prisma/dev.db'),
+      path.resolve(__dirname, '../../server/prisma/dev.db'),
+      path.resolve(__dirname, '../../storage/dev.db'),
+    ];
+    const foundSeed = candidateSeeds.find(p => fs.existsSync(p));
+    if (foundSeed) {
+      try {
+        fs.copyFileSync(foundSeed, dbFilePath);
+        console.log(`📦 Restored initial database from ${foundSeed} -> ${dbFilePath}`);
+      } catch (err: any) {
+        console.warn('Could not copy seed database:', err.message);
+      }
+    }
+  }
+}
+
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`🚀 INSPECTAI server running on http://localhost:${PORT}`);
@@ -155,6 +181,10 @@ app.listen(PORT, () => {
         },
       });
       console.log('✅ Initial admin user created.');
+    } else {
+      console.log(`✅ Database ready. Found existing user: ${u.email}`);
     }
-  }).catch(() => {});
+  }).catch((err) => {
+    console.error('⚠️ Database user check error:', err.message);
+  });
 });

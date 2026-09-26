@@ -188,9 +188,14 @@ function ProjectsPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    await API.createProject(form);
-    setShowForm(false); setForm({ projectNumber: '', projectName: '', customerName: '', supplierName: '', poNumber: '' });
-    load();
+    try {
+      await API.createProject(form);
+      setShowForm(false);
+      setForm({ projectNumber: '', projectName: '', customerName: '', supplierName: '', poNumber: '' });
+      load();
+    } catch (err: any) {
+      alert(err.response?.data?.error || err.message || 'Failed to create project');
+    }
   };
 
   const handleDelete = async (e: React.MouseEvent, projectId: string, projectNumber: string) => {

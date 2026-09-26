@@ -6,19 +6,20 @@ RUN npm ci
 COPY client/ ./
 RUN npm run build
 
-# Stage 2: Build Backend Server
-FROM node:20-slim AS server-builder
-RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+# Stage 2: Build Backend Server & Pre-seed Database
+FROM node:20 AS server-builder
 WORKDIR /app/server
 COPY server/package*.json ./
 RUN npm ci
 COPY server/ ./
+ENV DATABASE_URL="file:/app/server/prisma/dev.db"
 RUN npx prisma generate
+RUN npx prisma db push --accept-data-loss
+RUN npx tsx src/db/seed.ts
 RUN npm run build
 
 # Stage 3: Production Runner
-FROM node:20-slim AS runner
-RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+FROM node:20 AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -43,6 +44,9 @@ COPY --from=client-builder /app/client/dist ./client/dist
 COPY templates/ ./templates/
 RUN mkdir -p /app/storage/documents /app/storage/photos /app/storage/reports
 
+# Pre-populate SQLite database with migrated and seeded dev.db
+COPY --from=server-builder /app/server/prisma/dev.db /app/storage/dev.db
+
 EXPOSE 4000
 
-CMD ["sh", "-c", "cd server && npx prisma db push --skip-generate --accept-data-loss && node dist/index.js"]
+CMD ["node", "server/dist/index.js"]
