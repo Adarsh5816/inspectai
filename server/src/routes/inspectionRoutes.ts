@@ -59,11 +59,13 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { projectId, reportNumber, inspectionType, location, startDate, endDate, previousVisitDate, nextVisitDate, workingHours, travelHours, travelDistanceKm, summaryNarrative, disposition } = req.body;
-    const userId = (req as any).userId || (req as any).user?.id;
-    // find actual user
-    let inspectorId = userId;
-    const adminUser = await prisma.user.findFirst({ where: { role: 'ADMIN' } });
-    if (adminUser) inspectorId = adminUser.id;
+    let inspectorId = (req as any).userId || (req as any).user?.id;
+    let inspectorExists = inspectorId ? await prisma.user.findUnique({ where: { id: inspectorId } }) : null;
+    if (!inspectorExists) {
+      const adminUser = await prisma.user.findFirst({ where: { role: 'ADMIN' } })
+                     || await prisma.user.findFirst();
+      if (adminUser) inspectorId = adminUser.id;
+    }
 
     const inspection = await prisma.inspection.create({
       data: {

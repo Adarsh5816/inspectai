@@ -30,27 +30,30 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: `Project number "${projectNumber}" already exists.` });
     }
 
-    // Resolve creator ID
+    // Resolve creator ID: verify user exists in DB to prevent foreign key constraint violation
     let createdById = (req as any).userId;
-    if (!createdById) {
-      const defaultUser = await prisma.user.findFirst();
-      createdById = defaultUser?.id;
-    }
+    let userExists = createdById ? await prisma.user.findUnique({ where: { id: createdById } }) : null;
 
-    if (!createdById) {
-      // Auto-create default admin user so project creation never fails due to missing user
-      const admin = await prisma.user.upsert({
-        where: { email: 'admin@inspectai.com' },
-        update: {},
-        create: {
-          email: 'admin@inspectai.com',
-          passwordHash: 'admin123',
-          fullName: 'Admin User',
-          role: 'ADMIN',
-          organization: 'Intertek',
-        },
-      });
-      createdById = admin.id;
+    if (!userExists) {
+      const defaultUser = await prisma.user.findFirst({ where: { role: 'ADMIN' } })
+                       || await prisma.user.findFirst();
+      if (defaultUser) {
+        createdById = defaultUser.id;
+      } else {
+        // Auto-create default admin user so project creation never fails due to missing user
+        const admin = await prisma.user.upsert({
+          where: { email: 'admin@inspectai.com' },
+          update: {},
+          create: {
+            email: 'admin@inspectai.com',
+            passwordHash: 'admin123',
+            fullName: 'Admin User',
+            role: 'ADMIN',
+            organization: 'Intertek',
+          },
+        });
+        createdById = admin.id;
+      }
     }
 
     const project = await prisma.project.create({

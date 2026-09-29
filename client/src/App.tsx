@@ -12,7 +12,15 @@ function useAuth() {
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
-      API.getMe().then(r => setUser(r.data.user)).catch(() => localStorage.removeItem('token')).finally(() => setLoading(false));
+      API.getMe()
+        .then(r => {
+          setUser(r.data.user);
+          if (r.data.user?.id) {
+            localStorage.setItem('token', `token-${r.data.user.id}`);
+          }
+        })
+        .catch(() => localStorage.removeItem('token'))
+        .finally(() => setLoading(false));
     } else {
       setLoading(false);
     }
