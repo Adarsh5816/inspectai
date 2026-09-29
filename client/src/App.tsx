@@ -1,6 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useState, useEffect, useCallback } from 'react';
 import * as API from './api';
+import { DeploymentGuardian } from './DeploymentGuardian';
+import { AdminPage } from './AdminPage';
+import { saveDraft, loadDraft, clearDraft } from './draftStorage';
 
 // ============================================================
 // Auth Context
@@ -89,11 +92,13 @@ function Layout({ user, onLogout, children }: { user: any; onLogout: () => void;
     { path: '/inspections', label: 'Inspections', icon: '🔍' },
     { path: '/documents', label: 'Documents', icon: '📄' },
     { path: '/photos', label: 'Photos', icon: '📸' },
+    { path: '/admin', label: 'Admin', icon: '⚙️' },
   ];
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <nav className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shadow-sm">
+      <DeploymentGuardian user={user} />
+      <nav className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shadow-sm sticky top-0 z-40">
         <div className="flex items-center gap-8">
           <Link to="/" className="text-xl font-bold text-slate-800">INSPECT<span className="text-blue-600">AI</span></Link>
           <div className="flex gap-1">
@@ -188,16 +193,30 @@ function StatusBadge({ status }: { status: string }) {
 // ============================================================
 function ProjectsPage() {
   const [projects, setProjects] = useState<any[]>([]);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ projectNumber: '', projectName: '', customerName: '', supplierName: '', poNumber: '' });
+  const [showForm, setShowForm] = useState(() => {
+    const draft = loadDraft<any>('new_project');
+    return !!(draft?.data?.projectNumber || draft?.data?.projectName);
+  });
+  const [form, setForm] = useState(() => {
+    const draft = loadDraft<any>('new_project');
+    return draft?.data || { projectNumber: '', projectName: '', customerName: '', supplierName: '', poNumber: '' };
+  });
 
   const load = () => API.getProjects().then(r => setProjects(r.data)).catch(() => {});
   useEffect(() => { load(); }, []);
+
+  // Auto-save draft on change
+  useEffect(() => {
+    if (form.projectNumber || form.projectName || form.customerName || form.supplierName || form.poNumber) {
+      saveDraft('new_project', form);
+    }
+  }, [form]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       await API.createProject(form);
+      clearDraft('new_project');
       setShowForm(false);
       setForm({ projectNumber: '', projectName: '', customerName: '', supplierName: '', poNumber: '' });
       load();
@@ -227,6 +246,22 @@ function ProjectsPage() {
 
       {showForm && (
         <form onSubmit={handleCreate} className="bg-white rounded-xl border border-slate-200 p-6 mb-6 space-y-4">
+          {loadDraft('new_project') && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs px-3 py-1.5 rounded-lg flex items-center justify-between">
+              <span>🛡️ Restored unsaved project draft from your previous session.</span>
+              <button
+                type="button"
+                onClick={() => {
+                  clearDraft('new_project');
+                  setForm({ projectNumber: '', projectName: '', customerName: '', supplierName: '', poNumber: '' });
+                  setShowForm(false);
+                }}
+                className="text-amber-900 underline font-semibold ml-2"
+              >
+                Discard Draft
+              </button>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-4">
             <Input label="Project Number" value={form.projectNumber} onChange={v => setForm({ ...form, projectNumber: v })} placeholder="P30339B" />
             <Input label="Project Name" value={form.projectName} onChange={v => setForm({ ...form, projectName: v })} placeholder="EPC for SE AiP5 Project..." />
@@ -236,7 +271,17 @@ function ProjectsPage() {
           </div>
           <div className="flex gap-2">
             <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">Create Project</button>
-            <button type="button" onClick={() => setShowForm(false)} className="text-slate-600 px-4 py-2">Cancel</button>
+            <button
+              type="button"
+              onClick={() => {
+                clearDraft('new_project');
+                setForm({ projectNumber: '', projectName: '', customerName: '', supplierName: '', poNumber: '' });
+                setShowForm(false);
+              }}
+              className="text-slate-600 px-4 py-2"
+            >
+              Cancel
+            </button>
           </div>
         </form>
       )}
@@ -455,16 +500,27 @@ function NewInspectionPage() {
   const searchParams = new URLSearchParams(window.location.search);
   const projectId = searchParams.get('projectId') || '';
   const [projects, setProjects] = useState<any[]>([]);
-  const [form, setForm] = useState({
-    projectId, reportNumber: '', inspectionType: 'FAT', location: '', startDate: new Date().toISOString().slice(0, 10),
+  const [form, setForm] = useState(() => {
+    const draft = loadDraft<any>('new_inspection');
+    return draft?.data || {
+      projectId, reportNumber: '', inspectionType: 'FAT', location: '', startDate: new Date().toISOString().slice(0, 10),
+    };
   });
 
   useEffect(() => { API.getProjects().then(r => setProjects(r.data)); }, []);
+
+  // Auto-save draft on change
+  useEffect(() => {
+    if (form.reportNumber || form.location || form.projectId) {
+      saveDraft('new_inspection', form);
+    }
+  }, [form]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       const r = await API.createInspection(form);
+      clearDraft('new_inspection');
       navigate(`/inspections/${r.data.id}`);
     } catch { alert('Failed to create inspection'); }
   };
@@ -473,6 +529,21 @@ function NewInspectionPage() {
     <div className="max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold text-slate-800 mb-6">New Inspection</h1>
       <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+        {loadDraft('new_inspection') && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs px-3 py-1.5 rounded-lg flex items-center justify-between">
+            <span>🛡️ Restored unsaved inspection draft from your previous session.</span>
+            <button
+              type="button"
+              onClick={() => {
+                clearDraft('new_inspection');
+                setForm({ projectId, reportNumber: '', inspectionType: 'FAT', location: '', startDate: new Date().toISOString().slice(0, 10) });
+              }}
+              className="text-amber-900 underline font-semibold ml-2"
+            >
+              Discard Draft
+            </button>
+          </div>
+        )}
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Project</label>
           <select value={form.projectId} onChange={e => setForm({ ...form, projectId: e.target.value })} className="w-full px-3 py-2 border rounded-lg" required>
@@ -976,8 +1047,16 @@ function ActivitiesTab({ inspection, onReload, onOpenRfiModal }: any) {
     }
   };
 
-  // Sync entries from inspection activities and results
+  const [hasDraftRestored, setHasDraftRestored] = useState(false);
+
+  // Sync entries from inspection activities and results or restored draft
   useEffect(() => {
+    const draft = loadDraft<any>(`checklist_${inspection.id}`);
+    if (draft?.data && Object.keys(draft.data).length > 0) {
+      setEntries(draft.data);
+      setHasDraftRestored(true);
+      return;
+    }
     const map: Record<string, any> = {};
     if (inspection.activities) {
       for (const act of inspection.activities) {
@@ -1009,6 +1088,8 @@ function ActivitiesTab({ inspection, onReload, onOpenRfiModal }: any) {
         holdingTimeMin: entry.holdingTimeMin ? parseFloat(entry.holdingTimeMin) : null,
       }));
       await API.saveDailyChecklist(inspection.id, payload);
+      clearDraft(`checklist_${inspection.id}`);
+      setHasDraftRestored(false);
       alert('Daily inspection activities and notes saved successfully!');
       onReload();
     } catch {
@@ -1029,11 +1110,33 @@ function ActivitiesTab({ inspection, onReload, onOpenRfiModal }: any) {
     setEntries(updated);
   };
 
+  // Auto-save draft on any checklist change
+  useEffect(() => {
+    if (Object.keys(entries).length > 0) {
+      saveDraft(`checklist_${inspection.id}`, entries);
+    }
+  }, [entries, inspection.id]);
+
   const activities = inspection.activities || [];
   const completedCount = Object.values(entries).filter(e => e.isDone).length;
 
   return (
     <div className="space-y-6">
+      {hasDraftRestored && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs px-4 py-2.5 rounded-xl flex items-center justify-between">
+          <span>🛡️ <strong>Unsaved Checklist Restored:</strong> Recovered your in-progress inspection activities from your previous session.</span>
+          <button
+            onClick={() => {
+              clearDraft(`checklist_${inspection.id}`);
+              setHasDraftRestored(false);
+              onReload();
+            }}
+            className="text-amber-950 font-bold underline ml-3"
+          >
+            Discard Draft & Reload Clean
+          </button>
+        </div>
+      )}
       {/* Top Banner & Quick Actions */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-5">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -2150,6 +2253,7 @@ export default function App() {
           <Route path="/inspections/:id" element={<InspectionWorkspacePage />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/photos" element={<PhotosPage />} />
+          <Route path="/admin" element={<AdminPage />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </Layout>

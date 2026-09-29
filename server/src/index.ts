@@ -10,6 +10,7 @@ import inspectionRoutes from './routes/inspectionRoutes';
 import resultRoutes from './routes/resultRoutes';
 import photoRoutes from './routes/photoRoutes';
 import reportRoutes from './routes/reportRoutes';
+import adminRoutes from './routes/adminRoutes';
 import { auth } from './middleware/auth';
 import { ValidationService } from './services/validationService';
 
@@ -32,6 +33,10 @@ app.use('/api/inspections', auth, inspectionRoutes);
 app.use('/api/results', auth, resultRoutes);
 app.use('/api/photos', auth, photoRoutes);
 app.use('/api/reports', auth, reportRoutes);
+app.use('/api/admin', (req, res, next) => {
+  if (req.path === '/version') return next();
+  return auth(req, res, next);
+}, adminRoutes);
 
 // Validation endpoint
 app.get('/api/validation/:inspectionId', auth, async (req, res) => {

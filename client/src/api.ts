@@ -109,3 +109,11 @@ export const getTemplates = () => api.get('/reports/templates');
 export const uploadTemplate = (formData: FormData) =>
   api.post('/reports/templates/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
 export const deleteTemplate = (name: string) => api.delete(`/reports/templates/${name}`);
+
+// Admin & Releases
+export const getReleases = () => api.get('/admin/releases');
+export const addReleaseNote = (data: any) => api.post('/admin/releases', data);
+export const getSystemStatus = () => api.get('/admin/system-status');
+export const checkServerVersion = () => api.get('/admin/version');
+export const sendHeartbeat = (data: any) => api.post('/admin/heartbeat', data);
+export const getOnlineUsers = () => api.get('/admin/online-users');
