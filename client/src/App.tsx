@@ -334,12 +334,15 @@ function ProjectDetailPage() {
   }, [id]);
   useEffect(() => { load(); }, [load]);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>, documentType?: string) => {
     if (!e.target.files?.[0] || !id) return;
     setUploading(true);
     const fd = new FormData();
     fd.append('file', e.target.files[0]);
     fd.append('projectId', id);
+    if (documentType) {
+      fd.append('documentType', documentType);
+    }
     try {
       await API.uploadDocument(fd);
       load();
@@ -418,12 +421,25 @@ function ProjectDetailPage() {
 
       {/* Documents Section */}
       <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="font-semibold text-slate-800">Documents (RFI, ITP, Calibration, etc.)</h2>
-          <label className={`bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 cursor-pointer font-medium ${uploading ? 'opacity-50' : ''}`}>
-            {uploading ? 'Uploading...' : '📤 Upload Document'}
-            <input type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.csv" onChange={handleUpload} className="hidden" />
-          </label>
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+          <div>
+            <h2 className="font-semibold text-slate-800">Project Documents</h2>
+            <p className="text-xs text-slate-500">Upload RFIs for materials/valves, and ITPs for inspection activities</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className={`bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 cursor-pointer text-sm font-medium flex items-center gap-1.5 shadow-sm transition ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+              📄 Upload RFI
+              <input type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.csv" onChange={(e) => handleUpload(e, 'RFI')} className="hidden" />
+            </label>
+            <label className={`bg-purple-600 text-white px-3 py-1.5 rounded-lg hover:bg-purple-700 cursor-pointer text-sm font-medium flex items-center gap-1.5 shadow-sm transition ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+              📋 Upload ITP
+              <input type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.csv" onChange={(e) => handleUpload(e, 'ITP')} className="hidden" />
+            </label>
+            <label className={`bg-slate-100 text-slate-700 border border-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-200 cursor-pointer text-sm font-medium flex items-center gap-1.5 transition ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+              📎 Other Doc
+              <input type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.csv" onChange={(e) => handleUpload(e)} className="hidden" />
+            </label>
+          </div>
         </div>
         {documents.length === 0 ? <p className="text-slate-500 text-sm">No documents uploaded yet.</p> : (
           <table className="w-full text-sm">
@@ -584,6 +600,13 @@ function InspectionWorkspacePage() {
   const [uploadingRfi, setUploadingRfi] = useState(false);
   const [importingRfi, setImportingRfi] = useState(false);
 
+  // ITP Selection & Import state
+  const [showItpModal, setShowItpModal] = useState(false);
+  const [itpDocs, setItpDocs] = useState<any[]>([]);
+  const [uploadingItp, setUploadingItp] = useState(false);
+  const [importingItp, setImportingItp] = useState(false);
+  const [recallingRfi, setRecallingRfi] = useState(false);
+
   const load = useCallback(() => {
     if (!id) return;
     API.getInspection(id).then(r => setInspection(r.data)).catch(() => {});
@@ -606,11 +629,27 @@ function InspectionWorkspacePage() {
     }
   };
 
+  const loadItpDocuments = async () => {
+    if (!inspection?.projectId) return;
+    try {
+      const res = await API.getDocuments(inspection.projectId);
+      const sorted = [...(res.data || [])].sort((a: any, b: any) => {
+        const aIsItp = (a.documentType === 'ITP' || a.originalFilename.toLowerCase().includes('itp') || a.originalFilename.toLowerCase().includes('plan')) ? 1 : 0;
+        const bIsItp = (b.documentType === 'ITP' || b.originalFilename.toLowerCase().includes('itp') || b.originalFilename.toLowerCase().includes('plan')) ? 1 : 0;
+        return bIsItp - aIsItp;
+      });
+      setItpDocs(sorted);
+      setShowItpModal(true);
+    } catch {
+      alert('Failed to load project documents');
+    }
+  };
+
   const handleImportRfi = async (docId: string) => {
     setImportingRfi(true);
     try {
       const res = await API.importRFI(inspection.id, docId);
-      alert(res.data.message || 'Successfully imported activities and items from RFI!');
+      alert(res.data.message || 'Successfully imported materials and activities from RFI!');
       setShowRfiModal(false);
       load();
     } catch (err: any) {
@@ -626,6 +665,7 @@ function InspectionWorkspacePage() {
     const fd = new FormData();
     fd.append('file', file);
     fd.append('projectId', inspection.projectId);
+    fd.append('documentType', 'RFI');
     try {
       const uploadRes = await API.uploadDocument(fd);
       await handleImportRfi(uploadRes.data.id);
@@ -634,6 +674,56 @@ function InspectionWorkspacePage() {
     }
     setUploadingRfi(false);
     e.target.value = '';
+  };
+
+  const handleImportItp = async (docId: string) => {
+    setImportingItp(true);
+    try {
+      const res = await API.importITP(inspection.id, docId);
+      alert(res.data.message || 'Successfully imported activities from ITP!');
+      setShowItpModal(false);
+      load();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to import from ITP');
+    }
+    setImportingItp(false);
+  };
+
+  const handleUploadAndImportItp = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.[0]) return;
+    const file = e.target.files[0];
+    setUploadingItp(true);
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('projectId', inspection.projectId);
+    fd.append('documentType', 'ITP');
+    try {
+      const uploadRes = await API.uploadDocument(fd);
+      await handleImportItp(uploadRes.data.id);
+    } catch {
+      alert('Failed to upload ITP');
+    }
+    setUploadingItp(false);
+    e.target.value = '';
+  };
+
+  const handleRecallRfi = async () => {
+    if (!inspection.rfiDocumentId) {
+      alert('No RFI document is currently linked. Please upload or link an RFI first.');
+      loadRfiDocuments();
+      return;
+    }
+    if (!confirm(`Recall data from RFI "${inspection.rfiDocument?.originalFilename}"? This will restore and re-sync all materials extracted from the RFI.`)) return;
+    setRecallingRfi(true);
+    try {
+      const res = await API.recallRFI(inspection.id);
+      alert(res.data.message || 'Materials successfully recalled from RFI!');
+      load();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to recall RFI data');
+    } finally {
+      setRecallingRfi(false);
+    }
   };
 
   if (!inspection) return <div className="text-center py-12 text-slate-500">Loading inspection...</div>;
@@ -674,23 +764,41 @@ function InspectionWorkspacePage() {
         </button>
       </div>
 
-      {/* Progress / Info bar with Linked RFI */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4">
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm items-center">
+      {/* Progress / Info bar with Linked RFI and Linked ITP */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4 shadow-xs">
+        <div className="grid grid-cols-2 md:grid-cols-7 gap-3 text-sm items-center">
           <div><span className="text-slate-500">Project:</span> <span className="font-medium">{inspection.project?.projectNumber}</span></div>
           <div><span className="text-slate-500">Type:</span> <span className="font-medium">{inspection.inspectionType}</span></div>
           <div><span className="text-slate-500">Date:</span> <span className="font-medium">{new Date(inspection.startDate).toLocaleDateString()}</span></div>
-          <div><span className="text-slate-500">Location:</span> <span className="font-medium">{inspection.location}</span></div>
-          <div><span className="text-slate-500">Supplier:</span> <span className="font-medium">{inspection.project?.supplierName}</span></div>
+          <div><span className="text-slate-500">Location:</span> <span className="font-medium truncate block">{inspection.location}</span></div>
+          <div><span className="text-slate-500">Supplier:</span> <span className="font-medium truncate block">{inspection.project?.supplierName}</span></div>
           <div>
-            <span className="text-slate-500">Linked RFI:</span>{' '}
+            <span className="text-slate-500 block text-xs">Linked RFI:</span>{' '}
             {inspection.rfiDocument ? (
-              <span className="font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded text-xs inline-block truncate max-w-[140px] align-middle" title={inspection.rfiDocument.originalFilename}>
-                📄 {inspection.rfiDocument.originalFilename}
-              </span>
+              <div className="inline-flex items-center gap-1.5 mt-0.5">
+                <span className="font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded text-xs truncate max-w-[110px]" title={inspection.rfiDocument.originalFilename}>
+                  📄 {inspection.rfiDocument.originalFilename}
+                </span>
+                <button onClick={loadRfiDocuments} className="text-blue-600 hover:text-blue-800 text-[11px] underline" title="Change RFI">Change</button>
+              </div>
             ) : (
-              <button onClick={loadRfiDocuments} className="text-indigo-600 hover:text-indigo-800 text-xs font-semibold underline">
-                + Link RFI
+              <button onClick={loadRfiDocuments} className="text-blue-600 hover:text-blue-800 text-xs font-semibold underline mt-0.5 block">
+                + Upload/Link RFI
+              </button>
+            )}
+          </div>
+          <div>
+            <span className="text-slate-500 block text-xs">Linked ITP:</span>{' '}
+            {inspection.itpDocument ? (
+              <div className="inline-flex items-center gap-1.5 mt-0.5">
+                <span className="font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-xs truncate max-w-[110px]" title={inspection.itpDocument.originalFilename}>
+                  📋 {inspection.itpDocument.originalFilename}
+                </span>
+                <button onClick={loadItpDocuments} className="text-emerald-700 hover:text-emerald-900 text-[11px] underline" title="Change ITP">Change</button>
+              </div>
+            ) : (
+              <button onClick={loadItpDocuments} className="text-emerald-600 hover:text-emerald-800 text-xs font-semibold underline mt-0.5 block">
+                + Upload/Link ITP
               </button>
             )}
           </div>
@@ -712,9 +820,9 @@ function InspectionWorkspacePage() {
         {activeTab === 'overview' && <OverviewTab inspection={inspection} onValidate={async () => {
           const r = await API.validateInspection(id!);
           setValidation(r.data);
-        }} validation={validation} onOpenRfiModal={loadRfiDocuments} />}
-        {activeTab === 'items' && <ItemsTab inspection={inspection} onReload={load} onOpenRfiModal={loadRfiDocuments} />}
-        {activeTab === 'activities' && <ActivitiesTab inspection={inspection} onReload={load} onOpenRfiModal={loadRfiDocuments} />}
+        }} validation={validation} onOpenRfiModal={loadRfiDocuments} onOpenItpModal={loadItpDocuments} onRecallRfi={handleRecallRfi} recallingRfi={recallingRfi} />}
+        {activeTab === 'items' && <ItemsTab inspection={inspection} onReload={load} onOpenRfiModal={loadRfiDocuments} onRecallRfi={handleRecallRfi} recallingRfi={recallingRfi} />}
+        {activeTab === 'activities' && <ActivitiesTab inspection={inspection} onReload={load} onOpenRfiModal={loadRfiDocuments} onOpenItpModal={loadItpDocuments} />}
         {activeTab === 'results' && <ResultsTab inspection={inspection} onReload={load} />}
         {activeTab === 'instruments' && <InstrumentsTab inspection={inspection} onReload={load} />}
         {activeTab === 'attendees' && <AttendeesTab inspection={inspection} onReload={load} />}
@@ -729,20 +837,20 @@ function InspectionWorkspacePage() {
           <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-4">
             <div className="flex justify-between items-center pb-3 border-b border-slate-100">
               <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-                <span>📥</span> Select RFI Document from Project
+                <span>📄</span> Select or Upload RFI Document
               </h3>
               <button onClick={() => setShowRfiModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
             </div>
 
             <p className="text-sm text-slate-600">
-              Select an RFI or document previously uploaded to project <span className="font-semibold text-slate-800">{inspection.project?.projectNumber}</span> to import equipment/valves, ITP activities, and project details.
+              Select or upload a Request For Inspection (RFI) to extract materials, valves, equipment tags, and project metadata. Only materials from the RFI will be considered.
             </p>
 
             <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
               {rfiDocs.length === 0 ? (
                 <div className="p-4 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200 space-y-2">
-                  <p className="text-sm text-slate-500">No documents found in this project yet.</p>
-                  <p className="text-xs text-slate-400">Upload an RFI below or upload it in the Project page.</p>
+                  <p className="text-sm text-slate-500">No RFI documents found in this project yet.</p>
+                  <p className="text-xs text-slate-400">Upload a new RFI file below.</p>
                 </div>
               ) : (
                 rfiDocs.map((doc: any) => {
@@ -763,7 +871,7 @@ function InspectionWorkspacePage() {
                         disabled={importingRfi}
                         className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition disabled:opacity-50 whitespace-nowrap"
                       >
-                        {importingRfi ? 'Importing...' : isCurrent ? 'Re-import' : 'Import to Inspection'}
+                        {importingRfi ? 'Importing...' : isCurrent ? 'Re-import' : 'Import Materials'}
                       </button>
                     </div>
                   );
@@ -772,11 +880,70 @@ function InspectionWorkspacePage() {
             </div>
 
             <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-              <label className={`bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl text-sm font-medium cursor-pointer transition ${uploadingRfi ? 'opacity-50' : ''}`}>
-                {uploadingRfi ? 'Uploading...' : '📤 Upload New File (.pdf, .docx, .doc, .xlsx, .csv)'}
+              <label className={`bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-4 py-2 rounded-xl text-sm font-semibold cursor-pointer transition ${uploadingRfi ? 'opacity-50' : ''}`}>
+                {uploadingRfi ? 'Uploading...' : '📤 Upload New RFI (.pdf, .docx, .xlsx, .csv)'}
                 <input type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.csv" onChange={handleUploadAndImportRfi} className="hidden" />
               </label>
               <button onClick={() => setShowRfiModal(false)} className="text-slate-500 hover:text-slate-700 text-sm font-medium">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ITP Import Modal */}
+      {showItpModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <span>📋</span> Select or Upload ITP Document
+              </h3>
+              <button onClick={() => setShowItpModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+            </div>
+
+            <p className="text-sm text-slate-600">
+              Select or upload an approved Inspection &amp; Test Plan (ITP) to extract clauses, inspection activities, intervention levels, and acceptance criteria into this inspection.
+            </p>
+
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+              {itpDocs.length === 0 ? (
+                <div className="p-4 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200 space-y-2">
+                  <p className="text-sm text-slate-500">No ITP documents found in this project yet.</p>
+                  <p className="text-xs text-slate-400">Upload an ITP document below to extract activities.</p>
+                </div>
+              ) : (
+                itpDocs.map((doc: any) => {
+                  const isCurrent = inspection.itpDocumentId === doc.id;
+                  const isItp = doc.documentType === 'ITP' || doc.originalFilename.toLowerCase().includes('itp');
+                  return (
+                    <div key={doc.id} className={`flex items-center justify-between p-3 border rounded-xl transition ${isCurrent ? 'border-emerald-500 bg-emerald-50/40' : 'border-slate-200 hover:bg-slate-50'}`}>
+                      <div className="flex-1 mr-3 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-sm text-slate-800 truncate" title={doc.originalFilename}>{doc.originalFilename}</p>
+                          {isCurrent && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">Current</span>}
+                          {isItp && !isCurrent && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700">ITP</span>}
+                        </div>
+                        <p className="text-xs text-slate-500">{doc.documentType} • {(doc.fileSizeBytes / 1024).toFixed(0)} KB {doc.isVerified ? '• ✅ Processed' : ''}</p>
+                      </div>
+                      <button
+                        onClick={() => handleImportItp(doc.id)}
+                        disabled={importingItp}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition disabled:opacity-50 whitespace-nowrap"
+                      >
+                        {importingItp ? 'Importing...' : isCurrent ? 'Re-import' : 'Import Activities'}
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+              <label className={`bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 px-4 py-2 rounded-xl text-sm font-semibold cursor-pointer transition ${uploadingItp ? 'opacity-50' : ''}`}>
+                {uploadingItp ? 'Uploading...' : '📤 Upload New ITP (.pdf, .docx, .doc)'}
+                <input type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.csv" onChange={handleUploadAndImportItp} className="hidden" />
+              </label>
+              <button onClick={() => setShowItpModal(false)} className="text-slate-500 hover:text-slate-700 text-sm font-medium">Cancel</button>
             </div>
           </div>
         </div>
@@ -786,7 +953,7 @@ function InspectionWorkspacePage() {
 }
 
 // Tab: Overview
-function OverviewTab({ inspection, onValidate, validation, onOpenRfiModal }: any) {
+function OverviewTab({ inspection, onValidate, validation, onOpenRfiModal, onOpenItpModal, onRecallRfi, recallingRfi }: any) {
   const totalAct = inspection.activities?.length || 0;
   const doneAct = inspection.activities?.filter((a: any) => a.status === 'ACCEPTABLE' || a.status === 'NOT_ACCEPTABLE').length || 0;
   const pct = totalAct > 0 ? Math.round((doneAct / totalAct) * 100) : 0;
@@ -795,16 +962,34 @@ function OverviewTab({ inspection, onValidate, validation, onOpenRfiModal }: any
     <div className="space-y-6">
       {/* Referenced Project Documents & Scope */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
             <span>📄</span> Referenced Project Documents &amp; Scope
           </h4>
-          <button
-            onClick={onOpenRfiModal}
-            className="text-xs font-semibold text-blue-600 hover:text-blue-800 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm hover:bg-slate-50 transition"
-          >
-            {inspection.rfiDocument ? '🔄 Change / Re-import RFI' : '📥 Link / Import RFI'}
-          </button>
+          <div className="flex items-center gap-2">
+            {inspection.rfiDocument && (
+              <button
+                onClick={onRecallRfi}
+                disabled={recallingRfi}
+                className="text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-3 py-1.5 rounded-lg shadow-xs transition flex items-center gap-1 disabled:opacity-50"
+                title="Recall and re-sync materials from RFI"
+              >
+                <span>🔄</span> {recallingRfi ? 'Recalling...' : 'Recall RFI Data'}
+              </button>
+            )}
+            <button
+              onClick={onOpenRfiModal}
+              className="text-xs font-semibold text-blue-600 hover:text-blue-800 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-xs hover:bg-slate-50 transition"
+            >
+              {inspection.rfiDocument ? '📄 Change RFI' : '📤 Upload / Link RFI'}
+            </button>
+            <button
+              onClick={onOpenItpModal}
+              className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-xs hover:bg-slate-50 transition"
+            >
+              {inspection.itpDocument ? '📋 Change ITP' : '📤 Upload / Link ITP'}
+            </button>
+          </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
           <div className="bg-white p-3 rounded-lg border border-slate-200">
@@ -817,7 +1002,9 @@ function OverviewTab({ inspection, onValidate, validation, onOpenRfiModal }: any
           </div>
           <div className="bg-white p-3 rounded-lg border border-slate-200">
             <span className="text-slate-500 font-medium block mb-1">Approved ITP Reference</span>
-            <span className="font-semibold text-slate-800">{inspection.itpNumber || 'CV-L2-4441 QAP R3/SO (Default)'}</span>
+            <span className="font-semibold text-slate-800">
+              {inspection.itpDocument?.originalFilename || inspection.itpNumber || 'CV-L2-4441 QAP R3/SO (Default)'}
+            </span>
           </div>
           <div className="bg-white p-3 rounded-lg border border-slate-200">
             <span className="text-slate-500 font-medium block mb-1">Materials / Scope</span>
@@ -858,9 +1045,12 @@ function MiniStat({ label, value }: { label: string; value: number }) {
 }
 
 // Tab: Items / Offered Materials
-function ItemsTab({ inspection, onReload, onOpenRfiModal }: any) {
+function ItemsTab({ inspection, onReload, onOpenRfiModal, onRecallRfi, recallingRfi }: any) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ inspectionId: inspection.id, poItemNo: '', tagNumber: '', serialNumber: '', jobNo: '', itemName: 'Control Valve', sizeInch: '', rating: '', bodyMaterial: '' });
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const items = inspection.items || [];
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -874,18 +1064,73 @@ function ItemsTab({ inspection, onReload, onOpenRfiModal }: any) {
     onReload();
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === items.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(items.map((i: any) => i.id)));
+    }
+  };
+
   const handleDeleteItem = async (itemId: string, tag: string) => {
     if (!confirm(`Are you sure you want to delete valve/equipment "${tag}"?`)) return;
     try {
       await API.deleteItem(itemId);
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        next.delete(itemId);
+        return next;
+      });
       onReload();
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to delete item');
     }
   };
 
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Are you sure you want to delete ${selectedIds.size} selected material(s)? All associated results will also be deleted.`)) return;
+    try {
+      const res = await API.deleteItemsBatch(Array.from(selectedIds));
+      alert(res.data.message || `Deleted ${selectedIds.size} materials successfully.`);
+      setSelectedIds(new Set());
+      onReload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to delete selected materials');
+    }
+  };
+
   return (
     <div className="space-y-4">
+      {/* Sourced from RFI Notice Banner */}
+      {inspection.rfiDocument && (
+        <div className="bg-blue-50/80 border border-blue-200 text-blue-900 text-xs px-4 py-2.5 rounded-xl flex flex-wrap items-center justify-between gap-2 shadow-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-base">📄</span>
+            <span>
+              <strong>Materials Strictly Sourced from RFI:</strong> Materials are imported from <strong>{inspection.rfiDocument.originalFilename}</strong>. Only offered materials are populated into the official inspection report.
+            </span>
+          </div>
+          <button
+            onClick={onRecallRfi}
+            disabled={recallingRfi}
+            className="text-blue-800 hover:text-blue-950 font-bold underline whitespace-nowrap ml-auto disabled:opacity-50"
+            title="Re-read and restore all valves from the RFI"
+          >
+            {recallingRfi ? '🔄 Recalling...' : '🔄 Recall / Re-sync RFI'}
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div>
           <h3 className="font-bold text-slate-800 text-lg">Offered Equipment &amp; Materials List</h3>
@@ -893,12 +1138,28 @@ function ItemsTab({ inspection, onReload, onOpenRfiModal }: any) {
             Select which materials/valves are offered for this specific inspection visit. Only offered materials are populated into the inspection report.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {selectedIds.size > 0 && (
+            <button
+              onClick={handleDeleteSelected}
+              className="bg-red-600 hover:bg-red-700 text-white px-3.5 py-1.5 rounded-lg text-sm font-bold shadow-sm transition flex items-center gap-1.5"
+            >
+              <span>🗑️</span> Delete Selected ({selectedIds.size})
+            </button>
+          )}
+          <button
+            onClick={onRecallRfi}
+            disabled={recallingRfi}
+            className="bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 disabled:opacity-50"
+            title="Re-read and restore all materials directly from the linked RFI"
+          >
+            <span>🔄</span> {recallingRfi ? 'Recalling...' : 'Recall Data from RFI'}
+          </button>
           <button
             onClick={onOpenRfiModal}
             className="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5"
           >
-            <span>📥</span> Import from RFI
+            <span>📄</span> Upload / Link RFI
           </button>
           <button onClick={() => setShowForm(!showForm)} className="bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition">
             + Add Material Manually
@@ -925,23 +1186,42 @@ function ItemsTab({ inspection, onReload, onOpenRfiModal }: any) {
         </form>
       )}
 
-      {(!inspection.items || inspection.items.length === 0) ? (
+      {(!items || items.length === 0) ? (
         <div className="py-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200 space-y-3">
           <p className="text-slate-500 text-sm">
-            No materials loaded yet. Import an RFI from the project to automatically extract and list all valves.
+            No materials loaded yet. Import or recall an RFI from the project to automatically extract and list all valves.
           </p>
-          <button
-            onClick={onOpenRfiModal}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium text-sm inline-flex items-center gap-2 shadow-sm transition"
-          >
-            <span>📥</span> Import Materials &amp; Activities from RFI
-          </button>
+          <div className="flex items-center justify-center gap-2">
+            {inspection.rfiDocumentId && (
+              <button
+                onClick={onRecallRfi}
+                className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg font-medium text-sm inline-flex items-center gap-2 shadow-sm transition"
+              >
+                <span>🔄</span> Recall Materials from Linked RFI
+              </button>
+            )}
+            <button
+              onClick={onOpenRfiModal}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium text-sm inline-flex items-center gap-2 shadow-sm transition"
+            >
+              <span>📥</span> Upload / Link RFI Document
+            </button>
+          </div>
         </div>
       ) : (
-        <div className="overflow-x-auto border border-slate-200 rounded-xl">
+        <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-xs">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
+                <th className="p-3 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={items.length > 0 && selectedIds.size === items.length}
+                    onChange={toggleSelectAll}
+                    className="w-4 h-4 rounded text-blue-600 cursor-pointer"
+                    title="Select / Deselect All for Delete"
+                  />
+                </th>
                 <th className="p-3 text-left font-bold text-slate-700">Offered this Visit</th>
                 <th className="p-3 text-left font-bold text-slate-700">PO Item</th>
                 <th className="p-3 text-left font-bold text-slate-700">Tag Number</th>
@@ -953,10 +1233,20 @@ function ItemsTab({ inspection, onReload, onOpenRfiModal }: any) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {inspection.items.map((item: any) => {
+              {items.map((item: any) => {
                 const isOffered = item.presentedQty > 0 || item.presentedQty === undefined;
+                const isSelected = selectedIds.has(item.id);
                 return (
-                  <tr key={item.id} className={isOffered ? 'bg-blue-50/20' : 'bg-slate-50/50 opacity-60'}>
+                  <tr key={item.id} className={`${isSelected ? 'bg-amber-50/60' : isOffered ? 'bg-blue-50/20' : 'bg-slate-50/50 opacity-60'} hover:bg-slate-100/50 transition`}>
+                    <td className="p-3 text-center">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelect(item.id)}
+                        className="w-4 h-4 rounded text-blue-600 cursor-pointer"
+                        title="Select for batch delete"
+                      />
+                    </td>
                     <td className="p-3">
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
@@ -999,7 +1289,7 @@ function ItemsTab({ inspection, onReload, onOpenRfiModal }: any) {
 }
 
 // Tab: Activities & Daily Checklist
-function ActivitiesTab({ inspection, onReload, onOpenRfiModal }: any) {
+function ActivitiesTab({ inspection, onReload, onOpenRfiModal, onOpenItpModal }: any) {
   const [showManualForm, setShowManualForm] = useState(false);
   const [manualForm, setManualForm] = useState({ inspectionId: inspection.id, clauseNumber: '', activityName: '', acceptanceCriteria: '', interventionTPIA: 'W' });
   const [selectedDate, setSelectedDate] = useState(inspection.startDate ? new Date(inspection.startDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
@@ -1151,10 +1441,16 @@ function ActivitiesTab({ inspection, onReload, onOpenRfiModal }: any) {
 
           <div className="flex flex-wrap items-center gap-2">
             <button
+              onClick={onOpenItpModal}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg font-medium text-sm flex items-center gap-1.5 shadow-sm transition"
+            >
+              <span>📋</span> Upload / Link ITP
+            </button>
+            <button
               onClick={onOpenRfiModal}
               className="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2 rounded-lg font-medium text-sm flex items-center gap-1.5 shadow-sm transition"
             >
-              <span>📥</span> Import Activities from RFI
+              <span>📄</span> Import from RFI
             </button>
             <button
               onClick={() => setShowManualForm(!showManualForm)}

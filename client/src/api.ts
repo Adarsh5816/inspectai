@@ -55,6 +55,10 @@ export const updateInspection = (id: string, data: any) => api.put(`/inspections
 export const deleteInspection = (id: string) => api.delete(`/inspections/${id}`);
 export const importRFI = (inspectionId: string, documentId: string) =>
   api.post(`/inspections/${inspectionId}/import-rfi`, { documentId });
+export const importITP = (inspectionId: string, documentId: string) =>
+  api.post(`/inspections/${inspectionId}/import-itp`, { documentId });
+export const recallRFI = (inspectionId: string, options?: { documentId?: string; clearFirst?: boolean }) =>
+  api.post(`/inspections/${inspectionId}/recall-rfi`, options || {});
 export const saveDailyChecklist = (inspectionId: string, entries: any[]) =>
   api.post(`/inspections/${inspectionId}/daily-checklist`, { entries });
 
@@ -62,6 +66,8 @@ export const saveDailyChecklist = (inspectionId: string, entries: any[]) =>
 export const addItem = (data: any) => api.post('/inspections/items', data);
 export const updateItem = (id: string, data: any) => api.put(`/inspections/items/${id}`, data);
 export const deleteItem = (id: string) => api.delete(`/inspections/items/${id}`);
+export const deleteItemsBatch = (itemIds: string[]) =>
+  api.post('/inspections/items/delete-batch', { itemIds });
 
 // Activities
 export const addActivity = (data: any) => api.post('/inspections/activities', data);

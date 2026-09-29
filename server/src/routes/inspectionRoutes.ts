@@ -142,6 +142,36 @@ router.delete('/items/:id', async (req, res) => {
   }
 });
 
+// ---- Batch Delete Items (Delete Selected Materials) ----
+router.post('/items/delete-batch', async (req, res) => {
+  try {
+    const { itemIds } = req.body;
+    if (!Array.isArray(itemIds) || itemIds.length === 0) {
+      return res.status(400).json({ error: 'itemIds array is required' });
+    }
+
+    await prisma.photo.updateMany({
+      where: { itemId: { in: itemIds } },
+      data: { itemId: null },
+    });
+    await prisma.inspectionResult.deleteMany({
+      where: { itemId: { in: itemIds } },
+    });
+    const result = await prisma.inspectionItem.deleteMany({
+      where: { id: { in: itemIds } },
+    });
+
+    res.json({
+      success: true,
+      message: `Successfully deleted ${result.count} selected material(s).`,
+      count: result.count,
+    });
+  } catch (err: any) {
+    console.error('Batch delete items error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ---- Inspection Activities ----
 router.post('/activities', async (req, res) => {
   try {
@@ -356,6 +386,224 @@ router.post('/:id/import-rfi', async (req, res) => {
     });
   } catch (err: any) {
     console.error('Import RFI error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---- AUTOMATIC IMPORT FROM ITP ----
+router.post('/:id/import-itp', async (req, res) => {
+  try {
+    const { documentId } = req.body;
+    const inspectionId = req.params.id;
+
+    const inspection = await prisma.inspection.findUnique({
+      where: { id: inspectionId },
+      include: { activities: true },
+    });
+    if (!inspection) return res.status(404).json({ error: 'Inspection not found' });
+
+    const document = await prisma.document.findUnique({
+      where: { id: documentId },
+      include: { extractions: true },
+    });
+    if (!document) return res.status(404).json({ error: 'ITP Document not found' });
+
+    let extractedData: any = {};
+    if (document.extractions && document.extractions.length > 0) {
+      try {
+        extractedData = JSON.parse(document.extractions[0].extractedData);
+      } catch {
+        extractedData = {};
+      }
+    }
+
+    if (!extractedData.clauses || extractedData.clauses.length === 0) {
+      const docSvc = new DocumentService();
+      const result = await docSvc.processDocument(document.id, path.resolve(document.storageKey), 'ITP');
+      extractedData = result.extractedData;
+    }
+
+    let activitiesAdded = 0;
+    const clauses = extractedData.clauses || extractedData.activities || [];
+    if (Array.isArray(clauses)) {
+      for (const c of clauses) {
+        const clauseNum = c.clauseNumber || c.clause || '';
+        const name = c.activityDescription || c.activityName || c.name || '';
+        if (!clauseNum) continue;
+
+        const existing = inspection.activities.find(a => a.clauseNumber === clauseNum);
+        if (!existing) {
+          await prisma.inspectionActivity.create({
+            data: {
+              inspectionId,
+              clauseNumber: clauseNum,
+              activityName: name || `Clause ${clauseNum}`,
+              acceptanceCriteria: c.acceptanceCriteria || 'Conform to approved ITP & project specifications',
+              interventionTPIA: c.interventionTPIA || 'W',
+              status: 'PENDING',
+            },
+          });
+          activitiesAdded++;
+        }
+      }
+    }
+
+    // Link ITP document and update itpNumber
+    await prisma.inspection.update({
+      where: { id: inspectionId },
+      data: {
+        itpDocumentId: document.id,
+        ...(extractedData.itpNumber && { itpNumber: extractedData.itpNumber }),
+      },
+    });
+
+    const updated = await prisma.inspection.findUnique({
+      where: { id: inspectionId },
+      include: {
+        activities: true,
+        itpDocument: true,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: `Successfully imported ${activitiesAdded} activities from ITP.`,
+      activitiesAdded,
+      itpNumber: extractedData.itpNumber || inspection.itpNumber,
+      inspection: updated,
+    });
+  } catch (err: any) {
+    console.error('Import ITP error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---- RECALL MATERIALS & DATA FROM RFI ----
+router.post('/:id/recall-rfi', async (req, res) => {
+  try {
+    const inspectionId = req.params.id;
+    const { documentId, clearFirst } = req.body;
+
+    const inspection = await prisma.inspection.findUnique({
+      where: { id: inspectionId },
+      include: { items: true, rfiDocument: { include: { extractions: true } } },
+    });
+    if (!inspection) return res.status(404).json({ error: 'Inspection not found' });
+
+    const targetDocId = documentId || inspection.rfiDocumentId;
+    if (!targetDocId) {
+      return res.status(400).json({ error: 'No RFI document is linked to this inspection. Please upload or link an RFI first.' });
+    }
+
+    const document = await prisma.document.findUnique({
+      where: { id: targetDocId },
+      include: { extractions: true },
+    });
+    if (!document) return res.status(404).json({ error: 'RFI Document not found' });
+
+    let extractedData: any = {};
+    if (document.extractions && document.extractions.length > 0) {
+      try {
+        extractedData = JSON.parse(document.extractions[0].extractedData);
+      } catch {
+        extractedData = {};
+      }
+    }
+
+    // Always ensure parsed items exist:
+    if (!extractedData.items || extractedData.items.length === 0) {
+      const docSvc = new DocumentService();
+      const result = await docSvc.processDocument(document.id, path.resolve(document.storageKey), 'RFI');
+      extractedData = result.extractedData;
+    }
+
+    const rfiItems = extractedData.items || [];
+    if (!Array.isArray(rfiItems) || rfiItems.length === 0) {
+      return res.status(400).json({ error: 'No materials or equipment items found in this RFI.' });
+    }
+
+    // If clearFirst is requested, remove non-RFI items or clean wipe
+    if (clearFirst) {
+      await prisma.photo.updateMany({
+        where: { inspectionId },
+        data: { itemId: null },
+      });
+      await prisma.inspectionResult.deleteMany({
+        where: { inspectionId },
+      });
+      await prisma.inspectionItem.deleteMany({
+        where: { inspectionId },
+      });
+      inspection.items = [];
+    }
+
+    let recalledCount = 0;
+    for (const item of rfiItems) {
+      const existing = inspection.items.find(i => i.tagNumber === item.tagNumber || (item.serialNumber && i.serialNumber === item.serialNumber));
+      if (existing) {
+        await prisma.inspectionItem.update({
+          where: { id: existing.id },
+          data: {
+            poItemNo: item.poItemNo || existing.poItemNo,
+            serialNumber: item.serialNumber || existing.serialNumber,
+            jobNo: item.jobNo || existing.jobNo,
+            itemName: item.itemName || existing.itemName,
+            sizeInch: item.sizeInch || existing.sizeInch,
+            rating: item.rating || existing.rating,
+            bodyMaterial: item.bodyMaterial || existing.bodyMaterial,
+            valveSeries: item.valveSeries || existing.valveSeries,
+            presentedQty: item.presentedQty || existing.presentedQty || 1,
+          },
+        });
+        recalledCount++;
+      } else {
+        await prisma.inspectionItem.create({
+          data: {
+            inspectionId,
+            poItemNo: item.poItemNo || "'1",
+            tagNumber: item.tagNumber,
+            serialNumber: item.serialNumber || '',
+            jobNo: item.jobNo || '',
+            itemName: item.itemName || 'Control Valve',
+            sizeInch: item.sizeInch || "24''",
+            rating: item.rating || 'ASME #600 RF',
+            bodyMaterial: item.bodyMaterial || 'Gr WCC',
+            valveSeries: item.valveSeries || '',
+            orderedQty: item.orderedQty || 1,
+            presentedQty: item.presentedQty || 1,
+            acceptedThisVisit: item.acceptedThisVisit || 1,
+            acceptedToDate: item.acceptedToDate || 1,
+          },
+        });
+        recalledCount++;
+      }
+    }
+
+    // Update inspection metadata from RFI
+    await prisma.inspection.update({
+      where: { id: inspectionId },
+      data: {
+        rfiDocumentId: document.id,
+        ...(extractedData.inspectionLocation && { location: extractedData.inspectionLocation }),
+        ...(extractedData.materialDescription && { materialDescription: extractedData.materialDescription }),
+        ...(extractedData.itpReference && { itpNumber: extractedData.itpReference }),
+      },
+    });
+
+    const updated = await prisma.inspection.findUnique({
+      where: { id: inspectionId },
+      include: { items: true, rfiDocument: true },
+    });
+
+    res.json({
+      success: true,
+      message: `Successfully recalled ${recalledCount} materials from RFI (${document.originalFilename}).`,
+      recalledCount,
+      totalItems: updated?.items.length,
+      inspection: updated,
+    });
+  } catch (err: any) {
+    console.error('Recall RFI error:', err);
     res.status(500).json({ error: err.message });
   }
 });

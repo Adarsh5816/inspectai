@@ -24,16 +24,19 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     const { projectId } = req.body;
     if (!projectId) return res.status(400).json({ error: 'projectId is required' });
 
-    // Auto-detect document type from filename
-    const filename = req.file.originalname.toLowerCase();
-    let documentType = 'OTHER';
-    if (filename.includes('rfi')) documentType = 'RFI';
-    else if (filename.includes('itp') || filename.includes('inspection and test plan')) documentType = 'ITP';
-    else if (filename.includes('calibration') || filename.includes('certificate')) documentType = 'CALIBRATION_CERTIFICATE';
-    else if (filename.includes('datasheet')) documentType = 'DATASHEET';
-    else if (filename.includes('gad') || filename.includes('drawing')) documentType = 'GAD';
-    else if (filename.includes('fat') || filename.includes('procedure')) documentType = 'FAT_PROCEDURE';
-    else if (filename.includes('report') && filename.includes('format')) documentType = 'INSPECTION_REPORT';
+    // Use explicit documentType if provided, otherwise auto-detect from filename
+    let documentType = req.body.documentType;
+    if (!documentType || documentType === 'AUTO') {
+      const filename = req.file.originalname.toLowerCase();
+      documentType = 'OTHER';
+      if (filename.includes('rfi')) documentType = 'RFI';
+      else if (filename.includes('itp') || filename.includes('inspection and test plan')) documentType = 'ITP';
+      else if (filename.includes('calibration') || filename.includes('certificate')) documentType = 'CALIBRATION_CERTIFICATE';
+      else if (filename.includes('datasheet')) documentType = 'DATASHEET';
+      else if (filename.includes('gad') || filename.includes('drawing')) documentType = 'GAD';
+      else if (filename.includes('fat') || filename.includes('procedure')) documentType = 'FAT_PROCEDURE';
+      else if (filename.includes('report') && filename.includes('format')) documentType = 'INSPECTION_REPORT';
+    }
 
     const document = await prisma.document.create({
       data: {
