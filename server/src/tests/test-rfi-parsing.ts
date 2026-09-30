@@ -4,6 +4,7 @@ import { DocumentService } from '../services/documentService';
 async function testAll() {
   const documentService = new DocumentService();
   const files = [
+    'd:/Inspection report/storage/documents/1790356641014-RFI-P30350-P-AiP5-12-IC15-003-069.pdf',
     'd:/Inspection report/reference-documents/RFI-P30350-P-AiP5-12-IC15-003-067.pdf',
     'd:/Inspection report/reference-documents/P30339B-RFI-INST-008-ARC-INT-KSB-0109 Rev.0.pdf',
     'd:/Inspection report/reference-documents/Annexture RFI-113.pdf'

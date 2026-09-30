@@ -245,94 +245,111 @@ export class DocumentService {
     if (activities.length > 0) result.activities = activities;
 
     // Items extraction supporting multiple RFI styles:
-    const items: any[] = [];
-
-    // Format 1: Inline Key-Value style:
-    // Tag No.: 11-14-PCV-6712-09B (KSB Ref. No.: CD77E001-1) [PO SL No.: 1] (Valve SL No.: 26000788)
-    const pattern1 = /Tag\s*No[.:]*\s*([0-9]{2}-[0-9]{2}-[A-Za-z0-9\-]+)[^\n]*?(?:KSB\s*Ref[.:\sNo]*([A-Za-z0-9\-]+))[^\n]*?(?:PO\s*SL\s*No[.:]*\s*([0-9]+))[^\n]*?(?:Valve\s*SL\s*No[.:]*\s*([0-9A-Za-z]+))/gi;
-    while ((match = pattern1.exec(text)) !== null) {
-      const rawTag = match[1].replace(/\s+/g, '');
-      if (rawTag && rawTag.includes('-') && !items.some(i => i.tagNumber === rawTag)) {
-        items.push({
-          poItemNo: match[3] ? `'${match[3].trim()}` : "'1",
-          tagNumber: rawTag,
-          serialNumber: match[4] ? match[4].trim() : '',
-          jobNo: match[2] ? match[2].trim() : '',
-          itemName: 'Control Valve',
-          sizeInch: "24''",
-          rating: 'ASME #600 RF',
-          bodyMaterial: 'Gr WCC',
-          orderedQty: 1,
-          presentedQty: 1,
-          acceptedThisVisit: 1,
-          acceptedToDate: 1,
-        });
-      }
-    }
-
-    // Format 2: Table / Annexure style:
-    // '79 14-01-FCV-1601-01A 25009567 CD13E085 24''-41611 ASME #600 RF Gr WCC CV=4500 58 24'' 1
-    const pattern2 = /[''`](\d+)\s+([0-9]{2}-[0-9]{2}-[A-Za-z]+(?:\s*-\s*)?[0-9A-Za-z\-]+)\s+([0-9]+)\s+([A-Za-z0-9]+)\s+([^\n]*)/g;
-    while ((match = pattern2.exec(text)) !== null) {
-      const rawTag = match[2].replace(/\s+/g, '');
-      if (!items.some(i => i.tagNumber === rawTag)) {
-        const details = match[5].trim();
-        const sizeMatch = details.match(/(\d+['"])/);
-        const ratingMatch = details.match(/(ASME\s*#?\d+\s*\w*)/i);
-        const matMatch = details.match(/(Gr\s*\w+|WCC|LCC|CF8M)/i);
-        const seriesMatch = details.match(/(\d{5})/);
-
-        items.push({
-          poItemNo: `'${match[1]}`,
-          tagNumber: rawTag,
-          serialNumber: match[3],
-          jobNo: match[4],
-          itemName: 'Control Valve',
-          sizeInch: sizeMatch ? sizeMatch[1] : "24''",
-          rating: ratingMatch ? ratingMatch[1] : 'ASME #600 RF',
-          bodyMaterial: matMatch ? matMatch[1] : 'Gr WCC',
-          valveSeries: seriesMatch ? seriesMatch[1] : '41611',
-          orderedQty: 1,
-          presentedQty: 1,
-          acceptedThisVisit: 1,
-          acceptedToDate: 1,
-        });
-      }
-    }
-
-    // Helper to identify equipment tag numbers
+    // Helper to identify equipment tag numbers (valves, instruments, equipment)
+    const months = /(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i;
     const isTagNumber = (s: string) => {
-      if (!s || s.length < 5) return false;
-      if (/^(?:rfi|itp|po|project|item|sl|rev|qap|iso|vendor)/i.test(s)) return false;
-      return /^\d{2}-\d{2}-[A-Za-z0-9\-]+$/.test(s) || /^\d{2}-[A-Za-z]{2,4}-[A-Za-z0-9\-]+$/.test(s);
+      if (!s || s.length < 5 || s.length > 40) return false;
+      if (/^(?:rfi|itp|po|project|item|sl|rev|qap|iso|vendor|p30)/i.test(s)) return false;
+      if (months.test(s)) return false;
+      if (s.endsWith('-') || s.startsWith('-')) return false;
+      // Must contain at least two letters (e.g. PCV, FCV, MOV) and not be pure numbers
+      if (!/[a-z]{2,}/i.test(s)) return false;
+      return /^\d{2}-\d{2}-[A-Za-z0-9\-]+$/.test(s) || /^\d{2}-[A-Za-z]{2,5}-[A-Za-z0-9\-]+$/.test(s);
     };
 
-    // Format 3: Delimited row style (CSV / Excel / Word table tabs)
-    const lines = text.split(/\r?\n/);
-    for (const line of lines) {
-      const parts = line.split(/[,;\t]/).map(p => p.trim().replace(/^["']|["']$/g, ''));
-      if (parts.length >= 2) {
-        const tagIdx = parts.findIndex(p => isTagNumber(p));
-        if (tagIdx !== -1) {
-          const rawTag = parts[tagIdx];
-          if (!items.some(i => i.tagNumber === rawTag)) {
-            const itemNo = tagIdx > 0 && /^\d+$/.test(parts[0]) ? parts[0] : `${items.length + 1}`;
-            const serialNo = (parts[tagIdx + 1] && !parts[tagIdx + 1].toLowerCase().includes('valve')) ? parts[tagIdx + 1] : '';
-            const desc = parts.find(p => /valve|pipe|fitting|flange/i.test(p)) || 'Control Valve';
-            items.push({
-              poItemNo: `'${itemNo}`,
-              tagNumber: rawTag,
-              serialNumber: serialNo,
-              jobNo: '',
-              itemName: desc,
-              sizeInch: "24''",
-              rating: 'ASME #600 RF',
-              bodyMaterial: 'Gr WCC',
-              orderedQty: 1,
-              presentedQty: 1,
-              acceptedThisVisit: 1,
-              acceptedToDate: 1,
-            });
+    // Items extraction supporting multiple RFI styles:
+    const items: any[] = [];
+
+    // Format 1: Explicit "Tag No.:" lines (Primary RFI item style)
+    // e.g. Tag No.: 11-14-PCV-6712-09B (KSB Ref. No.: CD77E001-1) [PO SL No.: 1] (Valve SL No.: 26000788)
+    const tagLines = text.split(/\r?\n/).filter(l => /Tag\s*No[.:]/i.test(l));
+    for (const line of tagLines) {
+      const tagMatch = line.match(/Tag\s*No[.:]*\s*([0-9]{2}-[0-9]{2}-[A-Za-z0-9\-]+|[0-9]{2}-[A-Za-z]{2,5}-[A-Za-z0-9\-]+)/i);
+      if (tagMatch) {
+        const rawTag = tagMatch[1].trim();
+        if (isTagNumber(rawTag) && !items.some(i => i.tagNumber === rawTag)) {
+          const poItemMatch = line.match(/(?:PO\s*SL\s*No[.:]*|PO\s*Item[.:]*|Item\s*No[.:]*)\s*([0-9]+)/i);
+          const ksbRefMatch = line.match(/(?:KSB\s*Ref[.:\sNo]*|Job\s*No[.:]*|Ref\s*No[.:]*)\s*([A-Za-z0-9\-]+)/i);
+          const valveSlMatch = line.match(/(?:Valve\s*SL\s*No[.:]*|Valve\s*Serial[.:]*|Serial\s*No[.:]*)\s*([0-9A-Za-z]+)/i);
+
+          items.push({
+            poItemNo: poItemMatch ? `'${poItemMatch[1].trim()}` : "'1",
+            tagNumber: rawTag,
+            serialNumber: valveSlMatch ? valveSlMatch[1].trim() : '',
+            jobNo: ksbRefMatch ? ksbRefMatch[1].trim() : '',
+            itemName: 'Control Valve',
+            sizeInch: "24''",
+            rating: 'ASME #600 RF',
+            bodyMaterial: 'Gr WCC',
+            orderedQty: 1,
+            presentedQty: 1,
+            acceptedThisVisit: 1,
+            acceptedToDate: 1,
+          });
+        }
+      }
+    }
+
+    // Format 2: Table / Annexure style (e.g. RFI-109 table) - ONLY if Format 1 found no items
+    if (items.length === 0) {
+      const pattern2 = /[''`](\d+)\s+([0-9]{2}-[0-9]{2}-[A-Za-z]+(?:\s*-\s*)?[0-9A-Za-z\-]+)\s+([0-9]+)\s+([A-Za-z0-9]+)\s+([^\n]*)/g;
+      let match;
+      while ((match = pattern2.exec(text)) !== null) {
+        const rawTag = match[2].replace(/\s+/g, '');
+        if (isTagNumber(rawTag) && !items.some(i => i.tagNumber === rawTag)) {
+          const details = match[5].trim();
+          const sizeMatch = details.match(/(\d+['"])/);
+          const ratingMatch = details.match(/(ASME\s*#?\d+\s*\w*)/i);
+          const matMatch = details.match(/(Gr\s*\w+|WCC|LCC|CF8M)/i);
+          const seriesMatch = details.match(/(\d{5})/);
+
+          items.push({
+            poItemNo: `'${match[1]}`,
+            tagNumber: rawTag,
+            serialNumber: match[3],
+            jobNo: match[4],
+            itemName: 'Control Valve',
+            sizeInch: sizeMatch ? sizeMatch[1] : "24''",
+            rating: ratingMatch ? ratingMatch[1] : 'ASME #600 RF',
+            bodyMaterial: matMatch ? matMatch[1] : 'Gr WCC',
+            valveSeries: seriesMatch ? seriesMatch[1] : '41611',
+            orderedQty: 1,
+            presentedQty: 1,
+            acceptedThisVisit: 1,
+            acceptedToDate: 1,
+          });
+        }
+      }
+    }
+
+    // Format 3: Delimited row style (CSV / Excel / Word table tabs) - ONLY if still no items
+    if (items.length === 0) {
+      const lines = text.split(/\r?\n/);
+      for (const line of lines) {
+        const parts = line.split(/[,;\t]/).map(p => p.trim().replace(/^["']|["']$/g, ''));
+        if (parts.length >= 2) {
+          const tagIdx = parts.findIndex(p => isTagNumber(p));
+          if (tagIdx !== -1) {
+            const rawTag = parts[tagIdx];
+            if (!items.some(i => i.tagNumber === rawTag)) {
+              const itemNo = tagIdx > 0 && /^\d+$/.test(parts[0]) ? parts[0] : `${items.length + 1}`;
+              const serialNo = (parts[tagIdx + 1] && !parts[tagIdx + 1].toLowerCase().includes('valve')) ? parts[tagIdx + 1] : '';
+              const desc = parts.find(p => /valve|pipe|fitting|flange/i.test(p)) || 'Control Valve';
+              items.push({
+                poItemNo: `'${itemNo}`,
+                tagNumber: rawTag,
+                serialNumber: serialNo,
+                jobNo: '',
+                itemName: desc,
+                sizeInch: "24''",
+                rating: 'ASME #600 RF',
+                bodyMaterial: 'Gr WCC',
+                orderedQty: 1,
+                presentedQty: 1,
+                acceptedThisVisit: 1,
+                acceptedToDate: 1,
+              });
+            }
           }
         }
       }
@@ -341,9 +358,10 @@ export class DocumentService {
     // Format 4: Generic Tag detection if items still empty:
     if (items.length === 0) {
       const tagRegex = /\b(\d{2}-\d{2}-[A-Za-z]{2,4}\s*-\s*\d{4}\s*-\s*\d{2}[A-Za-z]?)\b/g;
+      let match;
       while ((match = tagRegex.exec(text)) !== null) {
         const tag = match[1].replace(/\s+/g, '');
-        if (!items.some(i => i.tagNumber === tag)) {
+        if (isTagNumber(tag) && !items.some(i => i.tagNumber === tag)) {
           items.push({
             poItemNo: "'1",
             tagNumber: tag,

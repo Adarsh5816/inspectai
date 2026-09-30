@@ -267,27 +267,33 @@ router.post('/:id/import-rfi', async (req, res) => {
     });
     if (!document) return res.status(404).json({ error: 'Document not found' });
 
-    let extractedData: any = {};
-    if (document.extractions && document.extractions.length > 0) {
-      try {
-        extractedData = JSON.parse(document.extractions[0].extractedData);
-      } catch {
-        extractedData = {};
-      }
-    }
-
-    // If items or activities not extracted yet, re-process with latest parser:
-    if (!extractedData.items || extractedData.items.length === 0 || !extractedData.activities || extractedData.activities.length === 0) {
-      const docSvc = new DocumentService();
-      const result = await docSvc.processDocument(document.id, path.resolve(document.storageKey), 'RFI');
-      extractedData = result.extractedData;
-    }
+    // Always process with latest parser to guarantee fresh, clean extraction
+    const docSvc = new DocumentService();
+    const result = await docSvc.processDocument(document.id, path.resolve(document.storageKey), 'RFI');
+    const extractedData = result.extractedData;
 
     let itemsAdded = 0;
     let activitiesAdded = 0;
 
-    // 1. Add Items
+    // 1. Add Items (strictly from RFI)
     if (extractedData.items && Array.isArray(extractedData.items)) {
+      // Remove any previously existing items that do not belong to this RFI
+      const validTags = new Set(extractedData.items.map((i: any) => i.tagNumber));
+      const invalidItems = (inspection.items || []).filter(i => !validTags.has(i.tagNumber));
+      if (invalidItems.length > 0) {
+        const invalidItemIds = invalidItems.map(i => i.id);
+        await prisma.photo.updateMany({
+          where: { itemId: { in: invalidItemIds } },
+          data: { itemId: null },
+        });
+        await prisma.inspectionResult.deleteMany({
+          where: { itemId: { in: invalidItemIds } },
+        });
+        await prisma.inspectionItem.deleteMany({
+          where: { id: { in: invalidItemIds } },
+        });
+      }
+
       for (const item of extractedData.items) {
         const existing = inspection.items.find(i => i.tagNumber === item.tagNumber || (item.serialNumber && i.serialNumber === item.serialNumber));
         if (!existing) {
@@ -501,40 +507,40 @@ router.post('/:id/recall-rfi', async (req, res) => {
     });
     if (!document) return res.status(404).json({ error: 'RFI Document not found' });
 
-    let extractedData: any = {};
-    if (document.extractions && document.extractions.length > 0) {
-      try {
-        extractedData = JSON.parse(document.extractions[0].extractedData);
-      } catch {
-        extractedData = {};
-      }
-    }
-
-    // Always ensure parsed items exist:
-    if (!extractedData.items || extractedData.items.length === 0) {
-      const docSvc = new DocumentService();
-      const result = await docSvc.processDocument(document.id, path.resolve(document.storageKey), 'RFI');
-      extractedData = result.extractedData;
-    }
+    // Always re-process with latest parser to guarantee fresh, clean extraction
+    const docSvc = new DocumentService();
+    const result = await docSvc.processDocument(document.id, path.resolve(document.storageKey), 'RFI');
+    const extractedData = result.extractedData;
 
     const rfiItems = extractedData.items || [];
     if (!Array.isArray(rfiItems) || rfiItems.length === 0) {
       return res.status(400).json({ error: 'No materials or equipment items found in this RFI.' });
     }
 
-    // If clearFirst is requested, remove non-RFI items or clean wipe
-    if (clearFirst) {
-      await prisma.photo.updateMany({
-        where: { inspectionId },
-        data: { itemId: null },
-      });
-      await prisma.inspectionResult.deleteMany({
-        where: { inspectionId },
-      });
-      await prisma.inspectionItem.deleteMany({
-        where: { inspectionId },
-      });
-      inspection.items = [];
+    // Clean up any items that do not exist in the RFI (e.g. previously mis-parsed tags)
+    // to strictly enforce: "Only consider materials from RFI"
+    const validTags = new Set(rfiItems.map((i: any) => i.tagNumber));
+    const invalidItems = (inspection.items || []).filter(i => !validTags.has(i.tagNumber));
+    if (invalidItems.length > 0 || clearFirst) {
+      const targetItems = clearFirst ? inspection.items : invalidItems;
+      const targetIds = targetItems.map(i => i.id);
+      if (targetIds.length > 0) {
+        await prisma.photo.updateMany({
+          where: { itemId: { in: targetIds } },
+          data: { itemId: null },
+        });
+        await prisma.inspectionResult.deleteMany({
+          where: { itemId: { in: targetIds } },
+        });
+        await prisma.inspectionItem.deleteMany({
+          where: { id: { in: targetIds } },
+        });
+        if (clearFirst) {
+          inspection.items = [];
+        } else {
+          inspection.items = inspection.items.filter(i => validTags.has(i.tagNumber));
+        }
+      }
     }
 
     let recalledCount = 0;
