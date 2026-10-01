@@ -92,8 +92,22 @@ function Layout({ user, onLogout, children }: { user: any; onLogout: () => void;
     { path: '/inspections', label: 'Inspections', icon: '🔍' },
     { path: '/documents', label: 'Documents', icon: '📄' },
     { path: '/photos', label: 'Photos', icon: '📸' },
-    { path: '/admin', label: 'Admin', icon: '⚙️' },
+    ...(user?.role === 'ADMIN' || user?.role === 'MANAGER'
+      ? [{ path: '/admin', label: user.role === 'ADMIN' ? 'Admin & Team' : 'Team Management', icon: '👥' }]
+      : []),
   ];
+
+  const roleBadge = user?.role === 'ADMIN'
+    ? 'bg-purple-100 text-purple-800 border-purple-200'
+    : user?.role === 'MANAGER'
+    ? 'bg-blue-100 text-blue-800 border-blue-200'
+    : 'bg-emerald-100 text-emerald-800 border-emerald-200';
+
+  const roleLabel = user?.role === 'ADMIN'
+    ? '👑 Admin'
+    : user?.role === 'MANAGER'
+    ? '👔 Manager'
+    : '👷 Field Staff';
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -110,9 +124,14 @@ function Layout({ user, onLogout, children }: { user: any; onLogout: () => void;
             ))}
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-slate-500">{user?.fullName}</span>
-          <button onClick={onLogout} className="text-sm text-red-600 hover:text-red-800">Logout</button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${roleBadge}`}>
+              {roleLabel}
+            </span>
+            <span className="text-sm font-semibold text-slate-700">{user?.fullName}</span>
+          </div>
+          <button onClick={onLogout} className="text-xs font-semibold px-2.5 py-1 text-red-600 hover:bg-red-50 rounded-lg transition">Logout</button>
         </div>
       </nav>
       <main className="p-6 max-w-7xl mx-auto">{children}</main>
@@ -191,7 +210,7 @@ function StatusBadge({ status }: { status: string }) {
 // ============================================================
 // Projects Page
 // ============================================================
-function ProjectsPage() {
+function ProjectsPage({ currentUser }: { currentUser?: any }) {
   const [projects, setProjects] = useState<any[]>([]);
   const [showForm, setShowForm] = useState(() => {
     const draft = loadDraft<any>('new_project');
@@ -240,7 +259,14 @@ function ProjectsPage() {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-slate-800">Projects</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Projects</h1>
+          <p className="text-sm text-slate-500 mt-1">
+            {currentUser?.role === 'ADMIN' && 'Showing company-wide projects.'}
+            {currentUser?.role === 'MANAGER' && 'Showing projects assigned to your team.'}
+            {currentUser?.role === 'INSPECTOR' && 'Showing projects assigned to you.'}
+          </p>
+        </div>
         <button onClick={() => setShowForm(!showForm)} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-medium">+ New Project</button>
       </div>
 
@@ -317,7 +343,7 @@ function ProjectsPage() {
 // ============================================================
 // Project Detail Page
 // ============================================================
-function ProjectDetailPage() {
+function ProjectDetailPage({ currentUser }: { currentUser?: any }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const [project, setProject] = useState<any>(null);
@@ -326,6 +352,11 @@ function ProjectDetailPage() {
   const [uploading, setUploading] = useState(false);
   const [processing, setProcessing] = useState<string | null>(null);
 
+  // Member assignment state
+  const [availableUsers, setAvailableUsers] = useState<any[]>([]);
+  const [selectedUserIdToAssign, setSelectedUserIdToAssign] = useState('');
+  const [assigningMember, setAssigningMember] = useState(false);
+
   const load = useCallback(() => {
     if (!id) return;
     API.getProject(id).then(r => setProject(r.data));
@@ -333,6 +364,37 @@ function ProjectDetailPage() {
     API.getInspections(id).then(r => setInspections(r.data)).catch(() => {});
   }, [id]);
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (currentUser?.role === 'ADMIN' || currentUser?.role === 'MANAGER') {
+      API.getUsers().then(r => setAvailableUsers(r.data || [])).catch(() => {});
+    }
+  }, [currentUser]);
+
+  const handleAssignMember = async () => {
+    if (!selectedUserIdToAssign || !id) return;
+    setAssigningMember(true);
+    try {
+      await API.addProjectMember(id, selectedUserIdToAssign);
+      setSelectedUserIdToAssign('');
+      load();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to assign team member');
+    } finally {
+      setAssigningMember(false);
+    }
+  };
+
+  const handleRemoveMember = async (userId: string, userName: string) => {
+    if (!id) return;
+    if (!confirm(`Remove "${userName}" from this project?`)) return;
+    try {
+      await API.removeProjectMember(id, userId);
+      load();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to remove member');
+    }
+  };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>, documentType?: string) => {
     if (!e.target.files?.[0] || !id) return;
@@ -417,6 +479,80 @@ function ProjectDetailPage() {
           <div><span className="text-slate-500">Supplier:</span> <span className="font-medium">{project.supplierName}</span></div>
           <div><span className="text-slate-500">PO:</span> <span className="font-medium">{project.poNumber}</span></div>
         </div>
+      </div>
+
+      {/* Assigned Team & Field Staff Section */}
+      <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+          <div>
+            <h2 className="font-semibold text-slate-800 flex items-center gap-2">
+              <span>👥</span> Assigned Field Staff &amp; Team Members
+            </h2>
+            <p className="text-xs text-slate-500">
+              Only assigned inspectors and team managers can access and conduct inspections on this project.
+            </p>
+          </div>
+
+          {(currentUser?.role === 'ADMIN' || currentUser?.role === 'MANAGER') && (
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedUserIdToAssign}
+                onChange={e => setSelectedUserIdToAssign(e.target.value)}
+                className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select staff member to assign...</option>
+                {availableUsers
+                  .filter((u: any) => !project.assignedMembers?.some((m: any) => m.userId === u.id))
+                  .map((u: any) => (
+                    <option key={u.id} value={u.id}>
+                      {u.fullName} ({u.role === 'ADMIN' ? 'Admin' : u.role === 'MANAGER' ? 'Manager' : 'Field Staff'})
+                    </option>
+                  ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleAssignMember}
+                disabled={assigningMember || !selectedUserIdToAssign}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-50 whitespace-nowrap shadow-xs"
+              >
+                {assigningMember ? 'Assigning...' : '+ Assign to Project'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {(!project.assignedMembers || project.assignedMembers.length === 0) ? (
+          <p className="text-slate-500 text-xs py-2">No team members explicitly assigned yet.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {project.assignedMembers.map((m: any) => {
+              const u = m.user;
+              if (!u) return null;
+              const isCreator = project.createdById === u.id;
+              const badge = u.role === 'ADMIN' ? 'bg-purple-100 text-purple-800' : u.role === 'MANAGER' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800';
+              return (
+                <div key={m.id} className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl shadow-2xs">
+                  <div className="text-xs">
+                    <span className="font-bold text-slate-800 mr-1.5">{u.fullName}</span>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${badge}`}>
+                      {u.role === 'ADMIN' ? 'Admin' : u.role === 'MANAGER' ? 'Manager' : 'Field Staff'}
+                    </span>
+                    {isCreator && <span className="ml-1 text-[10px] text-slate-400 font-semibold">(Creator)</span>}
+                  </div>
+                  {(currentUser?.role === 'ADMIN' || currentUser?.role === 'MANAGER') && !isCreator && (
+                    <button
+                      onClick={() => handleRemoveMember(u.id, u.fullName)}
+                      className="text-slate-400 hover:text-red-600 text-xs font-bold ml-1"
+                      title="Remove member from project"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Documents Section */}
@@ -511,19 +647,38 @@ function ProjectDetailPage() {
 // ============================================================
 // New Inspection Page
 // ============================================================
-function NewInspectionPage() {
+function NewInspectionPage({ currentUser }: { currentUser?: any }) {
   const navigate = useNavigate();
   const searchParams = new URLSearchParams(window.location.search);
   const projectId = searchParams.get('projectId') || '';
   const [projects, setProjects] = useState<any[]>([]);
+  const [teamUsers, setTeamUsers] = useState<any[]>([]);
+  const canAssignStaff = currentUser?.role === 'ADMIN' || currentUser?.role === 'MANAGER';
+
   const [form, setForm] = useState(() => {
     const draft = loadDraft<any>('new_inspection');
     return draft?.data || {
-      projectId, reportNumber: '', inspectionType: 'FAT', location: '', startDate: new Date().toISOString().slice(0, 10),
+      projectId,
+      reportNumber: '',
+      inspectionType: 'FAT',
+      location: '',
+      startDate: new Date().toISOString().slice(0, 10),
+      inspectorId: currentUser?.id || '',
     };
   });
 
-  useEffect(() => { API.getProjects().then(r => setProjects(r.data)); }, []);
+  useEffect(() => {
+    API.getProjects().then(r => setProjects(r.data)).catch(() => {});
+    if (canAssignStaff) {
+      API.getUsers().then(r => setTeamUsers(r.data)).catch(() => {});
+    }
+  }, [canAssignStaff]);
+
+  useEffect(() => {
+    if (currentUser?.id && !form.inspectorId) {
+      setForm((prev: any) => ({ ...prev, inspectorId: currentUser.id }));
+    }
+  }, [currentUser]);
 
   // Auto-save draft on change
   useEffect(() => {
@@ -552,7 +707,14 @@ function NewInspectionPage() {
               type="button"
               onClick={() => {
                 clearDraft('new_inspection');
-                setForm({ projectId, reportNumber: '', inspectionType: 'FAT', location: '', startDate: new Date().toISOString().slice(0, 10) });
+                setForm({
+                  projectId,
+                  reportNumber: '',
+                  inspectionType: 'FAT',
+                  location: '',
+                  startDate: new Date().toISOString().slice(0, 10),
+                  inspectorId: currentUser?.id || '',
+                });
               }}
               className="text-amber-900 underline font-semibold ml-2"
             >
@@ -567,6 +729,34 @@ function NewInspectionPage() {
             {projects.map((p: any) => <option key={p.id} value={p.id}>{p.projectNumber} — {p.projectName}</option>)}
           </select>
         </div>
+
+        {canAssignStaff && (
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Assign Field Staff / Inspector
+            </label>
+            <select
+              value={form.inspectorId || currentUser?.id || ''}
+              onChange={e => setForm({ ...form, inspectorId: e.target.value })}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+            >
+              <option value={currentUser?.id}>Me ({currentUser?.fullName})</option>
+              {teamUsers
+                .filter(u => u.id !== currentUser?.id)
+                .map((u: any) => (
+                  <option key={u.id} value={u.id}>
+                    {u.fullName} ({u.role === 'INSPECTOR' ? 'Field Staff' : u.role}) - {u.email}
+                  </option>
+                ))}
+            </select>
+            <p className="text-xs text-slate-500 mt-1">
+              {currentUser?.role === 'ADMIN'
+                ? 'Admin: You can assign this inspection to any staff member.'
+                : 'Manager: You can assign this inspection to yourself or any field staff reporting to you.'}
+            </p>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-4">
           <Input label="Report Number" value={form.reportNumber} onChange={v => setForm({ ...form, reportNumber: v })} placeholder="001" required />
           <div>
@@ -3135,10 +3325,27 @@ function PhotosPage() {
   );
 }
 
-function InspectionsPage() {
+function InspectionsPage({ currentUser }: { currentUser?: any }) {
   const [inspections, setInspections] = useState<any[]>([]);
-  const load = () => API.getInspections().then(r => setInspections(r.data)).catch(() => {});
-  useEffect(() => { load(); }, []);
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [selectedInspectorId, setSelectedInspectorId] = useState<string>('');
+  const canFilter = currentUser?.role === 'ADMIN' || currentUser?.role === 'MANAGER';
+
+  const load = () => {
+    API.getInspections(undefined, selectedInspectorId || undefined)
+      .then(r => setInspections(r.data))
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    if (canFilter) {
+      API.getUsers().then(r => setTeamMembers(r.data)).catch(() => {});
+    }
+  }, [canFilter]);
+
+  useEffect(() => {
+    load();
+  }, [selectedInspectorId]);
 
   const handleDeleteInspection = async (e: React.MouseEvent, inspId: string, reportNo: string) => {
     e.preventDefault();
@@ -3154,9 +3361,32 @@ function InspectionsPage() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-slate-800">Inspections</h1>
-        <Link to="/inspections/new" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-medium">+ New Inspection</Link>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Inspections</h1>
+          <p className="text-sm text-slate-500 mt-1">
+            {currentUser?.role === 'ADMIN' && 'Showing company-wide inspections across all teams.'}
+            {currentUser?.role === 'MANAGER' && 'Showing inspections for your team and subordinates.'}
+            {currentUser?.role === 'INSPECTOR' && 'Showing inspections assigned to you.'}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {canFilter && teamMembers.length > 0 && (
+            <select
+              value={selectedInspectorId}
+              onChange={e => setSelectedInspectorId(e.target.value)}
+              className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white font-medium text-slate-700"
+            >
+              <option value="">All Team Members ({teamMembers.length})</option>
+              {teamMembers.map((m: any) => (
+                <option key={m.id} value={m.id}>
+                  {m.fullName} ({m.role === 'INSPECTOR' ? 'Field Staff' : m.role})
+                </option>
+              ))}
+            </select>
+          )}
+          <Link to="/inspections/new" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-medium whitespace-nowrap">+ New Inspection</Link>
+        </div>
       </div>
       <div className="space-y-3">
         {inspections.map((insp: any) => (
@@ -3166,7 +3396,14 @@ function InspectionsPage() {
                 <div>
                   <span className="font-semibold text-slate-800 hover:text-blue-600">{insp.reportNumber}</span>
                   <span className="ml-2 text-sm text-slate-500">{insp.project?.projectNumber}</span>
-                  <p className="text-sm text-slate-500 mt-1">{insp.inspectionType} — {insp.location} — {new Date(insp.startDate).toLocaleDateString()}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <p className="text-sm text-slate-500">{insp.inspectionType} — {insp.location} — {new Date(insp.startDate).toLocaleDateString()}</p>
+                    {insp.inspector && (
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                        👤 {insp.inspector.fullName}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <StatusBadge status={insp.status} />
               </div>
@@ -3213,14 +3450,14 @@ export default function App() {
       <Layout user={user} onLogout={logout}>
         <Routes>
           <Route path="/" element={<DashboardPage />} />
-          <Route path="/projects" element={<ProjectsPage />} />
-          <Route path="/projects/:id" element={<ProjectDetailPage />} />
-          <Route path="/inspections" element={<InspectionsPage />} />
-          <Route path="/inspections/new" element={<NewInspectionPage />} />
+          <Route path="/projects" element={<ProjectsPage currentUser={user} />} />
+          <Route path="/projects/:id" element={<ProjectDetailPage currentUser={user} />} />
+          <Route path="/inspections" element={<InspectionsPage currentUser={user} />} />
+          <Route path="/inspections/new" element={<NewInspectionPage currentUser={user} />} />
           <Route path="/inspections/:id" element={<InspectionWorkspacePage />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/photos" element={<PhotosPage />} />
-          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/admin" element={<AdminPage currentUser={user} />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </Layout>

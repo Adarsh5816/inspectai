@@ -2,12 +2,32 @@ import { useState, useEffect } from 'react';
 import * as API from './api';
 import { CLIENT_VERSION } from './DeploymentGuardian';
 
-export function AdminPage() {
-  const [activeTab, setActiveTab] = useState<'releases' | 'sessions' | 'system'>('releases');
+export function AdminPage({ currentUser }: { currentUser?: any }) {
+  const [activeTab, setActiveTab] = useState<'releases' | 'sessions' | 'system' | 'users'>('releases');
   const [releasesData, setReleasesData] = useState<any>(null);
   const [onlineData, setOnlineData] = useState<any>(null);
   const [systemData, setSystemData] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // User & Team Hierarchy state
+  const [usersList, setUsersList] = useState<any[]>([]);
+  const [managersList, setManagersList] = useState<any[]>([]);
+  const [treeData, setTreeData] = useState<any[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [viewMode, setViewMode] = useState<'tree' | 'table'>('tree');
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userForm, setUserForm] = useState({
+    id: '',
+    fullName: '',
+    email: '',
+    password: '',
+    role: 'INSPECTOR',
+    managerId: '',
+    organization: '',
+    isActive: true,
+  });
+  const [savingUser, setSavingUser] = useState(false);
 
   // Add Note Modal
   const [showAddModal, setShowAddModal] = useState(false);
@@ -33,14 +53,98 @@ export function AdminPage() {
     }
   };
 
+  const loadUsersData = async () => {
+    setLoadingUsers(true);
+    try {
+      const [uRes, mRes, tRes] = await Promise.all([
+        API.getUsers().catch(() => ({ data: [] })),
+        API.getManagers().catch(() => ({ data: [] })),
+        API.getUserTree().catch(() => ({ data: [] })),
+      ]);
+      setUsersList(uRes.data || []);
+      setManagersList(mRes.data || []);
+      setTreeData(tRes.data || []);
+    } catch {
+      // quiet
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
   useEffect(() => {
     loadAll();
+    loadUsersData();
     const interval = setInterval(() => {
       // Auto-refresh online users & status quietly
       API.getOnlineUsers().then(r => setOnlineData(r.data)).catch(() => {});
     }, 10000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleOpenAddUser = (defaultManagerId?: string) => {
+    setUserForm({
+      id: '',
+      fullName: '',
+      email: '',
+      password: '',
+      role: 'INSPECTOR',
+      managerId: defaultManagerId || (currentUser?.role === 'MANAGER' ? currentUser.id : ''),
+      organization: currentUser?.organization || 'Intertek',
+      isActive: true,
+    });
+    setShowUserModal(true);
+  };
+
+  const handleEditUser = (user: any) => {
+    setUserForm({
+      id: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      password: '',
+      role: user.role,
+      managerId: user.managerId || '',
+      organization: user.organization || '',
+      isActive: user.isActive,
+    });
+    setShowUserModal(true);
+  };
+
+  const handleSaveUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userForm.fullName || !userForm.email) return;
+    if (!userForm.id && !userForm.password) {
+      alert('Password is required for new users.');
+      return;
+    }
+
+    setSavingUser(true);
+    try {
+      if (userForm.id) {
+        await API.updateUser(userForm.id, userForm);
+        alert('User details updated successfully!');
+      } else {
+        await API.createUser(userForm);
+        alert('New user / field staff account created successfully!');
+      }
+      setShowUserModal(false);
+      loadUsersData();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to save user');
+    } finally {
+      setSavingUser(false);
+    }
+  };
+
+  const handleToggleUserActive = async (user: any) => {
+    const nextStatus = !user.isActive;
+    if (!confirm(`Are you sure you want to ${nextStatus ? 'activate' : 'deactivate'} user "${user.fullName}"?`)) return;
+    try {
+      await API.updateUser(user.id, { isActive: nextStatus });
+      loadUsersData();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to update user status');
+    }
+  };
 
   const handleAddReleaseNote = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -196,6 +300,16 @@ export function AdminPage() {
           }`}
         >
           <span>⚙️</span> System Health & Database
+        </button>
+        <button
+          onClick={() => { setActiveTab('users'); loadUsersData(); }}
+          className={`pb-3 px-4 font-semibold text-sm border-b-2 transition flex items-center gap-2 ${
+            activeTab === 'users'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <span>🌳</span> Team &amp; Access Hierarchy ({usersList.length})
         </button>
       </div>
 
@@ -513,6 +627,422 @@ export function AdminPage() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+      {/* TAB 4: Team & Access Hierarchy */}
+      {activeTab === 'users' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+            <div>
+              <h3 className="font-bold text-base text-slate-800 flex items-center gap-2">
+                <span>🌳</span> Team Members &amp; Access Tree
+              </h3>
+              <p className="text-xs text-slate-500">
+                Managers can create and oversee Field Staff reporting to them. Field Staff only see their own assigned projects and inspections.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="flex rounded-lg border border-slate-200 p-0.5 bg-slate-50">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('tree')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${viewMode === 'tree' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                  🌳 Org Tree View
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('table')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${viewMode === 'table' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                  📋 Table View
+                </button>
+              </div>
+
+              <button
+                onClick={() => handleOpenAddUser()}
+                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm whitespace-nowrap ml-auto"
+              >
+                + Add Staff / Member
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Filter */}
+          <div className="flex items-center justify-between gap-4">
+            <input
+              type="text"
+              placeholder="Search team members by name, email, or role..."
+              value={userSearchQuery}
+              onChange={e => setUserSearchQuery(e.target.value)}
+              className="max-w-md w-full px-3.5 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500"
+            />
+            <span className="text-xs text-slate-500 font-medium">
+              {usersList.length} total team members registered
+            </span>
+          </div>
+
+          {loadingUsers ? (
+            <div className="p-12 text-center text-slate-400">Loading team members and hierarchy...</div>
+          ) : viewMode === 'tree' ? (
+            /* Interactive Tree View */
+            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
+              <div className="flex items-center gap-3 text-xs text-slate-500 pb-2 border-b border-slate-100">
+                <span className="flex items-center gap-1 font-semibold text-purple-700">👑 Admin (Full Company Access)</span>
+                <span>•</span>
+                <span className="flex items-center gap-1 font-semibold text-blue-700">👔 Manager (Team &amp; Subordinate Access)</span>
+                <span>•</span>
+                <span className="flex items-center gap-1 font-semibold text-emerald-700">👷 Field Staff (Self Only)</span>
+              </div>
+
+              {treeData.length === 0 ? (
+                <p className="text-center py-8 text-slate-500 text-sm">No user hierarchy found.</p>
+              ) : (
+                <div className="space-y-4">
+                  {treeData
+                    .filter((node: any) => {
+                      if (!userSearchQuery) return true;
+                      const q = userSearchQuery.toLowerCase();
+                      return (
+                        node.fullName.toLowerCase().includes(q) ||
+                        node.email.toLowerCase().includes(q) ||
+                        node.role.toLowerCase().includes(q)
+                      );
+                    })
+                    .map((node: any) => (
+                      <OrgTreeNode
+                        key={node.id}
+                        node={node}
+                        currentUser={currentUser}
+                        onAddUnder={(managerId: string) => handleOpenAddUser(managerId)}
+                        onEdit={(u: any) => handleEditUser(u)}
+                        onToggleActive={(u: any) => handleToggleUserActive(u)}
+                      />
+                    ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Table View */
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="p-3 text-left font-bold text-slate-700">Name &amp; Email</th>
+                    <th className="p-3 text-left font-bold text-slate-700">Role</th>
+                    <th className="p-3 text-left font-bold text-slate-700">Reports To (Manager)</th>
+                    <th className="p-3 text-center font-bold text-slate-700">Inspections</th>
+                    <th className="p-3 text-center font-bold text-slate-700">Projects</th>
+                    <th className="p-3 text-center font-bold text-slate-700">Status</th>
+                    <th className="p-3 text-right font-bold text-slate-700">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {usersList
+                    .filter((u: any) => {
+                      if (!userSearchQuery) return true;
+                      const q = userSearchQuery.toLowerCase();
+                      return (
+                        u.fullName.toLowerCase().includes(q) ||
+                        u.email.toLowerCase().includes(q) ||
+                        u.role.toLowerCase().includes(q)
+                      );
+                    })
+                    .map((u: any) => {
+                      return (
+                        <tr key={u.id} className="hover:bg-slate-50 transition">
+                          <td className="p-3">
+                            <span className="font-bold text-slate-800 block">{u.fullName}</span>
+                            <span className="text-slate-500 font-mono text-[11px]">{u.email}</span>
+                          </td>
+                          <td className="p-3">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              u.role === 'ADMIN' ? 'bg-purple-100 text-purple-800' :
+                              u.role === 'MANAGER' ? 'bg-blue-100 text-blue-800' :
+                              'bg-emerald-100 text-emerald-800'
+                            }`}>
+                              {u.role === 'ADMIN' ? '👑 Admin' : u.role === 'MANAGER' ? '👔 Manager' : '👷 Field Staff'}
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            {u.manager ? (
+                              <span className="font-medium text-slate-700">{u.manager.fullName}</span>
+                            ) : (
+                              <span className="text-slate-400 italic">None (Top Level)</span>
+                            )}
+                          </td>
+                          <td className="p-3 text-center font-bold text-slate-700">
+                            {u._count?.assignedInspections || 0}
+                          </td>
+                          <td className="p-3 text-center font-bold text-slate-700">
+                            {u._count?.assignedProjects || 0}
+                          </td>
+                          <td className="p-3 text-center">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${u.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                              {u.isActive ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {(currentUser?.role === 'ADMIN' || (currentUser?.role === 'MANAGER' && u.role === 'INSPECTOR')) && (
+                                <button
+                                  onClick={() => handleEditUser(u)}
+                                  className="text-blue-600 hover:text-blue-800 font-semibold px-2 py-1 rounded hover:bg-blue-50"
+                                >
+                                  Edit
+                                </button>
+                              )}
+                              {currentUser?.id !== u.id && (
+                                <button
+                                  onClick={() => handleToggleUserActive(u)}
+                                  className={`text-[11px] font-semibold px-2 py-1 rounded ${u.isActive ? 'text-red-600 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'}`}
+                                >
+                                  {u.isActive ? 'Deactivate' : 'Activate'}
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Add / Edit User Modal */}
+      {showUserModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <span>👤</span> {userForm.id ? 'Edit User Details' : 'Create New User / Field Staff'}
+              </h3>
+              <button onClick={() => setShowUserModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+            </div>
+
+            <form onSubmit={handleSaveUser} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={userForm.fullName}
+                  onChange={e => setUserForm({ ...userForm, fullName: e.target.value })}
+                  placeholder="e.g. Ramesh Kumar"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Email Address *</label>
+                <input
+                  type="email"
+                  required
+                  value={userForm.email}
+                  onChange={e => setUserForm({ ...userForm, email: e.target.value })}
+                  placeholder="e.g. ramesh.kumar@inspectai.com"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  {userForm.id ? 'Password (Leave blank to keep existing)' : 'Password *'}
+                </label>
+                <input
+                  type="password"
+                  required={!userForm.id}
+                  value={userForm.password}
+                  onChange={e => setUserForm({ ...userForm, password: e.target.value })}
+                  placeholder="••••••••"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Role</label>
+                  {currentUser?.role === 'MANAGER' ? (
+                    <input
+                      type="text"
+                      disabled
+                      value="Field Staff (Inspector)"
+                      className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm text-slate-600 font-semibold"
+                    />
+                  ) : (
+                    <select
+                      value={userForm.role}
+                      onChange={e => setUserForm({ ...userForm, role: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+                    >
+                      <option value="INSPECTOR">👷 Field Staff (Inspector)</option>
+                      <option value="MANAGER">👔 Team Manager / Lead</option>
+                      <option value="ADMIN">👑 Company Admin</option>
+                    </select>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Reporting Manager</label>
+                  {currentUser?.role === 'MANAGER' ? (
+                    <input
+                      type="text"
+                      disabled
+                      value={`${currentUser.fullName || 'Manager'} (You)`}
+                      className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm text-slate-600 font-semibold"
+                    />
+                  ) : (
+                    <select
+                      value={userForm.managerId}
+                      onChange={e => setUserForm({ ...userForm, managerId: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+                    >
+                      <option value="">None (Top-Level / Admin)</option>
+                      {managersList.map((m: any) => (
+                        <option key={m.id} value={m.id}>
+                          {m.fullName} ({m.role === 'ADMIN' ? 'Admin' : 'Manager'})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Organization / Agency</label>
+                <input
+                  type="text"
+                  value={userForm.organization}
+                  onChange={e => setUserForm({ ...userForm, organization: e.target.value })}
+                  placeholder="e.g. Intertek / TUV SUD"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowUserModal(false)}
+                  className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingUser}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-sm"
+                >
+                  {savingUser ? 'Saving...' : userForm.id ? 'Save Changes' : 'Create User Account'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OrgTreeNode({ node, currentUser, onAddUnder, onEdit, onToggleActive }: any) {
+  const isManagerOrAdmin = node.role === 'ADMIN' || node.role === 'MANAGER';
+  const roleColor = node.role === 'ADMIN'
+    ? 'border-purple-200 bg-purple-50/40 text-purple-900'
+    : node.role === 'MANAGER'
+    ? 'border-blue-200 bg-blue-50/40 text-blue-900'
+    : 'border-emerald-200 bg-emerald-50/40 text-emerald-900';
+
+  const roleBadge = node.role === 'ADMIN'
+    ? 'bg-purple-100 text-purple-800 border-purple-200'
+    : node.role === 'MANAGER'
+    ? 'bg-blue-100 text-blue-800 border-blue-200'
+    : 'bg-emerald-100 text-emerald-800 border-emerald-200';
+
+  return (
+    <div className="space-y-2">
+      <div className={`p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs ${roleColor}`}>
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-white border flex items-center justify-center text-base shadow-xs">
+            {node.role === 'ADMIN' ? '👑' : node.role === 'MANAGER' ? '👔' : '👷'}
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-sm text-slate-800">{node.fullName}</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${roleBadge}`}>
+                {node.role === 'ADMIN' ? 'Admin' : node.role === 'MANAGER' ? 'Manager' : 'Field Staff'}
+              </span>
+              {!node.isActive && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800">
+                  Inactive
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-500 font-mono mt-0.5">{node.email}</p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          <div className="flex items-center gap-2 text-[11px] text-slate-600 bg-white/80 px-2.5 py-1 rounded-lg border border-slate-200">
+            <span><strong>{node.inspectionsCount || 0}</strong> Inspections</span>
+            <span>•</span>
+            <span><strong>{node.projectsCount || 0}</strong> Projects</span>
+            {isManagerOrAdmin && (
+              <>
+                <span>•</span>
+                <span><strong>{node.subordinates?.length || 0}</strong> Staff</span>
+              </>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            {isManagerOrAdmin && (currentUser?.role === 'ADMIN' || currentUser?.id === node.id) && (
+              <button
+                type="button"
+                onClick={() => onAddUnder(node.id)}
+                className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold shadow-2xs transition"
+                title={`Add new field staff reporting to ${node.fullName}`}
+              >
+                + Add Staff
+              </button>
+            )}
+            {(currentUser?.role === 'ADMIN' || (currentUser?.role === 'MANAGER' && node.role === 'INSPECTOR')) && (
+              <button
+                type="button"
+                onClick={() => onEdit(node)}
+                className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-blue-700 rounded-lg text-xs font-semibold shadow-2xs transition"
+              >
+                Edit
+              </button>
+            )}
+            {currentUser?.id !== node.id && (
+              <button
+                type="button"
+                onClick={() => onToggleActive(node)}
+                className={`px-2 py-1 rounded-lg text-xs font-semibold transition ${node.isActive ? 'text-red-600 hover:bg-red-50' : 'text-green-700 hover:bg-green-50'}`}
+              >
+                {node.isActive ? 'Deactivate' : 'Activate'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Subordinates tree branches */}
+      {node.subordinates && node.subordinates.length > 0 && (
+        <div className="ml-6 pl-4 border-l-2 border-indigo-200 space-y-2 pt-1">
+          {node.subordinates.map((subNode: any) => (
+            <OrgTreeNode
+              key={subNode.id}
+              node={subNode}
+              currentUser={currentUser}
+              onAddUnder={onAddUnder}
+              onEdit={onEdit}
+              onToggleActive={onToggleActive}
+            />
+          ))}
         </div>
       )}
     </div>

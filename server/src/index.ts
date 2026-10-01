@@ -11,6 +11,7 @@ import resultRoutes from './routes/resultRoutes';
 import photoRoutes from './routes/photoRoutes';
 import reportRoutes from './routes/reportRoutes';
 import adminRoutes from './routes/adminRoutes';
+import userRoutes from './routes/userRoutes';
 import { auth } from './middleware/auth';
 import { ValidationService } from './services/validationService';
 
@@ -27,6 +28,7 @@ for (const sub of ['documents', 'photos', 'reports']) {
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/users', auth, userRoutes);
 app.use('/api/projects', auth, projectRoutes);
 app.use('/api/documents', auth, documentRoutes);
 app.use('/api/inspections', auth, inspectionRoutes);

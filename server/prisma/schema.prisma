@@ -16,42 +16,59 @@ model User {
   email            String       @unique
   passwordHash     String
   fullName         String
-  role             String       @default("INSPECTOR") // ADMIN, INSPECTOR, REVIEWER, VIEWER
+  role             String       @default("INSPECTOR") // ADMIN, MANAGER, INSPECTOR
   organization     String?
+  managerId        String?
+  manager          User?        @relation("UserManager", fields: [managerId], references: [id])
+  subordinates     User[]       @relation("UserManager")
   telegramUserId   String?      @unique
   telegramUsername String?
   isActive         Boolean      @default(true)
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
-  createdProjects  Project[]    @relation("ProjectCreator")
-  assignedInspections Inspection[] @relation("InspectorAssignments")
-  auditEvents      AuditEvent[]
-  reportsCreated   ReportVersion[]
+  createdProjects     Project[]        @relation("ProjectCreator")
+  assignedProjects    ProjectMember[]  @relation("UserProjects")
+  assignedInspections Inspection[]     @relation("InspectorAssignments")
+  auditEvents         AuditEvent[]
+  reportsCreated      ReportVersion[]
 }
 
 // -------------------------------------------------------------
 // 2. Project
 // -------------------------------------------------------------
 model Project {
-  id              String       @id @default(uuid())
-  projectNumber   String       @unique // e.g. "P30339B"
-  projectName     String       // e.g. "EPC for SE AiP5 Project (On plot) - ASAB/SAHIL (Package 1)"
-  customerName    String       // e.g. "ADNOC Onshore"
+  id              String          @id @default(uuid())
+  projectNumber   String          @unique // e.g. "P30339B"
+  projectName     String          // e.g. "EPC for SE AiP5 Project (On plot) - ASAB/SAHIL (Package 1)"
+  customerName    String          // e.g. "ADNOC Onshore"
   customerAddress String?
-  epcContractor   String?      // e.g. "Archirodon"
-  supplierName    String       // e.g. "KSB MIL Controls Limited"
+  epcContractor   String?         // e.g. "Archirodon"
+  supplierName    String          // e.g. "KSB MIL Controls Limited"
   supplierAddress String?
-  subSupplierName String?      // e.g. "Specialised Coating Services"
-  poNumber        String       // e.g. "04108-PM-INST-008"
+  subSupplierName String?         // e.g. "Specialised Coating Services"
+  poNumber        String          // e.g. "04108-PM-INST-008"
   createdById     String
-  createdBy       User         @relation("ProjectCreator", fields: [createdById], references: [id])
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  createdBy       User            @relation("ProjectCreator", fields: [createdById], references: [id])
+  assignedMembers ProjectMember[] @relation("ProjectMembers")
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   documents       Document[]
   inspections     Inspection[]
   instruments     Instrument[]
+}
+
+// Explicit Project Member / Staff Assignment
+model ProjectMember {
+  id         String   @id @default(uuid())
+  projectId  String
+  project    Project  @relation("ProjectMembers", fields: [projectId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation("UserProjects", fields: [userId], references: [id], onDelete: Cascade)
+  assignedAt DateTime @default(now())
+
+  @@unique([projectId, userId])
 }
 
 // -------------------------------------------------------------

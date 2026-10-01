@@ -3,6 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { ReportService } from '../services/reportService';
+import { AccessControlService } from '../services/accessControlService';
 
 const router = Router();
 const reportService = new ReportService();
@@ -23,6 +24,14 @@ const upload = multer({
 // Generate report with optional template selection
 router.post('/generate/:inspectionId', async (req, res) => {
   try {
+    const user = (req as any).user;
+    if (user) {
+      const canAccess = await AccessControlService.canAccessInspection(user, req.params.inspectionId);
+      if (!canAccess) {
+        return res.status(403).json({ error: 'Access denied: You do not have permission to generate reports for this inspection.' });
+      }
+    }
+
     const { templateName } = req.body;
     const docPath = await reportService.generateReport(req.params.inspectionId, templateName);
     const filename = path.basename(docPath);

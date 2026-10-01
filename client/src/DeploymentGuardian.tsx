@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import * as API from './api';
 import { getAllDrafts } from './draftStorage';
 
-export const CLIENT_VERSION = 'v1.2.2';
+export const CLIENT_VERSION = 'v1.3.0';
 
 function getSessionId(): string {
   let sid = sessionStorage.getItem('inspectai_session_id');

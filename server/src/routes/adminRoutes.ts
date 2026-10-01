@@ -46,17 +46,36 @@ setInterval(() => {
   }
 }, 15000);
 
-const CURRENT_SERVER_VERSION = 'v1.2.2';
-const CURRENT_DEPLOYED_AT = '2026-09-29T12:50:00Z';
+const CURRENT_SERVER_VERSION = 'v1.3.0';
+const CURRENT_DEPLOYED_AT = '2026-10-01T21:30:00Z';
 
 const BUILT_IN_RELEASES: ReleaseNote[] = [
+  {
+    id: 'rel-1-3-0',
+    version: 'v1.3.0',
+    releaseDate: '2026-10-01T21:30:00Z',
+    title: 'Tree-Type Access Control, Manager Hierarchy & Project Assignments',
+    type: 'Major Release',
+    isCurrent: true,
+    commitHash: 'head',
+    environment: 'Render Cloud (Production)',
+    summary: 'Introduced role-based tree hierarchy access control (Admin -> Manager -> Field Staff). Managers can create and supervise staff; Field Staff are strictly restricted to assigned projects and personal inspection reports.',
+    changes: [
+      { category: 'Feature', description: 'Tree-type organizational hierarchy model allowing managers to add and oversee field staff.' },
+      { category: 'Security', description: 'Field staff restricted to projects assigned to them or containing their inspections.' },
+      { category: 'Feature', description: 'Interactive Org Tree View & Table View in Admin/Team dashboard.' },
+      { category: 'Feature', description: 'Project team assignment management for adding/removing staff members.' },
+      { category: 'Feature', description: 'Inspection assignment to staff with filterable reports list by team member.' },
+      { category: 'Improvement', description: 'Separate RFI and ITP upload flows, material delete options, RFI data recall, and Customer Offer List activity revalidation.' }
+    ]
+  },
   {
     id: 'rel-1-2-2',
     version: 'v1.2.2',
     releaseDate: '2026-09-29T12:50:00Z',
     title: 'Zero Data-Loss Deployment Guardian & Admin Patch Tracking',
     type: 'Feature',
-    isCurrent: true,
+    isCurrent: false,
     commitHash: 'head',
     environment: 'Render Cloud (Production)',
     summary: 'Guaranteed zero data-loss during system deployments. Real-time auto-draft local buffer, online user monitoring, and safe postponement of frontend updates while user has unsaved work.',

@@ -4,6 +4,7 @@ import fs from 'fs';
 import multer from 'multer';
 import prisma from '../db/prisma';
 import { DocumentService } from '../services/documentService';
+import { AccessControlService } from '../services/accessControlService';
 
 const router = Router();
 const storageDir = process.env.STORAGE_DIR || path.resolve(__dirname, '../../../storage');
@@ -17,15 +18,32 @@ const upload = multer({
   }),
 });
 
-// GET all inspections (optionally filter by projectId)
+// GET all inspections (optionally filter by projectId or inspectorId, filtered by role hierarchy)
 router.get('/', async (req, res) => {
   try {
+    const user = (req as any).user;
     const where: any = {};
     if (req.query.projectId) where.projectId = req.query.projectId;
+
+    if (user) {
+      const accessibleUserIds = await AccessControlService.getAccessibleUserIds(user);
+      if (req.query.inspectorId) {
+        const requestedId = req.query.inspectorId as string;
+        if (accessibleUserIds === null || accessibleUserIds.includes(requestedId)) {
+          where.inspectorId = requestedId;
+        } else {
+          return res.status(403).json({ error: 'Permission denied: Cannot view inspections for this user.' });
+        }
+      } else if (accessibleUserIds !== null) {
+        where.inspectorId = { in: accessibleUserIds };
+      }
+    }
+
     const inspections = await prisma.inspection.findMany({
       where,
       include: {
         project: true,
+        inspector: { select: { id: true, fullName: true, email: true, role: true } },
         rfiDocument: true,
         itpDocument: true,
         offerDocument: true,
@@ -45,13 +63,22 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET single inspection with all relations
+// GET single inspection with all relations (permission checked)
 router.get('/:id', async (req, res) => {
   try {
+    const user = (req as any).user;
+    if (user) {
+      const canAccess = await AccessControlService.canAccessInspection(user, req.params.id);
+      if (!canAccess) {
+        return res.status(403).json({ error: 'Access denied: You do not have permission to view this inspection.' });
+      }
+    }
+
     const inspection = await prisma.inspection.findUnique({
       where: { id: req.params.id },
       include: {
         project: true,
+        inspector: { select: { id: true, fullName: true, email: true, role: true } },
         rfiDocument: true,
         itpDocument: true,
         offerDocument: true,
@@ -75,7 +102,17 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { projectId, reportNumber, inspectionType, location, startDate, endDate, previousVisitDate, nextVisitDate, workingHours, travelHours, travelDistanceKm, summaryNarrative, disposition } = req.body;
-    let inspectorId = (req as any).userId || (req as any).user?.id;
+    const user = (req as any).user;
+    let inspectorId = (req as any).userId || user?.id;
+
+    // Admins and Managers can assign inspection to a subordinate field staff
+    if (req.body.inspectorId && user && (user.role === 'ADMIN' || user.role === 'MANAGER')) {
+      const accessibleUserIds = await AccessControlService.getAccessibleUserIds(user);
+      if (accessibleUserIds === null || accessibleUserIds.includes(req.body.inspectorId)) {
+        inspectorId = req.body.inspectorId;
+      }
+    }
+
     let inspectorExists = inspectorId ? await prisma.user.findUnique({ where: { id: inspectorId } }) : null;
     if (!inspectorExists) {
       const adminUser = await prisma.user.findFirst({ where: { role: 'ADMIN' } })
@@ -100,8 +137,21 @@ router.post('/', async (req, res) => {
         summaryNarrative,
         disposition,
       },
-      include: { project: true },
+      include: {
+        project: true,
+        inspector: { select: { id: true, fullName: true, email: true, role: true } },
+      },
     });
+
+    // Ensure the assigned inspector is linked to this project
+    if (projectId && inspectorId) {
+      await prisma.projectMember.upsert({
+        where: { projectId_userId: { projectId, userId: inspectorId } },
+        update: {},
+        create: { projectId, userId: inspectorId },
+      }).catch(() => {});
+    }
+
     res.json(inspection);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -990,6 +1040,14 @@ router.post('/:id/apply-offer-list', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const inspectionId = req.params.id;
+    const user = (req as any).user;
+    if (user) {
+      const canAccess = await AccessControlService.canAccessInspection(user, inspectionId);
+      if (!canAccess) {
+        return res.status(403).json({ error: 'Permission denied: Cannot delete inspection outside your team.' });
+      }
+    }
+
     // Unlink photos
     await prisma.photo.updateMany({
       where: { inspectionId },

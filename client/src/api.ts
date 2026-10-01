@@ -47,8 +47,8 @@ export const processDocument = (id: string) => api.post(`/documents/${id}/proces
 export const deleteDocument = (id: string) => api.delete(`/documents/${id}`);
 
 // Inspections
-export const getInspections = (projectId?: string) =>
-  api.get('/inspections', { params: { projectId } });
+export const getInspections = (projectId?: string, inspectorId?: string) =>
+  api.get('/inspections', { params: { ...(projectId ? { projectId } : {}), ...(inspectorId ? { inspectorId } : {}) } });
 export const createInspection = (data: any) => api.post('/inspections', data);
 export const getInspection = (id: string) => api.get(`/inspections/${id}`);
 export const updateInspection = (id: string, data: any) => api.put(`/inspections/${id}`, data);
@@ -131,3 +131,18 @@ export const getSystemStatus = () => api.get('/admin/system-status');
 export const checkServerVersion = () => api.get('/admin/version');
 export const sendHeartbeat = (data: any) => api.post('/admin/heartbeat', data);
 export const getOnlineUsers = () => api.get('/admin/online-users');
+
+// User & Hierarchy Management
+export const getUsers = () => api.get('/users');
+export const getManagers = () => api.get('/users/managers');
+export const getUserTree = () => api.get('/users/tree');
+export const createUser = (data: any) => api.post('/users', data);
+export const updateUser = (id: string, data: any) => api.put(`/users/${id}`, data);
+export const deleteUser = (id: string) => api.delete(`/users/${id}`);
+
+// Project Members / Staff Assignment
+export const getProjectMembers = (projectId: string) => api.get(`/projects/${projectId}/members`);
+export const addProjectMember = (projectId: string, userId: string) =>
+  api.post(`/projects/${projectId}/members`, { userId });
+export const removeProjectMember = (projectId: string, userId: string) =>
+  api.delete(`/projects/${projectId}/members/${userId}`);
