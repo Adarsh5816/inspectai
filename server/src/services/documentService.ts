@@ -126,6 +126,9 @@ export class DocumentService {
       } else if (documentType === 'CALIBRATION_CERTIFICATE') {
         extractedData = this.parseCalibration(rawText);
         confidence = 0.88;
+      } else if (documentType === 'OFFER_LIST' || documentType === 'OFFER_LETTER') {
+        extractedData = this.parseOfferList(rawText);
+        confidence = 0.95;
       } else {
         extractedData = {
           documentType,
@@ -164,6 +167,7 @@ export class DocumentService {
     if (documentType === 'RFI') return this.parseRFI(rawText);
     if (documentType === 'ITP') return this.parseITP(rawText);
     if (documentType === 'CALIBRATION_CERTIFICATE') return this.parseCalibration(rawText);
+    if (documentType === 'OFFER_LIST' || documentType === 'OFFER_LETTER') return this.parseOfferList(rawText);
     return { rawText };
   }
 
@@ -473,6 +477,184 @@ export class DocumentService {
       result.calibrationDate = dates[0];
       if (dates.length > 1) result.expiryDate = dates[dates.length - 1];
     }
+
+    return result;
+  }
+
+  /**
+   * Parse customer offer list / letter to identify offered items and inspection activities
+   */
+  public parseOfferList(text: string, existingItems: any[] = [], existingActivities: any[] = []): any {
+    const result: any = {
+      documentType: 'OFFER_LIST',
+      matchedItemIds: [] as string[],
+      matchedItems: [] as any[],
+      omittedItemIds: [] as string[],
+      omittedItems: [] as any[],
+      newItems: [] as any[],
+      matchedActivityIds: [] as string[],
+      matchedActivities: [] as any[],
+      omittedActivityIds: [] as string[],
+      omittedActivities: [] as any[],
+      newActivities: [] as any[],
+      offeredTags: [] as string[],
+      offeredClauses: [] as string[],
+      summary: '',
+    };
+
+    const cleanText = text || '';
+    const norm = (s: string) => (s || '').toLowerCase().replace(/[\s\-_()]/g, '');
+
+    // 1. Offer letter reference and date
+    const refMatch = cleanText.match(/(?:Offer\s*(?:Ref|Letter|No|Number)?|Ref\s*No[.:]*)\s*([A-Za-z0-9\-_/]+)/i);
+    if (refMatch) result.offerReference = refMatch[1].trim();
+
+    const dateMatch = cleanText.match(/(?:Offer\s*Date|Date[.:]*\s*)\s*(\d{1,2}(?:st|nd|rd|th)?[\s\-\/]+[A-Za-z0-9]+[\s\-\/]+\d{2,4})/i);
+    if (dateMatch) result.offerDate = dateMatch[1].trim();
+
+    // 2. Identify candidate tags in the offer text
+    const months = /(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i;
+    const isCandidateTag = (s: string) => {
+      if (!s || s.length < 5 || s.length > 40) return false;
+      if (/^(?:rfi|itp|po|project|item|sl|rev|qap|iso|vendor|p30)/i.test(s)) return false;
+      if (months.test(s)) return false;
+      if (s.endsWith('-') || s.startsWith('-')) return false;
+      if (!/[a-z]{2,}/i.test(s)) return false;
+      return /^\d{2}-\d{2}-[A-Za-z0-9\-]+$/.test(s) || /^\d{2}-[A-Za-z]{2,5}-[A-Za-z0-9\-]+$/.test(s);
+    };
+
+    // Extract tags from text lines or words
+    const detectedTags: string[] = [];
+    const tagMatches = cleanText.match(/\b(\d{2}-\d{2}-[A-Za-z0-9\-]+|\d{2}-[A-Za-z]{2,5}-[A-Za-z0-9\-]+)\b/g) || [];
+    for (const tm of tagMatches) {
+      const cleanTag = tm.trim();
+      if (isCandidateTag(cleanTag) && !detectedTags.includes(cleanTag)) {
+        detectedTags.push(cleanTag);
+      }
+    }
+
+    // 3. Match against existing inspection items
+    const matchedItemIds = new Set<string>();
+
+    for (const item of existingItems) {
+      let isOffered = false;
+
+      // Check tag match
+      if (item.tagNumber) {
+        const itemTagNorm = norm(item.tagNumber);
+        if (detectedTags.some(t => norm(t) === itemTagNorm)) {
+          isOffered = true;
+        } else if (cleanText.toLowerCase().includes(item.tagNumber.toLowerCase())) {
+          isOffered = true;
+        }
+      }
+
+      // Check serial number match (min 4 chars)
+      if (!isOffered && item.serialNumber && item.serialNumber.length >= 4) {
+        const serialRegex = new RegExp(`\\b${item.serialNumber.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'i');
+        if (serialRegex.test(cleanText)) {
+          isOffered = true;
+        }
+      }
+
+      // Check PO Item No match (e.g. "PO SL No: 1" or "PO Item: '79" or "Item 1")
+      if (!isOffered && item.poItemNo) {
+        const cleanPo = item.poItemNo.replace(/['"`]/g, '').trim();
+        if (cleanPo) {
+          const poRegex = new RegExp(`(?:PO\\s*(?:SL|Item|No)?|Item)\\s*[:#.]*\\s*['"]?${cleanPo}['"]?\\b`, 'i');
+          if (poRegex.test(cleanText)) {
+            isOffered = true;
+          }
+        }
+      }
+
+      if (isOffered) {
+        matchedItemIds.add(item.id);
+        result.matchedItems.push(item);
+        if (item.tagNumber && !result.offeredTags.includes(item.tagNumber)) {
+          result.offeredTags.push(item.tagNumber);
+        }
+      } else {
+        result.omittedItems.push(item);
+      }
+    }
+
+    result.matchedItemIds = Array.from(matchedItemIds);
+    result.omittedItemIds = result.omittedItems.map((i: any) => i.id);
+
+    // Any detected tags that are NOT in existing items
+    for (const dt of detectedTags) {
+      if (!existingItems.some((i: any) => norm(i.tagNumber) === norm(dt))) {
+        result.newItems.push({
+          tagNumber: dt,
+          itemName: 'Control Valve',
+          presentedQty: 1,
+          orderedQty: 1,
+        });
+        if (!result.offeredTags.includes(dt)) result.offeredTags.push(dt);
+      }
+    }
+
+    // 4. Identify candidate clauses in offer text (e.g. 4.1(a), 4.1 (a), 7.1, 8.13)
+    const clauseRegex = /\b(\d+\.\d+(?:\s*\([a-z]\))?)\b/gi;
+    const detectedClauses: string[] = [];
+    let cm;
+    while ((cm = clauseRegex.exec(cleanText)) !== null) {
+      const c = cm[1].replace(/\s+/g, '');
+      if (!detectedClauses.includes(c)) detectedClauses.push(c);
+    }
+
+    // 5. Match against existing inspection activities
+    const matchedActIds = new Set<string>();
+
+    for (const act of existingActivities) {
+      let isOffered = false;
+      const actClauseNorm = (act.clauseNumber || '').replace(/\s+/g, '').toLowerCase();
+
+      // Check clause match
+      if (actClauseNorm) {
+        if (detectedClauses.some(c => c.toLowerCase() === actClauseNorm)) {
+          isOffered = true;
+        } else {
+          // Check base clause e.g. "4.1" if act is "4.1(a)"
+          const baseClause = actClauseNorm.replace(/\([a-z]\)/, '');
+          if (baseClause && detectedClauses.some(c => c.toLowerCase() === baseClause)) {
+            isOffered = true;
+          }
+        }
+      }
+
+      // Check activity name keywords in offer text
+      if (!isOffered && act.activityName && act.activityName.length > 5) {
+        const keywords = act.activityName
+          .split(/[-–,/()]/)
+          .map((k: string) => k.trim())
+          .filter((k: string) => k.length >= 6 && !/^(conform|approved|project|specification|general|standard)/i.test(k));
+
+        for (const kw of keywords) {
+          if (cleanText.toLowerCase().includes(kw.toLowerCase())) {
+            isOffered = true;
+            break;
+          }
+        }
+      }
+
+      if (isOffered) {
+        matchedActIds.add(act.id);
+        result.matchedActivities.push(act);
+        if (act.clauseNumber && !result.offeredClauses.includes(act.clauseNumber)) {
+          result.offeredClauses.push(act.clauseNumber);
+        }
+      } else {
+        result.omittedActivities.push(act);
+      }
+    }
+
+    result.matchedActivityIds = Array.from(matchedActIds);
+    result.omittedActivityIds = result.omittedActivities.map((a: any) => a.id);
+
+    // Summary description
+    result.summary = `Auto-selected ${result.matchedItemIds.length} item(s) and ${result.matchedActivityIds.length} activity/activities from offer letter.`;
 
     return result;
   }

@@ -31,6 +31,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       documentType = 'OTHER';
       if (filename.includes('rfi')) documentType = 'RFI';
       else if (filename.includes('itp') || filename.includes('inspection and test plan')) documentType = 'ITP';
+      else if (filename.includes('offer')) documentType = 'OFFER_LIST';
       else if (filename.includes('calibration') || filename.includes('certificate')) documentType = 'CALIBRATION_CERTIFICATE';
       else if (filename.includes('datasheet')) documentType = 'DATASHEET';
       else if (filename.includes('gad') || filename.includes('drawing')) documentType = 'GAD';

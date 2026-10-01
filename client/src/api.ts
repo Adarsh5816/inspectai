@@ -61,6 +61,14 @@ export const recallRFI = (inspectionId: string, options?: { documentId?: string;
   api.post(`/inspections/${inspectionId}/recall-rfi`, options || {});
 export const saveDailyChecklist = (inspectionId: string, entries: any[]) =>
   api.post(`/inspections/${inspectionId}/daily-checklist`, { entries });
+export const parseOfferList = (inspectionId: string, data: FormData | { documentId?: string; offerText?: string; offerReference?: string }) => {
+  if (data instanceof FormData) {
+    return api.post(`/inspections/${inspectionId}/parse-offer-list`, data, { headers: { 'Content-Type': 'multipart/form-data' } });
+  }
+  return api.post(`/inspections/${inspectionId}/parse-offer-list`, data);
+};
+export const applyOfferList = (inspectionId: string, data: any) =>
+  api.post(`/inspections/${inspectionId}/apply-offer-list`, data);
 
 // Items
 export const addItem = (data: any) => api.post('/inspections/items', data);

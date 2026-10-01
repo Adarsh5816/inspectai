@@ -1,9 +1,21 @@
 import { Router } from 'express';
 import path from 'path';
+import fs from 'fs';
+import multer from 'multer';
 import prisma from '../db/prisma';
 import { DocumentService } from '../services/documentService';
 
 const router = Router();
+const storageDir = process.env.STORAGE_DIR || path.resolve(__dirname, '../../../storage');
+const docsDir = path.join(storageDir, 'documents');
+if (!fs.existsSync(docsDir)) fs.mkdirSync(docsDir, { recursive: true });
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: docsDir,
+    filename: (_, file, cb) => cb(null, `${Date.now()}-${file.originalname.replace(/\s+/g, '_')}`),
+  }),
+});
 
 // GET all inspections (optionally filter by projectId)
 router.get('/', async (req, res) => {
@@ -14,6 +26,9 @@ router.get('/', async (req, res) => {
       where,
       include: {
         project: true,
+        rfiDocument: true,
+        itpDocument: true,
+        offerDocument: true,
         items: true,
         activities: true,
         results: { include: { item: true, activity: true } },
@@ -39,6 +54,7 @@ router.get('/:id', async (req, res) => {
         project: true,
         rfiDocument: true,
         itpDocument: true,
+        offerDocument: true,
         items: true,
         activities: true,
         results: { include: { item: true, activity: true } },
@@ -760,6 +776,212 @@ router.post('/:id/auto-instruments', async (req, res) => {
     res.json({ success: true, inspection: updated });
   } catch (err: any) {
     console.error('Auto instruments error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---- PARSE CUSTOMER OFFER LIST / LETTER ----
+router.post('/:id/parse-offer-list', upload.single('file'), async (req, res) => {
+  try {
+    const inspectionId = req.params.id;
+    const inspection = await prisma.inspection.findUnique({
+      where: { id: inspectionId },
+      include: { items: true, activities: true, project: true },
+    });
+    if (!inspection) return res.status(404).json({ error: 'Inspection not found' });
+
+    let rawText = '';
+    let documentId = req.body.documentId;
+
+    const docService = new DocumentService();
+
+    if (req.file) {
+      // User uploaded a new offer list file
+      const doc = await prisma.document.create({
+        data: {
+          projectId: inspection.projectId,
+          documentType: 'OFFER_LIST',
+          title: req.file.originalname,
+          originalFilename: req.file.originalname,
+          storageKey: req.file.path,
+          mimeType: req.file.mimetype,
+          fileSizeBytes: req.file.size,
+        },
+      });
+      documentId = doc.id;
+      const extracted = await docService.extractTextFromFile(req.file.path);
+      rawText = extracted.rawText;
+    } else if (documentId) {
+      // User picked an existing document
+      const doc = await prisma.document.findUnique({ where: { id: documentId } });
+      if (!doc) return res.status(404).json({ error: 'Document not found' });
+      const extracted = await docService.extractTextFromFile(path.resolve(doc.storageKey));
+      rawText = extracted.rawText;
+    } else if (req.body.offerText) {
+      // User pasted text directly
+      rawText = String(req.body.offerText);
+    } else {
+      return res.status(400).json({ error: 'Please upload a file, select a document, or paste the offer text.' });
+    }
+
+    const parseResult = docService.parseOfferList(rawText, inspection.items, inspection.activities);
+
+    res.json({
+      success: true,
+      documentId,
+      ...parseResult,
+      rawTextSnippet: rawText.substring(0, 1500),
+    });
+  } catch (err: any) {
+    console.error('Parse offer list error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---- APPLY OFFER LIST (AUTO-SELECT ITEMS & ACTIVITIES) ----
+router.post('/:id/apply-offer-list', async (req, res) => {
+  try {
+    const inspectionId = req.params.id;
+    const {
+      documentId,
+      offerReference,
+      selectedItemIds, // array of item IDs to mark offered (presentedQty: 1)
+      selectedActivityIds, // array of activity IDs to mark active/offered
+      newItems, // optional array of new items to add: [{ tagNumber, itemName, poItemNo, serialNumber }]
+      newActivities, // optional array of new activities: [{ clauseNumber, activityName, acceptanceCriteria }]
+    } = req.body;
+
+    const inspection = await prisma.inspection.findUnique({
+      where: { id: inspectionId },
+      include: { items: true, activities: true },
+    });
+    if (!inspection) return res.status(404).json({ error: 'Inspection not found' });
+
+    // 1. Update Existing Items: Auto-select offered vs omitted
+    let offeredItemCount = 0;
+    let omittedItemCount = 0;
+
+    if (Array.isArray(selectedItemIds)) {
+      const selectedSet = new Set(selectedItemIds);
+      for (const item of inspection.items) {
+        const isOffered = selectedSet.has(item.id);
+        const newQty = isOffered ? 1 : 0;
+        if (item.presentedQty !== newQty) {
+          await prisma.inspectionItem.update({
+            where: { id: item.id },
+            data: { presentedQty: newQty },
+          });
+        }
+        if (isOffered) offeredItemCount++;
+        else omittedItemCount++;
+      }
+    }
+
+    // 1b. Create New Items if specified
+    if (Array.isArray(newItems) && newItems.length > 0) {
+      for (const ni of newItems) {
+        if (!ni.tagNumber) continue;
+        const exists = inspection.items.some(i => i.tagNumber === ni.tagNumber);
+        if (!exists) {
+          await prisma.inspectionItem.create({
+            data: {
+              inspectionId,
+              tagNumber: ni.tagNumber,
+              itemName: ni.itemName || 'Control Valve',
+              poItemNo: ni.poItemNo || "'1",
+              serialNumber: ni.serialNumber || '',
+              jobNo: ni.jobNo || '',
+              sizeInch: ni.sizeInch || "24''",
+              rating: ni.rating || 'ASME #600 RF',
+              bodyMaterial: ni.bodyMaterial || 'Gr WCC',
+              orderedQty: 1,
+              presentedQty: 1,
+              acceptedThisVisit: 1,
+              acceptedToDate: 1,
+            },
+          });
+          offeredItemCount++;
+        }
+      }
+    }
+
+    // 2. Update Activities: Auto-select offered activities
+    let selectedActCount = 0;
+    if (Array.isArray(selectedActivityIds)) {
+      const actSet = new Set(selectedActivityIds);
+      for (const act of inspection.activities) {
+        const isSelected = actSet.has(act.id);
+        if (isSelected) {
+          await prisma.inspectionActivity.update({
+            where: { id: act.id },
+            data: {
+              isMandatoryInRFI: true,
+              status: act.status === 'PENDING' ? 'ACCEPTABLE' : act.status,
+            },
+          });
+          selectedActCount++;
+        }
+      }
+    }
+
+    // 2b. Create New Activities if specified
+    if (Array.isArray(newActivities) && newActivities.length > 0) {
+      for (const na of newActivities) {
+        if (!na.clauseNumber) continue;
+        const exists = inspection.activities.some(a => a.clauseNumber === na.clauseNumber);
+        if (!exists) {
+          await prisma.inspectionActivity.create({
+            data: {
+              inspectionId,
+              clauseNumber: na.clauseNumber,
+              activityName: na.activityName || `Clause ${na.clauseNumber}`,
+              acceptanceCriteria: na.acceptanceCriteria || 'Conform to approved ITP & project specifications',
+              interventionTPIA: 'W',
+              status: 'ACCEPTABLE',
+              isMandatoryInRFI: true,
+            },
+          });
+          selectedActCount++;
+        }
+      }
+    }
+
+    // 3. Update Inspection metadata with offer reference and document link
+    await prisma.inspection.update({
+      where: { id: inspectionId },
+      data: {
+        ...(documentId && { offerDocumentId: documentId }),
+        ...(offerReference && { offerReference }),
+      },
+    });
+
+    const updated = await prisma.inspection.findUnique({
+      where: { id: inspectionId },
+      include: {
+        project: true,
+        rfiDocument: true,
+        itpDocument: true,
+        offerDocument: true,
+        items: true,
+        activities: true,
+        results: { include: { item: true, activity: true } },
+        attendees: true,
+        photos: true,
+        observations: true,
+        instruments: true,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: `Successfully applied customer offer list: ${offeredItemCount} items offered (${omittedItemCount} omitted), ${selectedActCount} activities auto-selected.`,
+      offeredItemCount,
+      omittedItemCount,
+      selectedActCount,
+      inspection: updated,
+    });
+  } catch (err: any) {
+    console.error('Apply offer list error:', err);
     res.status(500).json({ error: err.message });
   }
 });

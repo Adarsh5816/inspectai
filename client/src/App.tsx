@@ -607,6 +607,10 @@ function InspectionWorkspacePage() {
   const [importingItp, setImportingItp] = useState(false);
   const [recallingRfi, setRecallingRfi] = useState(false);
 
+  // Customer Offer List state
+  const [showOfferModal, setShowOfferModal] = useState(false);
+  const [offerDocs, setOfferDocs] = useState<any[]>([]);
+
   const load = useCallback(() => {
     if (!id) return;
     API.getInspection(id).then(r => setInspection(r.data)).catch(() => {});
@@ -640,6 +644,17 @@ function InspectionWorkspacePage() {
       });
       setItpDocs(sorted);
       setShowItpModal(true);
+    } catch {
+      alert('Failed to load project documents');
+    }
+  };
+
+  const loadOfferDocuments = async () => {
+    if (!inspection?.projectId) return;
+    try {
+      const res = await API.getDocuments(inspection.projectId);
+      setOfferDocs(res.data || []);
+      setShowOfferModal(true);
     } catch {
       alert('Failed to load project documents');
     }
@@ -764,9 +779,9 @@ function InspectionWorkspacePage() {
         </button>
       </div>
 
-      {/* Progress / Info bar with Linked RFI and Linked ITP */}
+      {/* Progress / Info bar with Linked RFI, ITP, and Customer Offer List */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4 shadow-xs">
-        <div className="grid grid-cols-2 md:grid-cols-7 gap-3 text-sm items-center">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 text-sm items-center">
           <div><span className="text-slate-500">Project:</span> <span className="font-medium">{inspection.project?.projectNumber}</span></div>
           <div><span className="text-slate-500">Type:</span> <span className="font-medium">{inspection.inspectionType}</span></div>
           <div><span className="text-slate-500">Date:</span> <span className="font-medium">{new Date(inspection.startDate).toLocaleDateString()}</span></div>
@@ -776,7 +791,7 @@ function InspectionWorkspacePage() {
             <span className="text-slate-500 block text-xs">Linked RFI:</span>{' '}
             {inspection.rfiDocument ? (
               <div className="inline-flex items-center gap-1.5 mt-0.5">
-                <span className="font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded text-xs truncate max-w-[110px]" title={inspection.rfiDocument.originalFilename}>
+                <span className="font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded text-xs truncate max-w-[100px]" title={inspection.rfiDocument.originalFilename}>
                   📄 {inspection.rfiDocument.originalFilename}
                 </span>
                 <button onClick={loadRfiDocuments} className="text-blue-600 hover:text-blue-800 text-[11px] underline" title="Change RFI">Change</button>
@@ -791,7 +806,7 @@ function InspectionWorkspacePage() {
             <span className="text-slate-500 block text-xs">Linked ITP:</span>{' '}
             {inspection.itpDocument ? (
               <div className="inline-flex items-center gap-1.5 mt-0.5">
-                <span className="font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-xs truncate max-w-[110px]" title={inspection.itpDocument.originalFilename}>
+                <span className="font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-xs truncate max-w-[100px]" title={inspection.itpDocument.originalFilename}>
                   📋 {inspection.itpDocument.originalFilename}
                 </span>
                 <button onClick={loadItpDocuments} className="text-emerald-700 hover:text-emerald-900 text-[11px] underline" title="Change ITP">Change</button>
@@ -799,6 +814,21 @@ function InspectionWorkspacePage() {
             ) : (
               <button onClick={loadItpDocuments} className="text-emerald-600 hover:text-emerald-800 text-xs font-semibold underline mt-0.5 block">
                 + Upload/Link ITP
+              </button>
+            )}
+          </div>
+          <div>
+            <span className="text-slate-500 block text-xs">Offer List:</span>{' '}
+            {inspection.offerDocument || inspection.offerReference ? (
+              <div className="inline-flex items-center gap-1.5 mt-0.5">
+                <span className="font-medium text-purple-700 bg-purple-50 px-2 py-0.5 rounded text-xs truncate max-w-[100px]" title={inspection.offerDocument?.originalFilename || inspection.offerReference}>
+                  📜 {inspection.offerDocument?.originalFilename || inspection.offerReference}
+                </span>
+                <button onClick={loadOfferDocuments} className="text-purple-700 hover:text-purple-900 text-[11px] underline" title="Change Offer List">Change</button>
+              </div>
+            ) : (
+              <button onClick={loadOfferDocuments} className="text-purple-600 hover:text-purple-800 text-xs font-semibold underline mt-0.5 block">
+                + Add Offer List
               </button>
             )}
           </div>
@@ -820,9 +850,9 @@ function InspectionWorkspacePage() {
         {activeTab === 'overview' && <OverviewTab inspection={inspection} onValidate={async () => {
           const r = await API.validateInspection(id!);
           setValidation(r.data);
-        }} validation={validation} onOpenRfiModal={loadRfiDocuments} onOpenItpModal={loadItpDocuments} onRecallRfi={handleRecallRfi} recallingRfi={recallingRfi} />}
-        {activeTab === 'items' && <ItemsTab inspection={inspection} onReload={load} onOpenRfiModal={loadRfiDocuments} onRecallRfi={handleRecallRfi} recallingRfi={recallingRfi} />}
-        {activeTab === 'activities' && <ActivitiesTab inspection={inspection} onReload={load} onOpenRfiModal={loadRfiDocuments} onOpenItpModal={loadItpDocuments} />}
+        }} validation={validation} onOpenRfiModal={loadRfiDocuments} onOpenItpModal={loadItpDocuments} onOpenOfferModal={loadOfferDocuments} onRecallRfi={handleRecallRfi} recallingRfi={recallingRfi} />}
+        {activeTab === 'items' && <ItemsTab inspection={inspection} onReload={load} onOpenRfiModal={loadRfiDocuments} onOpenOfferModal={loadOfferDocuments} onRecallRfi={handleRecallRfi} recallingRfi={recallingRfi} />}
+        {activeTab === 'activities' && <ActivitiesTab inspection={inspection} onReload={load} onOpenRfiModal={loadRfiDocuments} onOpenItpModal={loadItpDocuments} onOpenOfferModal={loadOfferDocuments} />}
         {activeTab === 'results' && <ResultsTab inspection={inspection} onReload={load} />}
         {activeTab === 'instruments' && <InstrumentsTab inspection={inspection} onReload={load} />}
         {activeTab === 'attendees' && <AttendeesTab inspection={inspection} onReload={load} />}
@@ -948,12 +978,625 @@ function InspectionWorkspacePage() {
           </div>
         </div>
       )}
+
+      {/* Customer Offer List Modal */}
+      <OfferListModal
+        inspection={inspection}
+        offerDocs={offerDocs}
+        isOpen={showOfferModal}
+        onClose={() => setShowOfferModal(false)}
+        onReload={load}
+      />
+    </div>
+  );
+}
+
+// Modal: Customer Offer List & Auto-Selection
+function OfferListModal({ inspection, offerDocs, isOpen, onClose, onReload }: { inspection: any; offerDocs: any[]; isOpen: boolean; onClose: () => void; onReload: () => void }) {
+  if (!isOpen) return null;
+
+  const [inputMode, setInputMode] = useState<'upload' | 'paste' | 'existing'>('upload');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [pastedText, setPastedText] = useState('');
+  const [selectedDocId, setSelectedDocId] = useState('');
+  const [offerReference, setOfferReference] = useState(inspection.offerReference || '');
+  
+  const [analyzing, setAnalyzing] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [parseResult, setParseResult] = useState<any | null>(null);
+
+  // Selection states
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+  const [selectedActivityIds, setSelectedActivityIds] = useState<Set<string>>(new Set());
+  const [addNewItems, setAddNewItems] = useState(true);
+  const [addNewActivities, setAddNewActivities] = useState(true);
+  const [activeTab, setActiveTab] = useState<'items' | 'activities'>('items');
+  const [itemSearch, setItemSearch] = useState('');
+  const [actSearch, setActSearch] = useState('');
+
+  const allItems = inspection.items || [];
+  const allActivities = inspection.activities || [];
+
+  const handleAnalyze = async () => {
+    if (inputMode === 'upload' && !selectedFile) {
+      alert('Please select a file to upload and analyze.');
+      return;
+    }
+    if (inputMode === 'paste' && !pastedText.trim()) {
+      alert('Please paste customer offer letter text.');
+      return;
+    }
+    if (inputMode === 'existing' && !selectedDocId) {
+      alert('Please select an existing document from the project.');
+      return;
+    }
+
+    setAnalyzing(true);
+    setParseResult(null);
+
+    try {
+      let res;
+      if (inputMode === 'upload' && selectedFile) {
+        const fd = new FormData();
+        fd.append('file', selectedFile);
+        if (inspection.projectId) fd.append('projectId', inspection.projectId);
+        if (offerReference) fd.append('offerReference', offerReference);
+        res = await API.parseOfferList(inspection.id, fd);
+      } else if (inputMode === 'paste') {
+        res = await API.parseOfferList(inspection.id, {
+          offerText: pastedText,
+          offerReference,
+        });
+      } else {
+        res = await API.parseOfferList(inspection.id, {
+          documentId: selectedDocId,
+          offerReference,
+        });
+      }
+
+      const data = res.data;
+      setParseResult(data);
+      if (data.matchedItemIds) {
+        setSelectedItemIds(new Set(data.matchedItemIds));
+      }
+      if (data.matchedActivityIds) {
+        setSelectedActivityIds(new Set(data.matchedActivityIds));
+      }
+      if (!offerReference && data.offerReference) {
+        setOfferReference(data.offerReference);
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to analyze offer list');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const handleApply = async () => {
+    setApplying(true);
+    try {
+      const payload: any = {
+        documentId: parseResult?.documentId || (inputMode === 'existing' ? selectedDocId : undefined),
+        offerReference: offerReference || (selectedFile?.name) || 'Customer Offer List',
+        selectedItemIds: Array.from(selectedItemIds),
+        selectedActivityIds: Array.from(selectedActivityIds),
+      };
+
+      if (addNewItems && parseResult?.newItems?.length > 0) {
+        payload.newItems = parseResult.newItems;
+      }
+      if (addNewActivities && parseResult?.newActivities?.length > 0) {
+        payload.newActivities = parseResult.newActivities;
+      }
+
+      const res = await API.applyOfferList(inspection.id, payload);
+      alert(res.data.message || 'Successfully applied offer list selections!');
+      onReload();
+      onClose();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to apply offer list');
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const toggleItem = (id: string) => {
+    setSelectedItemIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleActivity = (id: string) => {
+    setSelectedActivityIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllMatchedItems = () => {
+    if (parseResult?.matchedItemIds) {
+      setSelectedItemIds(new Set(parseResult.matchedItemIds));
+    }
+  };
+
+  const selectAllItems = () => {
+    setSelectedItemIds(new Set(allItems.map((i: any) => i.id)));
+  };
+
+  const deselectAllItems = () => {
+    setSelectedItemIds(new Set());
+  };
+
+  const selectAllMatchedActivities = () => {
+    if (parseResult?.matchedActivityIds) {
+      setSelectedActivityIds(new Set(parseResult.matchedActivityIds));
+    }
+  };
+
+  const selectAllActivities = () => {
+    setSelectedActivityIds(new Set(allActivities.map((a: any) => a.id)));
+  };
+
+  const deselectAllActivities = () => {
+    setSelectedActivityIds(new Set());
+  };
+
+  // Filtered lists
+  const filteredItems = allItems.filter((i: any) => {
+    if (!itemSearch) return true;
+    const q = itemSearch.toLowerCase();
+    return (
+      (i.tagNumber || '').toLowerCase().includes(q) ||
+      (i.serialNumber || '').toLowerCase().includes(q) ||
+      (i.poItemNo || '').toLowerCase().includes(q) ||
+      (i.itemName || '').toLowerCase().includes(q)
+    );
+  });
+
+  const filteredActivities = allActivities.filter((a: any) => {
+    if (!actSearch) return true;
+    const q = actSearch.toLowerCase();
+    return (
+      (a.clauseNumber || '').toLowerCase().includes(q) ||
+      (a.activityName || '').toLowerCase().includes(q)
+    );
+  });
+
+  const offeredCount = selectedItemIds.size;
+  const omittedCount = allItems.length - offeredCount;
+  const matchedActCount = selectedActivityIds.size;
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+        {/* Header */}
+        <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-purple-50 via-white to-indigo-50">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center text-lg font-bold shadow-sm">
+              📜
+            </div>
+            <div>
+              <h3 className="font-bold text-lg text-slate-800">Customer Offer List &amp; Auto-Selection</h3>
+              <p className="text-xs text-slate-500">Auto-detect and select offered valves and scope activities from customer offer letter</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 font-bold p-1 rounded-lg hover:bg-slate-100 transition">✕</button>
+        </div>
+
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Step 1: Input method tabs */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                1. Provide Offer Letter / Scope
+              </label>
+              <div className="flex rounded-lg border border-slate-200 p-0.5 bg-slate-50">
+                <button
+                  type="button"
+                  onClick={() => setInputMode('upload')}
+                  className={`px-3 py-1 text-xs font-semibold rounded-md transition ${inputMode === 'upload' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                  📤 Upload File
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInputMode('paste')}
+                  className={`px-3 py-1 text-xs font-semibold rounded-md transition ${inputMode === 'paste' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                  📝 Paste Text
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInputMode('existing')}
+                  className={`px-3 py-1 text-xs font-semibold rounded-md transition ${inputMode === 'existing' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                  📁 Existing Doc
+                </button>
+              </div>
+            </div>
+
+            {inputMode === 'upload' && (
+              <div className="border-2 border-dashed border-purple-200 rounded-xl p-5 text-center bg-purple-50/20 hover:bg-purple-50/40 transition">
+                <input
+                  type="file"
+                  id="offer-file-input"
+                  accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.txt"
+                  onChange={e => setSelectedFile(e.target.files?.[0] || null)}
+                  className="hidden"
+                />
+                <label htmlFor="offer-file-input" className="cursor-pointer block space-y-2">
+                  <div className="text-3xl">📄</div>
+                  {selectedFile ? (
+                    <div>
+                      <p className="text-sm font-bold text-purple-700">{selectedFile.name}</p>
+                      <p className="text-xs text-slate-500">{(selectedFile.size / 1024).toFixed(1)} KB — Click to change file</p>
+                    </div>
+                  ) : (
+                    <div>
+                      <p className="text-sm font-semibold text-purple-800">Click to select customer offer letter</p>
+                      <p className="text-xs text-slate-400 mt-1">Supports PDF, DOCX, XLSX, XLS, CSV, or TXT</p>
+                    </div>
+                  )}
+                </label>
+              </div>
+            )}
+
+            {inputMode === 'paste' && (
+              <div className="space-y-1">
+                <textarea
+                  value={pastedText}
+                  onChange={e => setPastedText(e.target.value)}
+                  rows={6}
+                  placeholder={`Paste customer offer email, letter text, or schedule here...\n\nExample:\nWe offer following control valves for inspection on 26/09/2026:\nItem 1: 14-01-FCV-1601-01A (SL # 25009567)\nItem 2: 14-01-FCV-1601-01B (SL # 25009568)\nScope of testing:\nClause 4.1(a) Hydrostatic test\nClause 4.2(b) Seat leakage test`}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm font-mono focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
+                />
+                <p className="text-xs text-slate-400">The intelligent parser will extract valve tags, serial numbers, PO items, and ITP clause numbers directly from this text.</p>
+              </div>
+            )}
+
+            {inputMode === 'existing' && (
+              <div className="space-y-2 max-h-48 overflow-y-auto border border-slate-200 rounded-xl p-2 bg-slate-50">
+                {offerDocs.length === 0 ? (
+                  <p className="text-center text-xs text-slate-500 py-4">No documents found in project. Switch to Upload or Paste.</p>
+                ) : (
+                  offerDocs.map((doc: any) => {
+                    const isSelected = selectedDocId === doc.id;
+                    const isOffer = (doc.documentType === 'OFFER_LIST' || doc.originalFilename.toLowerCase().includes('offer'));
+                    return (
+                      <div
+                        key={doc.id}
+                        onClick={() => setSelectedDocId(doc.id)}
+                        className={`p-3 rounded-lg border cursor-pointer transition flex items-center justify-between ${isSelected ? 'border-purple-600 bg-purple-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+                      >
+                        <div className="min-w-0 mr-2">
+                          <p className="font-semibold text-xs text-slate-800 truncate" title={doc.originalFilename}>
+                            {doc.originalFilename}
+                          </p>
+                          <p className="text-[11px] text-slate-500">{doc.documentType} • {(doc.fileSizeBytes / 1024).toFixed(0)} KB</p>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {isOffer && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700">Offer</span>}
+                          <input type="radio" checked={isSelected} onChange={() => setSelectedDocId(doc.id)} className="text-purple-600" />
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+
+            {/* Offer Reference and Analyze Button */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-3 pt-2">
+              <div className="flex-1">
+                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                  Offer Reference / Subject (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={offerReference}
+                  onChange={e => setOfferReference(e.target.value)}
+                  placeholder="e.g. Email dated 25-09-2026 / Offer Ref # OL-4441"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleAnalyze}
+                disabled={analyzing}
+                className="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2 rounded-lg text-sm font-bold shadow-sm transition disabled:opacity-50 flex items-center justify-center gap-2 whitespace-nowrap"
+              >
+                {analyzing ? (
+                  <>
+                    <span className="animate-spin">⏳</span>
+                    <span>Analyzing Offer Scope...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>🔍</span>
+                    <span>Analyze Offer List</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Step 2: Analysis Results & Fine-Tuning */}
+          {parseResult && (
+            <div className="space-y-4 pt-4 border-t border-slate-200">
+              {/* Highlight summary cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl">
+                  <span className="text-xs text-purple-600 font-bold block">Offered Items</span>
+                  <span className="text-xl font-bold text-purple-900">{offeredCount} of {allItems.length}</span>
+                  <span className="text-[11px] text-purple-700 block mt-0.5">({omittedCount} will be omitted)</span>
+                </div>
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                  <span className="text-xs text-emerald-600 font-bold block">Checklist Activities</span>
+                  <span className="text-xl font-bold text-emerald-900">{matchedActCount} of {allActivities.length}</span>
+                  <span className="text-[11px] text-emerald-700 block mt-0.5">Offered in scope</span>
+                </div>
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
+                  <span className="text-xs text-blue-600 font-bold block">Tags in Offer</span>
+                  <span className="text-xl font-bold text-blue-900">{parseResult.offeredTags?.length || 0}</span>
+                  <span className="text-[11px] text-blue-700 block mt-0.5">Identified from document</span>
+                </div>
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                  <span className="text-xs text-amber-600 font-bold block">Clauses in Offer</span>
+                  <span className="text-xl font-bold text-amber-900">{parseResult.offeredClauses?.length || 0}</span>
+                  <span className="text-[11px] text-amber-700 block mt-0.5">ITP clauses detected</span>
+                </div>
+              </div>
+
+              {/* Notice if new items detected */}
+              {parseResult.newItems?.length > 0 && (
+                <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900 flex items-center justify-between gap-3">
+                  <div>
+                    <span className="font-bold">✨ {parseResult.newItems.length} New Valve(s) Detected in Offer:</span>{' '}
+                    <span>{parseResult.newItems.map((n: any) => n.tagNumber).join(', ')}</span>
+                  </div>
+                  <label className="flex items-center gap-1.5 cursor-pointer font-bold whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={addNewItems}
+                      onChange={e => setAddNewItems(e.target.checked)}
+                      className="rounded text-indigo-600"
+                    />
+                    <span>Add to inspection</span>
+                  </label>
+                </div>
+              )}
+
+              {/* Notice if new activities detected */}
+              {parseResult.newActivities?.length > 0 && (
+                <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl text-xs text-purple-900 flex items-center justify-between gap-3">
+                  <div>
+                    <span className="font-bold">✨ {parseResult.newActivities.length} New Activity / Clause(s) Detected in Offer:</span>{' '}
+                    <span>{parseResult.newActivities.map((n: any) => `Clause ${n.clauseNumber}`).join(', ')}</span>
+                  </div>
+                  <label className="flex items-center gap-1.5 cursor-pointer font-bold whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={addNewActivities}
+                      onChange={e => setAddNewActivities(e.target.checked)}
+                      className="rounded text-purple-600"
+                    />
+                    <span>Add to inspection</span>
+                  </label>
+                </div>
+              )}
+
+              {/* Selection Tabs */}
+              <div className="space-y-3">
+                <div className="flex border-b border-slate-200 gap-4">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('items')}
+                    className={`pb-2 text-sm font-bold border-b-2 transition ${activeTab === 'items' ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                  >
+                    🔧 Offered Valves / Materials ({offeredCount}/{allItems.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('activities')}
+                    className={`pb-2 text-sm font-bold border-b-2 transition ${activeTab === 'activities' ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                  >
+                    📋 Scope Activities ({matchedActCount}/{allActivities.length})
+                  </button>
+                </div>
+
+                {/* Tab: Items */}
+                {activeTab === 'items' && (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <input
+                        type="text"
+                        placeholder="Search items by tag, serial, PO..."
+                        value={itemSearch}
+                        onChange={e => setItemSearch(e.target.value)}
+                        className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs w-64"
+                      />
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <button
+                          type="button"
+                          onClick={selectAllMatchedItems}
+                          className="px-2.5 py-1 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded-md font-semibold border border-purple-200 transition"
+                        >
+                          Select Matched Only ({parseResult.matchedItemIds?.length || 0})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={selectAllItems}
+                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-semibold transition"
+                        >
+                          Select All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={deselectAllItems}
+                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-semibold transition"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="border border-slate-200 rounded-xl overflow-hidden max-h-60 overflow-y-auto divide-y divide-slate-100">
+                      {filteredItems.length === 0 ? (
+                        <p className="p-4 text-center text-xs text-slate-500">No matching items found.</p>
+                      ) : (
+                        filteredItems.map((item: any) => {
+                          const isOffered = selectedItemIds.has(item.id);
+                          return (
+                            <div
+                              key={item.id}
+                              onClick={() => toggleItem(item.id)}
+                              className={`p-2.5 flex items-center justify-between text-xs cursor-pointer transition ${isOffered ? 'bg-purple-50/40 hover:bg-purple-50/70' : 'bg-white hover:bg-slate-50 opacity-60'}`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <input
+                                  type="checkbox"
+                                  checked={isOffered}
+                                  onChange={() => toggleItem(item.id)}
+                                  className="rounded text-purple-600 focus:ring-purple-500"
+                                />
+                                <div>
+                                  <span className="font-bold text-slate-800 text-xs">{item.tagNumber}</span>
+                                  <span className="text-slate-500 ml-2 font-mono">PO: {item.poItemNo}</span>
+                                  {item.serialNumber && <span className="text-slate-500 ml-2">SN: {item.serialNumber}</span>}
+                                </div>
+                              </div>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isOffered ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'}`}>
+                                {isOffered ? 'Offered this Visit' : 'Omitted (Qty: 0)'}
+                              </span>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Tab: Activities */}
+                {activeTab === 'activities' && (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <input
+                        type="text"
+                        placeholder="Search activities by clause, name..."
+                        value={actSearch}
+                        onChange={e => setActSearch(e.target.value)}
+                        className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs w-64"
+                      />
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <button
+                          type="button"
+                          onClick={selectAllMatchedActivities}
+                          className="px-2.5 py-1 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded-md font-semibold border border-purple-200 transition"
+                        >
+                          Select Matched Only ({parseResult.matchedActivityIds?.length || 0})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={selectAllActivities}
+                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-semibold transition"
+                        >
+                          Select All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={deselectAllActivities}
+                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-semibold transition"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="border border-slate-200 rounded-xl overflow-hidden max-h-60 overflow-y-auto divide-y divide-slate-100">
+                      {filteredActivities.length === 0 ? (
+                        <p className="p-4 text-center text-xs text-slate-500">No matching activities found.</p>
+                      ) : (
+                        filteredActivities.map((act: any) => {
+                          const isSelected = selectedActivityIds.has(act.id);
+                          return (
+                            <div
+                              key={act.id}
+                              onClick={() => toggleActivity(act.id)}
+                              className={`p-2.5 flex items-center justify-between text-xs cursor-pointer transition ${isSelected ? 'bg-purple-50/40 hover:bg-purple-50/70' : 'bg-white hover:bg-slate-50 opacity-60'}`}
+                            >
+                              <div className="flex items-center gap-3 min-w-0 mr-2">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleActivity(act.id)}
+                                  className="rounded text-purple-600 focus:ring-purple-500"
+                                />
+                                <div className="truncate">
+                                  <span className="font-mono font-bold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded text-[11px] mr-2">
+                                    {act.clauseNumber}
+                                  </span>
+                                  <span className="font-medium text-slate-800">{act.activityName}</span>
+                                </div>
+                              </div>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${isSelected ? 'bg-purple-100 text-purple-800' : 'bg-slate-100 text-slate-600'}`}>
+                                {isSelected ? 'In Scope' : 'Omitted'}
+                              </span>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-slate-600 hover:text-slate-800 font-semibold text-sm px-4 py-2"
+          >
+            Cancel
+          </button>
+
+          {parseResult && (
+            <button
+              type="button"
+              onClick={handleApply}
+              disabled={applying}
+              className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-md transition disabled:opacity-50 flex items-center gap-2"
+            >
+              {applying ? (
+                <>
+                  <span className="animate-spin">⏳</span>
+                  <span>Applying Selections...</span>
+                </>
+              ) : (
+                <>
+                  <span>✅</span>
+                  <span>Apply Offer List ({offeredCount} items, {matchedActCount} activities)</span>
+                </>
+              )}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
 // Tab: Overview
-function OverviewTab({ inspection, onValidate, validation, onOpenRfiModal, onOpenItpModal, onRecallRfi, recallingRfi }: any) {
+function OverviewTab({ inspection, onValidate, validation, onOpenRfiModal, onOpenItpModal, onOpenOfferModal, onRecallRfi, recallingRfi }: any) {
   const totalAct = inspection.activities?.length || 0;
   const doneAct = inspection.activities?.filter((a: any) => a.status === 'ACCEPTABLE' || a.status === 'NOT_ACCEPTABLE').length || 0;
   const pct = totalAct > 0 ? Math.round((doneAct / totalAct) * 100) : 0;
@@ -989,9 +1632,15 @@ function OverviewTab({ inspection, onValidate, validation, onOpenRfiModal, onOpe
             >
               {inspection.itpDocument ? '📋 Change ITP' : '📤 Upload / Link ITP'}
             </button>
+            <button
+              onClick={onOpenOfferModal}
+              className="text-xs font-semibold text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-3 py-1.5 rounded-lg shadow-xs transition flex items-center gap-1"
+            >
+              <span>📜</span> {inspection.offerDocument || inspection.offerReference ? 'Change Offer List' : '📜 Customer Offer List'}
+            </button>
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
           <div className="bg-white p-3 rounded-lg border border-slate-200">
             <span className="text-slate-500 font-medium block mb-1">Linked RFI Document</span>
             {inspection.rfiDocument ? (
@@ -1005,6 +1654,14 @@ function OverviewTab({ inspection, onValidate, validation, onOpenRfiModal, onOpe
             <span className="font-semibold text-slate-800">
               {inspection.itpDocument?.originalFilename || inspection.itpNumber || 'CV-L2-4441 QAP R3/SO (Default)'}
             </span>
+          </div>
+          <div className="bg-white p-3 rounded-lg border border-slate-200">
+            <span className="text-slate-500 font-medium block mb-1">Customer Offer List</span>
+            {inspection.offerDocument || inspection.offerReference ? (
+              <span className="font-bold text-purple-700 break-all">{inspection.offerDocument?.originalFilename || inspection.offerReference}</span>
+            ) : (
+              <span className="text-slate-400 italic">None linked</span>
+            )}
           </div>
           <div className="bg-white p-3 rounded-lg border border-slate-200">
             <span className="text-slate-500 font-medium block mb-1">Materials / Scope</span>
@@ -1045,7 +1702,7 @@ function MiniStat({ label, value }: { label: string; value: number }) {
 }
 
 // Tab: Items / Offered Materials
-function ItemsTab({ inspection, onReload, onOpenRfiModal, onRecallRfi, recallingRfi }: any) {
+function ItemsTab({ inspection, onReload, onOpenRfiModal, onOpenOfferModal, onRecallRfi, recallingRfi }: any) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ inspectionId: inspection.id, poItemNo: '', tagNumber: '', serialNumber: '', jobNo: '', itemName: 'Control Valve', sizeInch: '', rating: '', bodyMaterial: '' });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -1147,6 +1804,13 @@ function ItemsTab({ inspection, onReload, onOpenRfiModal, onRecallRfi, recalling
               <span>🗑️</span> Delete Selected ({selectedIds.size})
             </button>
           )}
+          <button
+            onClick={onOpenOfferModal}
+            className="bg-purple-600 hover:bg-purple-700 text-white px-3.5 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5"
+            title="Upload or paste customer offer list to auto-select offered valves and omit un-offered ones"
+          >
+            <span>📜</span> Auto-Select from Offer List
+          </button>
           <button
             onClick={onRecallRfi}
             disabled={recallingRfi}
@@ -1289,7 +1953,7 @@ function ItemsTab({ inspection, onReload, onOpenRfiModal, onRecallRfi, recalling
 }
 
 // Tab: Activities & Daily Checklist
-function ActivitiesTab({ inspection, onReload, onOpenRfiModal, onOpenItpModal }: any) {
+function ActivitiesTab({ inspection, onReload, onOpenRfiModal, onOpenItpModal, onOpenOfferModal }: any) {
   const [showManualForm, setShowManualForm] = useState(false);
   const [manualForm, setManualForm] = useState({ inspectionId: inspection.id, clauseNumber: '', activityName: '', acceptanceCriteria: '', interventionTPIA: 'W' });
   const [selectedDate, setSelectedDate] = useState(inspection.startDate ? new Date(inspection.startDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
@@ -1451,6 +2115,13 @@ function ActivitiesTab({ inspection, onReload, onOpenRfiModal, onOpenItpModal }:
               className="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2 rounded-lg font-medium text-sm flex items-center gap-1.5 shadow-sm transition"
             >
               <span>📄</span> Import from RFI
+            </button>
+            <button
+              onClick={onOpenOfferModal}
+              className="bg-purple-600 hover:bg-purple-700 text-white px-3.5 py-2 rounded-lg font-medium text-sm flex items-center gap-1.5 shadow-sm transition"
+              title="Auto-select offered activities from customer offer letter"
+            >
+              <span>📜</span> Auto-Select from Offer List
             </button>
             <button
               onClick={() => setShowManualForm(!showManualForm)}

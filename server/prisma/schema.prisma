@@ -76,6 +76,7 @@ model Document {
   extractions      DocumentExtraction[]
   inspectionRFIs   Inspection[] @relation("InspectionRFI")
   inspectionITPs   Inspection[] @relation("InspectionITP")
+  inspectionOffers Inspection[] @relation("InspectionOffer")
 }
 
 model DocumentExtraction {
@@ -101,6 +102,9 @@ model Inspection {
   rfiDocument       Document?    @relation("InspectionRFI", fields: [rfiDocumentId], references: [id])
   itpDocumentId     String?
   itpDocument       Document?    @relation("InspectionITP", fields: [itpDocumentId], references: [id])
+  offerDocumentId   String?
+  offerDocument     Document?    @relation("InspectionOffer", fields: [offerDocumentId], references: [id])
+  offerReference    String?      // Reference number or description of customer offer letter/list
   inspectionType    String       @default("FAT") // FAT, Stage Inspection, Final
   location          String       // e.g. "Meladoor, Annamanada, Kerala"
   startDate         DateTime
