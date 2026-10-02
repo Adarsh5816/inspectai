@@ -177,55 +177,95 @@ export class DocumentService {
   public parseRFI(text: string): any {
     const result: any = { documentType: 'RFI' };
 
+    // Clean hyphenated word wraps like "P30339B-30-99-52-\n4607" -> "P30339B-30-99-52-4607"
+    const cleanText = text.replace(/([A-Za-z0-9]+-)\s*[\r\n]+\s*([A-Za-z0-9]+)/g, '$1$2');
+
     // 1. Project Name (e.g. EPCM FOR BAB & BU HASA AiP5 OFF-PLOT FACILITIES PROJECT)
-    const projNameMatch = text.match(/(EPCM\s+FOR\s+[A-Za-z0-9\s&]+?PROJECT)/i) ||
-                          text.match(/(?:Project\s*Name|Subject)\s*[:,\s]+\s*([^\r\n,]+)/i);
+    const projNameMatch = cleanText.match(/(EPCM\s+FOR\s+[A-Za-z0-9\s&]+?PROJECT)/i) ||
+                          cleanText.match(/(EPC\s+for\s+[A-Za-z0-9\s&()\-]+?Package\s*\d+)/i) ||
+                          cleanText.match(/(?:Project\s*Name|Subject)\s*[:,\s]+\s*([^\r\n,]+)/i);
     if (projNameMatch) result.projectName = projNameMatch[1].replace(/\s+/g, ' ').trim();
 
     // 2. Project number: P30350 or P30339B
-    const projMatch = text.match(/PROJECT\s*No[.:,]*\s*(P\d{4,6}[A-Z]?)/i) ||
-                      text.match(/(?:Project\s*No[.:,]*|Project:)\s*(P\d{4,6}\w*)/i);
+    const projMatch = cleanText.match(/PROJECT\s*No[.:,]*\s*(P\d{4,6}[A-Z]?)/i) ||
+                      cleanText.match(/(?:Project\s*No[.:,]*|Project:)\s*(P\d{4,6}\w*)/i) ||
+                      cleanText.match(/\b(P\d{4,6}[A-Z]?)\b/);
     if (projMatch) result.projectNumber = projMatch[1].trim();
 
     // 3. RFI number: matches "RFI No: ...", "RFI-P30350...", or "P30339B-RFI-..."
-    const rfiHeaderMatch = text.match(/RFI\s*No[.:,\s]*\s*([A-Za-z0-9\-_\s\n\/]+?)(?=\s+Rev|\s+Equipment|\s+Materials|,|\n\s*\n|$)/i);
+    const rfiHeaderMatch = cleanText.match(/RFI\s*No[.:,\s]*\s*([A-Za-z0-9\-_\s\n\/]+?)(?=\s+Rev|\s+Equipment|\s+Materials|,|\n\s*\n|$)/i);
     if (rfiHeaderMatch) {
       result.rfiNumber = rfiHeaderMatch[1].replace(/[\r\n\t\s]+/g, '').trim();
     } else {
-      const fallbackRfi = text.match(/(?:(P\d+[A-Z]?-RFI-[A-Z0-9\-]+)|(RFI-[A-Za-z0-9\-]+))/i);
+      const fallbackRfi = cleanText.match(/(?:(P\d+[A-Z]?-RFI-[A-Z0-9\-]+)|(RFI-[A-Za-z0-9\-]+))/i);
       if (fallbackRfi) result.rfiNumber = (fallbackRfi[1] || fallbackRfi[2]).trim();
     }
 
     // 4. PO Number: e.g. "VENDOR PO NO.: P-AiP5-12-IC15-003" or "04108-PM-INST-008"
-    const poMatch = text.match(/VENDOR\s+PO\s+NO[.:,\s]*\s*([A-Za-z0-9\-]+)/i) ||
-                    text.match(/CONTRACTOR\s+PO[.:,\s]*\s*(\S+)/i) ||
-                    text.match(/PO\s+NO[.:,\s]*\s*(P-[A-Za-z0-9\-]+|\d{4,}[\w\-]*)/i);
+    const poMatch = cleanText.match(/VENDOR\s+PO\s+NO[.:,\s]*\s*([A-Za-z0-9\-]+)/i) ||
+                    cleanText.match(/CONTRACTOR\s+PO[.:,\s]*\s*(\S+)/i) ||
+                    cleanText.match(/PO\s+NO[.:,\s]*\s*(P-[A-Za-z0-9\-]+|\d{4,}[\w\-]*)/i);
     if (poMatch) result.poNumber = poMatch[1].trim();
 
     // 5. Supplier
-    const supplierMatch = text.match(/(?:KSB MIL CONTROLS LIMITED|KSB MIL Controls Limited)/i) ||
-                          text.match(/Supplier\s*[:,\s]+\s*([^\r\n,]+)/i);
+    const supplierMatch = cleanText.match(/(?:KSB MIL CONTROLS LIMITED|KSB MIL Controls Limited)/i) ||
+                          cleanText.match(/Supplier\s*[:,\s]+\s*([^\r\n,]+)/i);
     if (supplierMatch) result.supplierName = (supplierMatch[1] || supplierMatch[0]).trim();
 
     // 6. Inspection dates
-    const dateMatch = text.match(/(\d{1,2}(?:st|nd|rd|th)?\s*[,&]\s*\d{1,2}(?:st|nd|rd|th)?.*?\d{4})/i) ||
-                      text.match(/Inspection\s*Date[s]?\s*[:,\s]+\s*([^\r\n,]+)/i);
+    const dateMatch = cleanText.match(/(\d{1,2}(?:st|nd|rd|th)?\s*[,&]\s*\d{1,2}(?:st|nd|rd|th)?.*?\d{4})/i) ||
+                      cleanText.match(/Inspection\s*Date[s]?\s*[:,\s]+\s*([^\r\n,]+)/i);
     if (dateMatch) result.inspectionDates = dateMatch[1].trim();
 
-    // 7. ITP Reference: e.g. "CV-L2-4441 QAP R3/SO" or "P30350-12-99-97-4786"
-    const itpQapMatch = text.match(/ITP\s*NO[.:,\s]*\s*([A-Za-z0-9\-_ \/]+?)(?=\s+REF|\s+REV|\s+VENDOR|,|\r|\n|$)/i);
-    const itpFallbackMatch = text.match(/(P\d+[A-Z]?-\d+-\d+-\d+-\d+)/);
-    if (itpQapMatch) {
-      result.itpReference = itpQapMatch[1].replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
-    } else if (itpFallbackMatch) {
-      result.itpReference = itpFallbackMatch[1];
+    // 7. ITP Reference & Revision: e.g. "P30339B-30-99-52-4607", "CV-L2-4441 QAP R3/SO", "P30350-12-99-97-4786"
+    const itpDocMatch = cleanText.match(/(P\d+[A-Z]?-\d+-\d+-\d+-\d+)/);
+    const itpRefMatch = cleanText.match(/ITP\s*(?:Ref\.?|NO)[.:,\s]*\s*([A-Za-z0-9\-_ \/]+?)(?=\s+ITP Activity|\s+Activity|\s+Witness|\s+Review|\s+REF|\s+REV|\s+VENDOR|,|\r|\n|$)/i);
+    const itpQapMatch = cleanText.match(/([A-Z0-9]+-[A-Z0-9]+-[0-9]+(?:-[A-Z0-9]+)?\s*QAP\s*R\d+\/[A-Z0-9]+)/i);
+
+    if (itpDocMatch) {
+      result.itpReference = itpDocMatch[1].trim();
+    } else if (itpRefMatch) {
+      result.itpReference = itpRefMatch[1].replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+    } else if (itpQapMatch) {
+      result.itpReference = itpQapMatch[1].trim();
     }
 
-    // 8. Materials / Equipment description: e.g. "CONTROL VALVES (BUHASA)" or "SUPPLY OF CONTROL VALVE"
-    const matMatch = text.match(/REQUEST\s+FOR\s+INSPECTION\s*\(RFI\)\s*([A-Za-z0-9\s\(\)]+?)(?=\s+RFI\s+No|\n|$)/i) ||
-                     text.match(/SUPPLY\s+OF\s+([A-Za-z0-9\s]+?)(?=\s+Document|\s+Rev|\n|$)/i) ||
-                     text.match(/(?:Materials?|Equipment)\s*(?:Inspected)?\s*[:,\s]+\s*([^\r\n,]+)/i);
-    if (matMatch) result.materialDescription = matMatch[1].replace(/\s+/g, ' ').trim();
+    // Extract ITP revision if present in RFI
+    const revMatch = cleanText.match(/\bITP\b[\s\S]{0,60}?\bRev(?:ision)?\.?\s*[:\-]?\s*([0-9]+|[A-Z])\b/i) ||
+                     cleanText.match(/\b(R\d+\/[A-Z0-9]+)\b/i) ||
+                     cleanText.match(/\bRev(?:ision)?\.?\s*[:\-]?\s*([0-9]+|[A-Z])\b/i);
+    if (revMatch) {
+      result.itpRevision = revMatch[1].trim();
+    }
+
+    // 8. Materials / Equipment description: validate correctly per RFI, never grab certification strings
+    const isInvalidMat = (s: string) => !s || /(Certification|3\.2|3\.1|Inspection Details|Annexure|CONTRACTOR|INTERNAL)/i.test(s);
+    const matCandidates: string[] = [];
+
+    const matRfiHeader = cleanText.match(/REQUEST\s+FOR\s+INSPECTION\s*\(RFI\)\s*([A-Za-z0-9\s\(\)]+?)(?=\s+RFI\s+No|\n|$)/i);
+    if (matRfiHeader && !isInvalidMat(matRfiHeader[1])) matCandidates.push(matRfiHeader[1].trim());
+
+    const matEquipHeader = cleanText.match(/Equipment\s*[\/&]\s*Materials?\s*[\/&]\s*Activities[\s\S]*?Request for Inspection\s*\(RFI\)[\s\S]*?\n\s*([^\r\n]+)/i);
+    if (matEquipHeader && !isInvalidMat(matEquipHeader[1])) {
+      let desc = matEquipHeader[1].replace(/-\s*\d+\s*Tag\s*Nos\.?/i, '').trim();
+      matCandidates.push(desc);
+    }
+
+    const matSupply = cleanText.match(/SUPPLY\s+OF\s+([A-Za-z0-9\s]+?)(?=\s+Document|\s+Rev|\n|$)/i);
+    if (matSupply && !isInvalidMat(matSupply[1])) matCandidates.push('SUPPLY OF ' + matSupply[1].trim());
+
+    const matGeneric = cleanText.match(/(?:Materials?|Equipment)\s*(?:Inspected)?\s*[:,\s]+\s*([^\r\n,]+)/i);
+    if (matGeneric && !isInvalidMat(matGeneric[1])) matCandidates.push(matGeneric[1].trim());
+
+    if (matCandidates.length > 0) {
+      let chosen = matCandidates[0].replace(/\s+/g, ' ').trim();
+      if (/VALVE WITH ACTUATOR/i.test(chosen) && !/CONTROL VALVES/i.test(chosen)) {
+        chosen = `CONTROL VALVES (${chosen})`;
+      }
+      result.materialDescription = chosen;
+    } else {
+      result.materialDescription = 'CONTROL VALVES AND ITS COMPONENTS';
+    }
 
     // Activities - ITP clause references with sub-clauses
     const activities: any[] = [];
@@ -410,13 +450,28 @@ export class DocumentService {
   private parseITP(text: string): any {
     const result: any = { documentType: 'ITP' };
 
+    // Clean hyphenated word wraps
+    const cleanText = text.replace(/([A-Za-z0-9]+-)\s*[\r\n]+\s*([A-Za-z0-9]+)/g, '$1$2');
+
     // ITP Number
-    const itpMatch = text.match(/(P\d+[A-Z]?-\d+-\d+-\d+-\d+)/);
-    if (itpMatch) result.itpNumber = itpMatch[1];
+    const adnocDoc = cleanText.match(/ADNOC\s+Onshore\s+Document\s+No\.?\s*:\s*([^\r\n]+)/i) ||
+                     cleanText.match(/ADNOC\s+Onshore\s+Doc\.?\s*No\.?\s*:\s*([^\r\n]+)/i) ||
+                     cleanText.match(/Document\s+No\.?\s*:\s*([^\r\n]+)/i);
+    const itpMatch = cleanText.match(/(P\d+[A-Z]?-\d+-\d+-\d+-\d+)/) ||
+                     cleanText.match(/ITP\s*NO[.:,\s]*\s*([A-Za-z0-9\-_ \/]+?)(?=\s+REF|\s+REV|\s+VENDOR|,|\r|\n|$)/i);
+
+    if (adnocDoc) {
+      result.itpNumber = adnocDoc[1].trim().split(/\s+/)[0];
+    } else if (itpMatch) {
+      result.itpNumber = itpMatch[1].trim();
+    }
 
     // Revision
-    const revMatch = text.match(/Revision[:\s]*(\d+|[A-Z])/i);
-    if (revMatch) result.revision = revMatch[1];
+    const revMatch = cleanText.match(/Revision\s*:\s*([A-Za-z0-9]+)/i) ||
+                     cleanText.match(/Rev\.?\s*:\s*([A-Za-z0-9]+)/i) ||
+                     cleanText.match(/\bRev\s+([A-Za-z0-9]+)\b/i) ||
+                     cleanText.match(/Revision[:\s]*(\d+|[A-Z])/i);
+    if (revMatch) result.revision = revMatch[1].trim();
 
     // Supplier
     const supplierMatch = text.match(/Supplier[:\s]*([^\n]+)/i);

@@ -417,6 +417,7 @@ router.post('/:id/import-rfi', async (req, res) => {
         rfiDocumentId: document.id,
         location: extractedData.inspectionLocation || inspection.location,
         ...(extractedData.itpReference && { itpNumber: extractedData.itpReference }),
+        ...(extractedData.itpRevision && { itpRevision: extractedData.itpRevision }),
         ...(extractedData.materialDescription && { materialDescription: extractedData.materialDescription }),
       },
     });
@@ -526,6 +527,7 @@ router.post('/:id/import-itp', async (req, res) => {
       data: {
         itpDocumentId: document.id,
         ...(extractedData.itpNumber && { itpNumber: extractedData.itpNumber }),
+        ...(extractedData.revision && { itpRevision: extractedData.revision }),
       },
     });
 
@@ -659,6 +661,7 @@ router.post('/:id/recall-rfi', async (req, res) => {
         ...(extractedData.inspectionLocation && { location: extractedData.inspectionLocation }),
         ...(extractedData.materialDescription && { materialDescription: extractedData.materialDescription }),
         ...(extractedData.itpReference && { itpNumber: extractedData.itpReference }),
+        ...(extractedData.itpRevision && { itpRevision: extractedData.itpRevision }),
       },
     });
 

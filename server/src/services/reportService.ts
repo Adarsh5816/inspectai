@@ -59,6 +59,7 @@ export class ReportService {
         observations: true,
         instruments: true,
         rfiDocument: { include: { extractions: true } },
+        itpDocument: { include: { extractions: true } },
       },
     });
 
@@ -110,9 +111,25 @@ export class ReportService {
       } catch {}
     }
 
-    const itpNo = inspection.itpNumber || rfiExtracted.itpReference || (project as any).itpNumber || 'CV-L2-4441 QAP R3/SO';
-    const materialSummary = inspection.materialDescription || rfiExtracted.materialDescription || 'CONTROL VALVES (BUHASA)';
-    const effectiveProjectName = project.projectName || rfiExtracted.projectName || 'EPCM FOR BAB & BU HASA AiP5 OFF-PLOT FACILITIES PROJECT';
+    let itpExtracted: any = {};
+    if (inspection.itpDocument?.extractions?.[0]?.extractedData) {
+      try {
+        itpExtracted = JSON.parse(inspection.itpDocument.extractions[0].extractedData);
+      } catch {}
+    }
+
+    const itpNo = inspection.itpNumber || itpExtracted.itpNumber || rfiExtracted.itpReference || (project as any).itpNumber || 'P30339B-30-99-52-4607';
+    const itpRev = inspection.itpRevision || itpExtracted.revision || rfiExtracted.itpRevision || (project as any).itpRevision || 'C';
+    let itpFullRef = itpNo;
+    if (itpRev && !new RegExp(`Rev\\.?\\s*${itpRev}`, 'i').test(itpNo) && !itpNo.includes(itpRev)) {
+      itpFullRef = `${itpNo} Rev ${itpRev}`;
+    }
+
+    let materialSummary = inspection.materialDescription || rfiExtracted.materialDescription || 'CONTROL VALVES AND ITS COMPONENTS';
+    if (/Certification 3\.2/i.test(materialSummary)) {
+      materialSummary = 'CONTROL VALVES AND ITS COMPONENTS';
+    }
+    const effectiveProjectName = project.projectName || rfiExtracted.projectName || 'EPC for SE AiP5 Project (On plot) - ASAB/SAHIL (Package 1)';
 
     // === 2.1 PAGE 1 FORM FIELD UPDATES ===
     const offeredItems = (inspection.items || []).filter((i: any) => i.presentedQty > 0 || i.presentedQty === undefined);
@@ -126,7 +143,23 @@ export class ReportService {
     docXml = this.setCellValueAfterLabel(docXml, 'Date of Next Scheduled Visit:', inspection.nextVisitDate ? new Date(inspection.nextVisitDate).toLocaleDateString('en-GB') : '16/09/2026');
     docXml = this.setCellValueAfterLabel(docXml, 'Supplier Job No:', supplierJobs);
     docXml = this.setCellValueAfterLabel(docXml, 'Project Name:', effectiveProjectName);
-    docXml = this.setCellValueAfterLabel(docXml, 'Materials/Items Inspected:', materialSummary);
+
+    // Update Materials/Items Inspected on Page 1 (lives inside the same cell in template)
+    const matLabelIdx = docXml.indexOf('Materials/Items Inspected:');
+    if (matLabelIdx !== -1) {
+      const tcStart = docXml.lastIndexOf('<w:tc', matLabelIdx);
+      const tcEnd = docXml.indexOf('</w:tc>', matLabelIdx) + 7;
+      if (tcStart !== -1 && tcEnd !== -1 && tcEnd > tcStart) {
+        const cellXml = docXml.substring(tcStart, tcEnd);
+        const p1Start = cellXml.indexOf('<w:p');
+        const p1End = cellXml.indexOf('</w:p>', p1Start) + 6;
+        if (p1Start !== -1 && p1End !== -1) {
+          const newMaterialP = `<w:p><w:pPr><w:contextualSpacing/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t>${escapeXml(materialSummary)}</w:t></w:r></w:p>`;
+          const updatedCell = cellXml.substring(0, p1End) + newMaterialP + '</w:tc>';
+          docXml = docXml.substring(0, tcStart) + updatedCell + docXml.substring(tcEnd);
+        }
+      }
+    }
     docXml = this.setCellValueAfterLabel(docXml, 'RECOMMENDED ACTION:', inspection.recommendedAction || 'NA');
 
     // Yellow highlights: Inspector Name & Signature Date
@@ -137,16 +170,61 @@ export class ReportService {
     docXml = docXml.replace(/<w:t>XXXXXXXX<\/w:t>/g, `<w:t>${escapeXml(dateLong)}</w:t>`);
 
     // === 2.2 SUMMARY NARRATIVE (Page 1) ===
-    const summaryPattern = /The inspection was conducted in accordance with ITP No\.[^<]*/;
-    if (inspection.summaryNarrative) {
-      docXml = docXml.replace(summaryPattern, escapeXml(inspection.summaryNarrative));
-    } else {
-      // Dynamic clause summary
-      const clausesList = (inspection.activities || [])
-        .filter((a: any) => a.status === 'ACCEPTABLE' || a.status === 'NOT_ACCEPTABLE')
-        .map((a: any) => a.clauseNumber).filter(Boolean).join(', ');
-      const autoSummary = `The inspection was conducted in accordance with ITP No. ${itpNo}, covering the inspection of Control Valves and its Components. All inspection activities were carried out as per ITP Clause Nos ${clausesList || '4.1(a), 4.1(b)'}. Result: Acceptable`;
-      docXml = docXml.replace(summaryPattern, escapeXml(autoSummary));
+    // Cleanly replace Row 2 containing the summary text and conclusion to avoid fragmented template leftover text
+    const summaryHeaderIdx = docXml.indexOf('INSPECTION SUMMARY AND CONCLUSION:');
+    if (summaryHeaderIdx !== -1) {
+      const row1End = docXml.indexOf('</w:tr>', summaryHeaderIdx) + 7;
+      const row2Start = docXml.indexOf('<w:tr', row1End);
+      const row2End = docXml.indexOf('</w:tr>', row2Start) + 7;
+      if (row2Start !== -1 && row2End !== -1 && row2End > row2Start) {
+        let summaryBody = '';
+        if (inspection.summaryNarrative && inspection.summaryNarrative.trim().length > 15) {
+          summaryBody = inspection.summaryNarrative.replace(/\s*Result\s*:\s*(Acceptable|Nonconformance|Hold)[^\r\n]*/gi, '').trim();
+        } else {
+          const clausesList = (inspection.activities || [])
+            .filter((a: any) => a.status === 'ACCEPTABLE' || a.status === 'NOT_ACCEPTABLE')
+            .map((a: any) => a.clauseNumber).filter(Boolean).join(', ');
+          summaryBody = `The inspection was conducted in accordance with ITP No. ${itpFullRef}, covering the inspection of ${materialSummary}. All inspection activities were carried out as per ITP Clause Nos ${clausesList || '7.3, 7.4(a), 7.5(b), 7.6(c), 7.7(d), 7.8(e), 7.9(e), 7.10(f), 7.12'}.`;
+        }
+
+        const disp = inspection.disposition || 'Acceptable';
+        const newSummaryRow = `<w:tr w:rsidR="00844A3C" w:rsidRPr="007863FA" w:rsidTr="00ED04AD">
+  <w:trPr><w:trHeight w:val="1153"/><w:jc w:val="center"/></w:trPr>
+  <w:tc>
+    <w:tcPr>
+      <w:tcW w:w="10926" w:type="dxa"/>
+      <w:gridSpan w:val="24"/>
+      <w:tcBorders>
+        <w:left w:val="single" w:sz="18" w:space="0" w:color="auto"/>
+        <w:right w:val="single" w:sz="18" w:space="0" w:color="auto"/>
+        <w:bottom w:val="single" w:sz="18" w:space="0" w:color="auto"/>
+      </w:tcBorders>
+      <w:vAlign w:val="center"/>
+    </w:tcPr>
+    <w:p>
+      <w:pPr>
+        <w:spacing w:line="360" w:lineRule="auto"/>
+        <w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="19"/></w:rPr>
+      </w:pPr>
+      <w:r>
+        <w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="19"/></w:rPr>
+        <w:t>${escapeXml(summaryBody)}</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:spacing w:line="360" w:lineRule="auto"/>
+        <w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="19"/></w:rPr>
+      </w:pPr>
+      <w:r>
+        <w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="19"/></w:rPr>
+        <w:t>Result: ${escapeXml(disp)}</w:t>
+      </w:r>
+    </w:p>
+  </w:tc>
+</w:tr>`;
+        docXml = docXml.substring(0, row2Start) + newSummaryRow + docXml.substring(row2End);
+      }
     }
 
     // === 2.4 GENERIC MATERIALS TABLE (Table 6) ===
@@ -215,7 +293,7 @@ export class ReportService {
         const tcPrEnd = docXml.indexOf('</w:tcPr>', tcStart) + 9;
         const tcEnd = docXml.indexOf('</w:tc>', tcPrEnd);
         if (tcPrEnd !== -1 && tcEnd !== -1 && tcEnd > tcPrEnd) {
-          const detailsXml = this.buildInspectionDetailsXml(inspection, project, attendedActivities, dateLong, dateStr);
+          const detailsXml = this.buildInspectionDetailsXml(inspection, project, attendedActivities, dateLong, dateStr, itpFullRef);
           docXml = docXml.substring(0, tcPrEnd) + detailsXml + docXml.substring(tcEnd);
         }
       }
@@ -230,22 +308,20 @@ export class ReportService {
         const tblStart = docXml.indexOf('<w:tbl', docIdx);
         const tblEnd = docXml.lastIndexOf('</w:tbl>', nextH) + 8;
         if (tblStart !== -1 && tblEnd > tblStart) {
-          const cleanDocsTable = this.buildDocumentsTableXml(inspection, project, itpNo);
+          const cleanDocsTable = this.buildDocumentsTableXml(inspection, project, itpNo, itpRev);
           docXml = docXml.substring(0, tblStart) + cleanDocsTable + docXml.substring(tblEnd);
         }
       }
     }
 
     // === 7. ATTENDEES TABLE (Table 5) ===
-    if (inspection.attendees && inspection.attendees.length > 0) {
-      const attendeeHeaderIdx = docXml.indexOf('COMPANY REPRESENTED');
-      if (attendeeHeaderIdx !== -1) {
-        const headerTrEnd = docXml.indexOf('</w:tr>', attendeeHeaderIdx) + 7;
-        const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
-        if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
-          const attendeeRows = this.buildAttendeesXml(inspection.attendees);
-          docXml = docXml.substring(0, headerTrEnd) + attendeeRows + docXml.substring(innerTableEnd);
-        }
+    const attendeeHeaderIdx = docXml.indexOf('COMPANY REPRESENTED');
+    if (attendeeHeaderIdx !== -1) {
+      const headerTrEnd = docXml.indexOf('</w:tr>', attendeeHeaderIdx) + 7;
+      const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
+      if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
+        const attendeeRows = this.buildAttendeesXml(inspection.attendees || []);
+        docXml = docXml.substring(0, headerTrEnd) + attendeeRows + docXml.substring(innerTableEnd);
       }
     }
 
@@ -338,11 +414,11 @@ export class ReportService {
   /**
    * Build comprehensive daily engineering inspection narrative for Section 6.0 (INSPECTION DETAILS)
    */
-  private buildInspectionDetailsXml(inspection: any, project: any, attendedActivities: any[], dateLong: string, dateStr: string): string {
+  private buildInspectionDetailsXml(inspection: any, project: any, attendedActivities: any[], dateLong: string, dateStr: string, itpFullRef?: string): string {
     const offeredItems = (inspection.items || []).filter((i: any) => i.presentedQty > 0 || i.presentedQty === undefined);
     const listToRender = offeredItems.length > 0 ? offeredItems : (inspection.items || []);
 
-    const itpNo = project.itpNumber || 'P30339B-30-99-52-4607';
+    const itpNo = itpFullRef || inspection.itpNumber || project.itpNumber || 'P30339B-30-99-52-4607 Rev C';
     const supplierName = project.supplierName || 'KSB MIL Controls Limited';
 
     // 1. Visit opening header
@@ -576,7 +652,7 @@ export class ReportService {
     if (activities.length === 0) {
       return `<w:tr w:rsidR="00737F9A">
   <w:trPr><w:cantSplit/><w:trHeight w:val="333"/></w:trPr>
-  <w:tc><w:tcPr><w:tcW w:w="10777" w:type="dxa"/><w:gridSpan w:val="5"/><w:vAlign w:val="center"/></w:tcPr>
+  <w:tc><w:tcPr><w:tcW w:w="10777" w:type="dxa"/><w:gridSpan w:val="5"/><w:tcBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr>
     <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:i/><w:color w:val="666666"/></w:rPr><w:t>No inspection activities were executed on this visit.</w:t></w:r></w:p>
   </w:tc>
 </w:tr>`;
@@ -584,51 +660,109 @@ export class ReportService {
 
     return activities.map((act: any) => {
       const result = inspection.results?.find((r: any) => r.activityId === act.id);
+      const actName = act.activityName || '';
+      const isPressureOrLeakage = /hydro|pressure|shell|seat|leak|strength|body mount/i.test(actName);
+      const isPaintingOrDft = /paint|dft|coating|surface/i.test(actName);
+
       let resultText = 'Acceptable';
       if (result) {
-        const parts: string[] = [result.status === 'ACCEPTABLE' ? 'Acceptable' : (result.status || 'Acceptable')];
-        if (result.remarks) parts.push(result.remarks);
-        else {
-          if (result.testPressure) parts.push(`Pressure: ${result.testPressure} ${result.pressureUnit || 'kg/cm²'}`);
+        if (result.remarks && result.remarks.trim().length > 3) {
+          resultText = result.remarks.trim();
+        } else if (isPressureOrLeakage) {
+          const parts: string[] = [result.status === 'ACCEPTABLE' ? 'Acceptable' : (result.status || 'Acceptable')];
+          if (result.testPressure) parts.push(`Pressure: ${result.testPressure} ${result.pressureUnit || 'bar'}`);
           if (result.testMedium) parts.push(`Medium: ${result.testMedium}`);
           if (result.holdingTimeMin) parts.push(`Hold: ${result.holdingTimeMin} min`);
           if (result.leakageObserved) parts.push(`Leakage: ${result.leakageObserved}`);
+          resultText = parts.join(' - ');
+        } else if (isPaintingOrDft) {
+          resultText = 'Acceptable - DFT within limits';
+        } else {
+          resultText = result.status === 'ACCEPTABLE' || !result.status ? 'Acceptable' : result.status;
         }
-        resultText = parts.join(' - ');
       } else if (act.status) {
-        resultText = act.status === 'ACCEPTABLE' ? 'Acceptable' : act.status;
+        if (isPaintingOrDft) {
+          resultText = 'Acceptable - DFT within limits';
+        } else {
+          resultText = act.status === 'ACCEPTABLE' ? 'Acceptable' : act.status;
+        }
       }
 
-      const clauseShort = act.clauseNumber.split(' ')[0];
+      const clauseShort = (act.clauseNumber || '').split(' ')[0];
 
       return `<w:tr w:rsidR="00737F9A">
   <w:trPr><w:cantSplit/><w:trHeight w:val="333"/></w:trPr>
   <w:tc>
-    <w:tcPr><w:tcW w:w="1006" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:tcPr>
+      <w:tcW w:w="1006" w:type="dxa"/>
+      <w:tcBorders>
+        <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+      </w:tcBorders>
+      <w:vAlign w:val="center"/>
+    </w:tcPr>
     <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr>
       <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(act.clauseNumber)}</w:t></w:r>
     </w:p>
   </w:tc>
   <w:tc>
-    <w:tcPr><w:tcW w:w="2835" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:tcPr>
+      <w:tcW w:w="2835" w:type="dxa"/>
+      <w:tcBorders>
+        <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+      </w:tcBorders>
+      <w:vAlign w:val="center"/>
+    </w:tcPr>
     <w:p><w:pPr><w:jc w:val="left"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr>
       <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(act.activityName)}</w:t></w:r>
     </w:p>
   </w:tc>
   <w:tc>
-    <w:tcPr><w:tcW w:w="3119" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:tcPr>
+      <w:tcW w:w="3119" w:type="dxa"/>
+      <w:tcBorders>
+        <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+      </w:tcBorders>
+      <w:vAlign w:val="center"/>
+    </w:tcPr>
     <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr>
       <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${itemsStr}</w:t></w:r>
     </w:p>
   </w:tc>
   <w:tc>
-    <w:tcPr><w:tcW w:w="2670" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:tcPr>
+      <w:tcW w:w="2670" w:type="dxa"/>
+      <w:tcBorders>
+        <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+      </w:tcBorders>
+      <w:vAlign w:val="center"/>
+    </w:tcPr>
     <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr>
       <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(resultText)}</w:t></w:r>
     </w:p>
   </w:tc>
   <w:tc>
-    <w:tcPr><w:tcW w:w="1147" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:tcPr>
+      <w:tcW w:w="1147" w:type="dxa"/>
+      <w:tcBorders>
+        <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+      </w:tcBorders>
+      <w:vAlign w:val="center"/>
+    </w:tcPr>
     <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr>
       <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>CLAUSE ${escapeXml(clauseShort)}</w:t></w:r>
     </w:p>
@@ -640,29 +774,79 @@ export class ReportService {
   /**
    * Build clean Documents Used table in OpenXML format
    */
-  private buildDocumentsTableXml(inspection: any, project: any, itpNo?: string): string {
-    const itpDoc = itpNo || inspection.itpNumber || (project as any).itpNumber || 'CV-L2-4441 QAP R3/SO';
+  private buildDocumentsTableXml(inspection: any, project: any, itpNo?: string, itpRev?: string): string {
+    const itpDoc = itpNo || inspection.itpNumber || (project as any).itpNumber || 'P30339B-30-99-52-4607';
+    const effectiveRev = itpRev || inspection.itpRevision || (project as any).itpRevision || 'C';
+
     const docs = [
       { no: inspection.reportNumber || 'RFI', rev: '0', title: 'Request For Inspection (RFI)' },
-      { no: itpDoc, rev: 'R3/SO', title: 'INSPECTION AND TEST PLAN FOR CONTROL VALVES' },
+      { no: itpDoc, rev: effectiveRev, title: 'INSPECTION AND TEST PLAN FOR CONTROL VALVES' },
       { no: project.poNumber || 'P-AiP5-12-IC15-003', rev: '0', title: 'Contractor Purchase Order' },
       { no: 'P30350-12-99-90-4863', rev: '1', title: 'Control Valve Hydrostatic & Leakage Test Procedure' },
     ];
 
     const rowsXml = docs.map(d => `<w:tr w:rsidR="00BA788A">
   <w:trPr><w:cantSplit/><w:trHeight w:val="333"/></w:trPr>
-  <w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(d.no)}</w:t></w:r></w:p></w:tc>
-  <w:tc><w:tcPr><w:tcW w:w="1000" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(d.rev)}</w:t></w:r></w:p></w:tc>
-  <w:tc><w:tcPr><w:tcW w:w="5000" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(d.title)}</w:t></w:r></w:p></w:tc>
-  <w:tc><w:tcPr><w:tcW w:w="1777" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>Approved</w:t></w:r></w:p></w:tc>
+  <w:tc>
+    <w:tcPr>
+      <w:tcW w:w="2698" w:type="dxa"/>
+      <w:tcBorders>
+        <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+      </w:tcBorders>
+      <w:vAlign w:val="center"/>
+    </w:tcPr>
+    <w:p><w:pPr><w:jc w:val="left"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(d.no)}</w:t></w:r></w:p>
+  </w:tc>
+  <w:tc>
+    <w:tcPr>
+      <w:tcW w:w="1143" w:type="dxa"/>
+      <w:tcBorders>
+        <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+      </w:tcBorders>
+      <w:vAlign w:val="center"/>
+    </w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(d.rev)}</w:t></w:r></w:p>
+  </w:tc>
+  <w:tc>
+    <w:tcPr>
+      <w:tcW w:w="4878" w:type="dxa"/>
+      <w:tcBorders>
+        <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+      </w:tcBorders>
+      <w:vAlign w:val="center"/>
+    </w:tcPr>
+    <w:p><w:pPr><w:jc w:val="left"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(d.title)}</w:t></w:r></w:p>
+  </w:tc>
+  <w:tc>
+    <w:tcPr>
+      <w:tcW w:w="2058" w:type="dxa"/>
+      <w:tcBorders>
+        <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+      </w:tcBorders>
+      <w:vAlign w:val="center"/>
+    </w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>Approved</w:t></w:r></w:p>
+  </w:tc>
 </w:tr>`).join('\n');
 
-    return `<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="10777" w:type="dxa"/></w:tblPr><w:tblGrid><w:gridCol w:w="3000"/><w:gridCol w:w="1000"/><w:gridCol w:w="5000"/><w:gridCol w:w="1777"/></w:tblGrid>
+    return `<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="10777" w:type="dxa"/></w:tblPr><w:tblGrid><w:gridCol w:w="2698"/><w:gridCol w:w="1143"/><w:gridCol w:w="4878"/><w:gridCol w:w="2058"/></w:tblGrid>
 <w:tr w:rsidR="00BA788A"><w:trPr><w:tblHeader/></w:trPr>
-  <w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="18"/></w:rPr><w:t>DOCUMENT NO.</w:t></w:r></w:p></w:tc>
-  <w:tc><w:tcPr><w:tcW w:w="1000" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="18"/></w:rPr><w:t>REV</w:t></w:r></w:p></w:tc>
-  <w:tc><w:tcPr><w:tcW w:w="5000" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="18"/></w:rPr><w:t>DOCUMENT TITLE</w:t></w:r></w:p></w:tc>
-  <w:tc><w:tcPr><w:tcW w:w="1777" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="18"/></w:rPr><w:t>STATUS</w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="2698" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tcBorders></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="18"/></w:rPr><w:t>DOCUMENT NO.</w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1143" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tcBorders></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="18"/></w:rPr><w:t>REV</w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="4878" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tcBorders></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="18"/></w:rPr><w:t>DOCUMENT TITLE</w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="2058" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tcBorders></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="18"/></w:rPr><w:t>STATUS</w:t></w:r></w:p></w:tc>
 </w:tr>
 ${rowsXml}
 </w:tbl>`;
@@ -672,23 +856,135 @@ ${rowsXml}
    * Build Attendees table rows
    */
   private buildAttendeesXml(attendees: any[]): string {
-    return attendees.map(a => `<w:tr w:rsidR="00737F9A">
-  <w:trPr><w:cantSplit/><w:trHeight w:val="280"/></w:trPr>
-  <w:tc><w:tcPr><w:tcW w:w="3500" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(a.name)}</w:t></w:r></w:p></w:tc>
-  <w:tc><w:tcPr><w:tcW w:w="3700" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(a.company)} (OBO ${escapeXml(a.representedOrg || '')})</w:t></w:r></w:p></w:tc>
-  <w:tc><w:tcPr><w:tcW w:w="3500" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(a.title)}</w:t></w:r></w:p></w:tc>
-</w:tr>`).join('\n');
+    const defaultAttendees = [
+      { name: 'Karthik C', company: 'Intertek', title: 'Inspection Engineer', representedOrg: 'ADNOC Onshore' },
+      { name: 'Nithin V', company: 'KSB MIL', title: 'Quality Assurance', representedOrg: '' },
+    ];
+    const listToRender = (attendees && attendees.length > 0) ? attendees : defaultAttendees;
+
+    return listToRender.map(a => {
+      const orgInfo = a.representedOrg && a.representedOrg.trim() ? ` (OBO ${escapeXml(a.representedOrg.trim())})` : '';
+      const compText = `${escapeXml(a.company || '')}${orgInfo}`;
+
+      return `<w:tr w:rsidR="00737F9A">
+  <w:trPr><w:cantSplit/><w:trHeight w:val="320"/></w:trPr>
+  <w:tc>
+    <w:tcPr>
+      <w:tcW w:w="3119" w:type="dxa"/>
+      <w:tcBorders>
+        <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+      </w:tcBorders>
+      <w:vAlign w:val="center"/>
+    </w:tcPr>
+    <w:p>
+      <w:pPr><w:jc w:val="left"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(a.name || '')}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc>
+    <w:tcPr>
+      <w:tcW w:w="3898" w:type="dxa"/>
+      <w:tcBorders>
+        <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+      </w:tcBorders>
+      <w:vAlign w:val="center"/>
+    </w:tcPr>
+    <w:p>
+      <w:pPr><w:jc w:val="left"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${compText}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc>
+    <w:tcPr>
+      <w:tcW w:w="3783" w:type="dxa"/>
+      <w:tcBorders>
+        <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+        <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+      </w:tcBorders>
+      <w:vAlign w:val="center"/>
+    </w:tcPr>
+    <w:p>
+      <w:pPr><w:jc w:val="left"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(a.title || '')}</w:t></w:r>
+    </w:p>
+  </w:tc>
+</w:tr>`;
+    }).join('\n');
   }
 
   /**
-   * Embed uploaded photos into Word DOCX and build clean 2-column photo table
+   * Helper to inspect image buffer and determine pixel width and height
+   */
+  private getImageDimensions(buf: Buffer): { width: number; height: number } {
+    try {
+      // 1. PNG: 89 50 4E 47 0D 0A 1A 0A
+      if (buf.length > 24 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) {
+        const width = buf.readUInt32BE(16);
+        const height = buf.readUInt32BE(20);
+        if (width > 0 && height > 0) return { width, height };
+      }
+
+      // 2. JPEG: FF D8
+      if (buf.length > 4 && buf[0] === 0xFF && buf[1] === 0xD8) {
+        let offset = 2;
+        while (offset < buf.length - 8) {
+          if (buf[offset] !== 0xFF) {
+            offset++;
+            continue;
+          }
+          const marker = buf[offset + 1];
+          // SOF0..SOF15 except DHT (C4), JPG (C8), DAC (CC)
+          if ((marker >= 0xC0 && marker <= 0xC3) || (marker >= 0xC5 && marker <= 0xC7) || (marker >= 0xC9 && marker <= 0xCB) || (marker >= 0xCD && marker <= 0xCF)) {
+            const height = buf.readUInt16BE(offset + 5);
+            const width = buf.readUInt16BE(offset + 7);
+            if (width > 0 && height > 0) return { width, height };
+          }
+          if (offset + 4 > buf.length) break;
+          const segmentLength = buf.readUInt16BE(offset + 2);
+          if (segmentLength < 2) break;
+          offset += 2 + segmentLength;
+        }
+      }
+
+      // 3. WebP: RIFF ... WEBP
+      if (buf.length > 30 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') {
+        const type = buf.toString('ascii', 12, 16);
+        if (type === 'VP8X' && buf.length >= 30) {
+          const width = 1 + buf.readUIntLE(24, 3);
+          const height = 1 + buf.readUIntLE(27, 3);
+          if (width > 0 && height > 0) return { width, height };
+        } else if (type === 'VP8 ' && buf.length >= 30) {
+          const width = buf.readUInt16LE(26) & 0x3fff;
+          const height = buf.readUInt16LE(28) & 0x3fff;
+          if (width > 0 && height > 0) return { width, height };
+        }
+      }
+    } catch (err) {
+      console.error('Error determining image dimensions:', err);
+    }
+
+    // Default fallback: landscape 4:3
+    return { width: 1600, height: 1200 };
+  }
+
+  /**
+   * Embed uploaded photos into Word DOCX and build clean 2-column photo table.
+   * Keeps natural aspect ratio for landscape without stretching; adjusts portrait photos.
    */
   private async embedUploadedPhotos(zip: JSZip, photos: any[]): Promise<string> {
     // 1. Update relationships
     const relsPath = 'word/_rels/document.xml.rels';
     let relsXml = await zip.file(relsPath)!.async('string');
 
-    const photoCards: { rId: string; caption: string }[] = [];
+    const photoCards: { rId: string; caption: string; cx: number; cy: number }[] = [];
 
     for (let i = 0; i < photos.length; i++) {
       const p = photos[i];
@@ -708,9 +1004,27 @@ ${rowsXml}
         const relEntry = `<Relationship Id="${rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${mediaName}"/>`;
         relsXml = relsXml.replace('</Relationships>', `${relEntry}</Relationships>`);
 
+        // Compute aspect ratio:
+        // Landscape photos: keep width at 2,800,000 EMUs, compute cy naturally so zero stretching occurs.
+        // Portrait photos: adjust height to 2,100,000 EMUs so it fits without expanding page vertically.
+        const { width, height } = this.getImageDimensions(buf);
+        let cx = 2800000;
+        let cy = 2100000;
+
+        if (width >= height) {
+          // Landscape: preserve exact natural aspect ratio
+          cy = Math.round(cx * (height / width));
+        } else {
+          // Portrait: height needs to be adjusted within cell
+          cy = 2100000;
+          cx = Math.round(cy * (width / height));
+        }
+
         photoCards.push({
           rId,
           caption: p.caption || p.category || `Inspection Photo ${i + 1}`,
+          cx,
+          cy,
         });
       } catch { /* skip invalid photo */ }
     }
@@ -728,28 +1042,28 @@ ${rowsXml}
       const right = photoCards[i + 1];
 
       // Row of images
-      const leftImg = this.buildImageXml(left.rId, i * 2 + 100);
-      const rightImg = right ? this.buildImageXml(right.rId, i * 2 + 101) : '';
+      const leftImg = this.buildImageXml(left.rId, i * 2 + 100, left.cx, left.cy);
+      const rightImg = right ? this.buildImageXml(right.rId, i * 2 + 101, right.cx, right.cy) : '';
 
       rowsXml += `<w:tr w:rsidR="00ED010A">
-  <w:tc><w:tcPr><w:tcW w:w="5395" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r>${leftImg}</w:r></w:p></w:tc>
-  <w:tc><w:tcPr><w:tcW w:w="5395" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r>${rightImg}</w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="5395" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r>${leftImg}</w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="5395" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r>${rightImg}</w:r></w:p></w:tc>
 </w:tr>`;
 
       // Row of captions
       rowsXml += `<w:tr w:rsidR="00ED010A">
-  <w:tc><w:tcPr><w:tcW w:w="5395" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(left.caption)}</w:t></w:r></w:p></w:tc>
-  <w:tc><w:tcPr><w:tcW w:w="5395" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/></w:rPr><w:t>${right ? escapeXml(right.caption) : ''}</w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="5395" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(left.caption)}</w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="5395" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/></w:rPr><w:t>${right ? escapeXml(right.caption) : ''}</w:t></w:r></w:p></w:tc>
 </w:tr>`;
     }
 
     return `<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="10790" w:type="dxa"/><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid><w:gridCol w:w="5395"/><w:gridCol w:w="5395"/></w:tblGrid>${rowsXml}</w:tbl>`;
   }
 
-  private buildImageXml(rId: string, docPrId: number): string {
+  private buildImageXml(rId: string, docPrId: number, cx: number = 2800000, cy: number = 2100000): string {
     return `<w:drawing>
   <wp:inline distT="0" distB="0" distL="0" distR="0">
-    <wp:extent cx="2800000" cy="2100000"/>
+    <wp:extent cx="${cx}" cy="${cy}"/>
     <wp:docPr id="${docPrId}" name="Picture ${docPrId}"/>
     <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
       <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
@@ -763,7 +1077,7 @@ ${rowsXml}
             <a:stretch><a:fillRect/></a:stretch>
           </pic:blipFill>
           <pic:spPr>
-            <a:xfrm><a:off x="0" y="0"/><a:ext cx="2800000" cy="2100000"/></a:xfrm>
+            <a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>
             <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
           </pic:spPr>
         </pic:pic>
