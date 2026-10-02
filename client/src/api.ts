@@ -97,10 +97,12 @@ export const deletePhoto = (id: string) => api.delete(`/photos/${id}`);
 
 // Attendees
 export const addAttendee = (data: any) => api.post('/inspections/attendees', data);
+export const updateAttendee = (id: string, data: any) => api.put(`/inspections/attendees/${id}`, data);
 export const deleteAttendee = (id: string) => api.delete(`/inspections/attendees/${id}`);
 
 // Observations
 export const addObservation = (data: any) => api.post('/inspections/observations', data);
+export const updateObservation = (id: string, data: any) => api.put(`/inspections/observations/${id}`, data);
 export const deleteObservation = (id: string) => api.delete(`/inspections/observations/${id}`);
 
 // Instruments & Calibration (Section 5.0)
@@ -120,9 +122,11 @@ export const validateInspection = (inspectionId: string) =>
 // Reports
 export const generateReport = (inspectionId: string, templateName?: string) =>
   api.post(`/reports/generate/${inspectionId}`, { templateName }, { responseType: 'blob' });
-export const getTemplates = () => api.get('/reports/templates');
+export const getTemplates = (type?: 'IR' | 'FR') => api.get('/reports/templates', { params: type ? { type } : {} });
 export const uploadTemplate = (formData: FormData) =>
   api.post('/reports/templates/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+export const updateTemplateCategory = (name: string, type: 'IR' | 'FR') =>
+  api.put(`/reports/templates/${encodeURIComponent(name)}/category`, { type });
 export const deleteTemplate = (name: string) => api.delete(`/reports/templates/${name}`);
 
 // Admin & Releases

@@ -1,0 +1,38 @@
+[
+  {
+    "name": "master-template.docx",
+    "type": "IR",
+    "displayName": "Standard Master Inspection Report (IR)",
+    "description": "Default comprehensive inspection report format with all standard tables"
+  },
+  {
+    "name": "KSB MIL CONTROLS LIMITED 21 Sept 26-Inspection Report Format.docx",
+    "type": "IR",
+    "displayName": "KSB 21 Sept Inspection Report (IR)",
+    "description": "Standard inspection report format for KSB MIL Controls"
+  },
+  {
+    "name": "KSB-Sept-15-Format.docx",
+    "type": "IR",
+    "displayName": "KSB 15 Sept Inspection Report (IR)",
+    "description": "Standard 15 Sept inspection report format"
+  },
+  {
+    "name": "KSB-Sept-16-Format.docx",
+    "type": "IR",
+    "displayName": "KSB 16 Sept Inspection Report (IR)",
+    "description": "Standard 16 Sept inspection report format"
+  },
+  {
+    "name": "KSB-July-15-Format.docx",
+    "type": "IR",
+    "displayName": "KSB 15 July Inspection Report (IR)",
+    "description": "Standard 15 July inspection report format"
+  },
+  {
+    "name": "KSB MIL CONTROLS LIMITED 22Sept 26-Inspection Report Format.docx",
+    "type": "FR",
+    "displayName": "KSB 22 Sept Final Inspection Report (FR)",
+    "description": "Final inspection / factory acceptance report format (FR)"
+  }
+]

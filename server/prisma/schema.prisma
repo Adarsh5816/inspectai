@@ -140,6 +140,8 @@ model Inspection {
   itpNumber         String?      // e.g. "CV-L2-4441 QAP R3/SO"
   itpRevision       String?      // e.g. "Rev C", "1", "R3/SO"
   materialDescription String?    // e.g. "CONTROL VALVES (BUHASA)"
+  reportFormatType  String?      @default("IR") // "IR" (Inspection Report) or "FR" (Final Report)
+  selectedTemplate  String?      // e.g. "master-template.docx"
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
 

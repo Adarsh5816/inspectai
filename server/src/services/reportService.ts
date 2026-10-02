@@ -28,19 +28,58 @@ export interface ReportOptions {
 
 export class ReportService {
 
-  async getTemplates(): Promise<{ name: string; path: string; size: number }[]> {
+  async getTemplates(): Promise<{ name: string; path: string; size: number; type: 'IR' | 'FR'; displayName: string; description?: string }[]> {
     if (!fs.existsSync(TEMPLATES_DIR)) return [];
     const files = fs.readdirSync(TEMPLATES_DIR).filter(f => f.endsWith('.docx'));
-    return files.map(f => ({
-      name: f,
-      path: path.join(TEMPLATES_DIR, f),
-      size: fs.statSync(path.join(TEMPLATES_DIR, f)).size,
-    }));
+    const metaPath = path.join(TEMPLATES_DIR, 'templates.json');
+    let meta: any[] = [];
+    if (fs.existsSync(metaPath)) {
+      try {
+        meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+      } catch {}
+    }
+
+    return files.map(f => {
+      const match = meta.find(m => m.name === f);
+      const isFR = f.toLowerCase().includes('22sept') || f.toLowerCase().includes('final') || f.toLowerCase().includes('fr');
+      const defaultType: 'IR' | 'FR' = isFR ? 'FR' : 'IR';
+      return {
+        name: f,
+        path: path.join(TEMPLATES_DIR, f),
+        size: fs.statSync(path.join(TEMPLATES_DIR, f)).size,
+        type: match?.type || defaultType,
+        displayName: match?.displayName || (f.replace('.docx', '') + (defaultType === 'FR' ? ' (FR)' : ' (IR)')),
+        description: match?.description || (defaultType === 'FR' ? 'Final inspection report format' : 'Inspection report format'),
+      };
+    });
   }
 
-  async uploadTemplate(filePath: string, name: string): Promise<string> {
+  async updateTemplateCategory(name: string, type: 'IR' | 'FR'): Promise<void> {
+    const metaPath = path.join(TEMPLATES_DIR, 'templates.json');
+    let meta: any[] = [];
+    if (fs.existsSync(metaPath)) {
+      try {
+        meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+      } catch {}
+    }
+    const idx = meta.findIndex(m => m.name === name);
+    if (idx !== -1) {
+      meta[idx].type = type;
+    } else {
+      meta.push({
+        name,
+        type,
+        displayName: name.replace('.docx', '') + (type === 'FR' ? ' (FR)' : ' (IR)'),
+        description: `${type === 'FR' ? 'Final' : 'Inspection'} report format`,
+      });
+    }
+    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+  }
+
+  async uploadTemplate(filePath: string, name: string, type: 'IR' | 'FR' = 'IR'): Promise<string> {
     const dest = path.join(TEMPLATES_DIR, name);
     fs.copyFileSync(filePath, dest);
+    await this.updateTemplateCategory(name, type);
     return dest;
   }
 
@@ -143,6 +182,17 @@ export class ReportService {
     docXml = this.setCellValueAfterLabel(docXml, 'Date of Next Scheduled Visit:', inspection.nextVisitDate ? new Date(inspection.nextVisitDate).toLocaleDateString('en-GB') : '16/09/2026');
     docXml = this.setCellValueAfterLabel(docXml, 'Supplier Job No:', supplierJobs);
     docXml = this.setCellValueAfterLabel(docXml, 'Project Name:', effectiveProjectName);
+
+    // Populate Supplier and Location cleanly
+    const supplierFull = [project.supplierName, project.supplierAddress].filter(Boolean).join('\n') || project.supplierName || 'KSB MIL Controls Limited';
+    docXml = this.setCellValueAfterLabel(docXml, 'Supplier:', supplierFull);
+    docXml = this.setCellValueAfterLabel(docXml, 'Location:', inspection.location || project.supplierAddress || 'Meladoor, Annamanada, Kerala, India');
+    if (project.customerName) {
+      docXml = this.setCellValueAfterLabel(docXml, 'Name:', project.customerName);
+    }
+    if (project.customerAddress) {
+      docXml = this.setCellValueAfterLabel(docXml, 'Address:', project.customerAddress);
+    }
 
     // Update Materials/Items Inspected on Page 1 (lives inside the same cell in template)
     const matLabelIdx = docXml.indexOf('Materials/Items Inspected:');
@@ -390,8 +440,13 @@ export class ReportService {
    * Set text value in a cell immediately following a label cell on Page 1
    */
   private setCellValueAfterLabel(docXml: string, label: string, newText: string): string {
-    const labelIdx = docXml.indexOf(label);
-    if (labelIdx === -1) return docXml;
+    let labelIdx = docXml.indexOf(label);
+    if (labelIdx === -1) {
+      const cleanLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s*');
+      const match = new RegExp(cleanLabel, 'i').exec(docXml);
+      if (match) labelIdx = match.index;
+      else return docXml;
+    }
 
     const labelTcEnd = docXml.indexOf('</w:tc>', labelIdx);
     if (labelTcEnd === -1) return docXml;
@@ -405,9 +460,12 @@ export class ReportService {
     const pEnd = valCellXml.lastIndexOf('</w:p>') + 6;
     if (pStart === -1 || pEnd === -1) return docXml;
 
-    const cleanP = `<w:p><w:pPr><w:contextualSpacing/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t>${escapeXml(newText)}</w:t></w:r></w:p>`;
+    const lines = String(newText || '').split(/\r?\n/).filter(l => l.trim().length > 0);
+    const paragraphs = lines.length > 0 ? lines.map(line =>
+      `<w:p><w:pPr><w:contextualSpacing/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t>${escapeXml(line)}</w:t></w:r></w:p>`
+    ).join('') : `<w:p><w:pPr><w:contextualSpacing/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr><w:r><w:t></w:t></w:r></w:p>`;
 
-    const updatedCellXml = valCellXml.substring(0, pStart) + cleanP + valCellXml.substring(pEnd);
+    const updatedCellXml = valCellXml.substring(0, pStart) + paragraphs + valCellXml.substring(pEnd);
     return docXml.substring(0, valTcStart) + updatedCellXml + docXml.substring(valTcEnd);
   }
 

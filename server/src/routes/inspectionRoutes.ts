@@ -285,6 +285,19 @@ router.post('/attendees', async (req, res) => {
   }
 });
 
+router.put('/attendees/:id', async (req, res) => {
+  try {
+    const attendee = await prisma.attendee.update({
+      where: { id: req.params.id },
+      data: req.body,
+    });
+    res.json(attendee);
+  } catch (err: any) {
+    console.error('Update attendee error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.delete('/attendees/:id', async (req, res) => {
   try {
     await prisma.attendee.delete({ where: { id: req.params.id } });
@@ -301,6 +314,19 @@ router.post('/observations', async (req, res) => {
     const obs = await prisma.observation.create({ data: req.body });
     res.json(obs);
   } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/observations/:id', async (req, res) => {
+  try {
+    const obs = await prisma.observation.update({
+      where: { id: req.params.id },
+      data: req.body,
+    });
+    res.json(obs);
+  } catch (err: any) {
+    console.error('Update observation error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -423,7 +449,7 @@ router.post('/:id/import-rfi', async (req, res) => {
     });
 
     // Update parent Project details from RFI
-    if (extractedData.projectName || extractedData.projectNumber || extractedData.poNumber) {
+    if (extractedData.projectName || extractedData.projectNumber || extractedData.poNumber || extractedData.supplierName) {
       try {
         await prisma.project.update({
           where: { id: inspection.projectId },
@@ -431,6 +457,8 @@ router.post('/:id/import-rfi', async (req, res) => {
             ...(extractedData.projectName && { projectName: extractedData.projectName }),
             ...(extractedData.projectNumber && { projectNumber: extractedData.projectNumber }),
             ...(extractedData.poNumber && { poNumber: extractedData.poNumber }),
+            ...(extractedData.supplierName && { supplierName: extractedData.supplierName }),
+            ...(extractedData.inspectionLocation && { supplierAddress: extractedData.inspectionLocation }),
           },
         });
       } catch (e) {
@@ -664,6 +692,23 @@ router.post('/:id/recall-rfi', async (req, res) => {
         ...(extractedData.itpRevision && { itpRevision: extractedData.itpRevision }),
       },
     });
+
+    if (extractedData.projectName || extractedData.projectNumber || extractedData.poNumber || extractedData.supplierName) {
+      try {
+        await prisma.project.update({
+          where: { id: inspection.projectId },
+          data: {
+            ...(extractedData.projectName && { projectName: extractedData.projectName }),
+            ...(extractedData.projectNumber && { projectNumber: extractedData.projectNumber }),
+            ...(extractedData.poNumber && { poNumber: extractedData.poNumber }),
+            ...(extractedData.supplierName && { supplierName: extractedData.supplierName }),
+            ...(extractedData.inspectionLocation && { supplierAddress: extractedData.inspectionLocation }),
+          },
+        });
+      } catch (e) {
+        console.warn('Could not update project details:', e);
+      }
+    }
 
     const updated = await prisma.inspection.findUnique({
       where: { id: inspectionId },

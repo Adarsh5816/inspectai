@@ -961,6 +961,80 @@ function InspectionWorkspacePage() {
   const [editLocationValue, setEditLocationValue] = useState('');
   const [savingLocation, setSavingLocation] = useState(false);
 
+  // Full Details & Scope edit state
+  const [showEditDetailsModal, setShowEditDetailsModal] = useState(false);
+  const [detailsForm, setDetailsForm] = useState({
+    supplierName: '',
+    supplierAddress: '',
+    customerName: '',
+    customerAddress: '',
+    poNumber: '',
+    projectName: '',
+    location: '',
+    materialDescription: '',
+    itpNumber: '',
+    itpRevision: '',
+    reportNumber: '',
+    disposition: '',
+    summaryNarrative: '',
+  });
+  const [savingDetails, setSavingDetails] = useState(false);
+
+  const openEditDetailsModal = () => {
+    if (!inspection) return;
+    setDetailsForm({
+      supplierName: inspection.project?.supplierName || '',
+      supplierAddress: inspection.project?.supplierAddress || '',
+      customerName: inspection.project?.customerName || '',
+      customerAddress: inspection.project?.customerAddress || '',
+      poNumber: inspection.project?.poNumber || '',
+      projectName: inspection.project?.projectName || '',
+      location: inspection.location || '',
+      materialDescription: inspection.materialDescription || 'CONTROL VALVES AND ITS COMPONENTS',
+      itpNumber: inspection.itpNumber || '',
+      itpRevision: inspection.itpRevision || '',
+      reportNumber: inspection.reportNumber || '',
+      disposition: inspection.disposition || 'Accept',
+      summaryNarrative: inspection.summaryNarrative || '',
+    });
+    setShowEditDetailsModal(true);
+  };
+
+  const handleSaveDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id || !inspection) return;
+    setSavingDetails(true);
+    try {
+      await API.updateInspection(id, {
+        location: detailsForm.location,
+        materialDescription: detailsForm.materialDescription,
+        itpNumber: detailsForm.itpNumber,
+        itpRevision: detailsForm.itpRevision,
+        reportNumber: detailsForm.reportNumber,
+        disposition: detailsForm.disposition,
+        summaryNarrative: detailsForm.summaryNarrative,
+      });
+
+      if (inspection.projectId) {
+        await API.updateProject(inspection.projectId, {
+          supplierName: detailsForm.supplierName,
+          supplierAddress: detailsForm.supplierAddress,
+          customerName: detailsForm.customerName,
+          customerAddress: detailsForm.customerAddress,
+          poNumber: detailsForm.poNumber,
+          projectName: detailsForm.projectName,
+        });
+      }
+
+      setShowEditDetailsModal(false);
+      load();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to update details');
+    } finally {
+      setSavingDetails(false);
+    }
+  };
+
   const load = useCallback(() => {
     if (!id) return;
     API.getInspection(id).then(r => setInspection(r.data)).catch(() => {});
@@ -1127,20 +1201,29 @@ function InspectionWorkspacePage() {
           <h1 className="text-2xl font-bold text-slate-800">{inspection.reportNumber}</h1>
           <StatusBadge status={inspection.status} />
         </div>
-        <button
-          onClick={async () => {
-            if (!confirm(`Are you sure you want to delete inspection ${inspection.reportNumber}? All associated items, activities, results, photos, and report data will be deleted.`)) return;
-            try {
-              await API.deleteInspection(inspection.id);
-              navigate(inspection.projectId ? `/projects/${inspection.projectId}` : '/inspections');
-            } catch (err: any) {
-              alert(err.response?.data?.error || 'Failed to delete inspection');
-            }
-          }}
-          className="px-3 py-1.5 border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-sm font-semibold transition flex items-center gap-1.5"
-        >
-          🗑️ Delete Inspection
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={openEditDetailsModal}
+            className="px-3.5 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 rounded-lg text-sm font-semibold transition flex items-center gap-1.5 shadow-xs"
+            title="Edit supplier, location, customer, scope description, ITP & report metadata"
+          >
+            ✏️ Edit Scope & Details
+          </button>
+          <button
+            onClick={async () => {
+              if (!confirm(`Are you sure you want to delete inspection ${inspection.reportNumber}? All associated items, activities, results, photos, and report data will be deleted.`)) return;
+              try {
+                await API.deleteInspection(inspection.id);
+                navigate(inspection.projectId ? `/projects/${inspection.projectId}` : '/inspections');
+              } catch (err: any) {
+                alert(err.response?.data?.error || 'Failed to delete inspection');
+              }
+            }}
+            className="px-3 py-1.5 border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-sm font-semibold transition flex items-center gap-1.5"
+          >
+            🗑️ Delete Inspection
+          </button>
+        </div>
       </div>
 
       {/* Progress / Info bar with Linked RFI, ITP, and Customer Offer List */}
@@ -1166,7 +1249,20 @@ function InspectionWorkspacePage() {
             </div>
             <span className="font-medium truncate block" title={inspection.location}>{inspection.location || '—'}</span>
           </div>
-          <div><span className="text-slate-500">Supplier:</span> <span className="font-medium truncate block">{inspection.project?.supplierName}</span></div>
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500">Supplier:</span>
+              <button
+                type="button"
+                onClick={openEditDetailsModal}
+                className="text-xs text-blue-600 hover:text-blue-800 underline font-medium ml-1"
+                title="Edit Supplier Details"
+              >
+                Edit
+              </button>
+            </div>
+            <span className="font-medium truncate block" title={inspection.project?.supplierName}>{inspection.project?.supplierName || '—'}</span>
+          </div>
           <div>
             <span className="text-slate-500 block text-xs">Linked RFI:</span>{' '}
             {inspection.rfiDocument ? (
@@ -1230,7 +1326,7 @@ function InspectionWorkspacePage() {
         {activeTab === 'overview' && <OverviewTab inspection={inspection} onValidate={async () => {
           const r = await API.validateInspection(id!);
           setValidation(r.data);
-        }} validation={validation} onOpenRfiModal={loadRfiDocuments} onOpenItpModal={loadItpDocuments} onOpenOfferModal={loadOfferDocuments} onRecallRfi={handleRecallRfi} recallingRfi={recallingRfi} />}
+        }} validation={validation} onOpenRfiModal={loadRfiDocuments} onOpenItpModal={loadItpDocuments} onOpenOfferModal={loadOfferDocuments} onRecallRfi={handleRecallRfi} recallingRfi={recallingRfi} onOpenEditDetailsModal={openEditDetailsModal} />}
         {activeTab === 'items' && <ItemsTab inspection={inspection} onReload={load} onOpenRfiModal={loadRfiDocuments} onOpenOfferModal={loadOfferDocuments} onRecallRfi={handleRecallRfi} recallingRfi={recallingRfi} />}
         {activeTab === 'activities' && <ActivitiesTab inspection={inspection} onReload={load} onOpenRfiModal={loadRfiDocuments} onOpenItpModal={loadItpDocuments} onOpenOfferModal={loadOfferDocuments} />}
         {activeTab === 'results' && <ResultsTab inspection={inspection} onReload={load} />}
@@ -1238,7 +1334,7 @@ function InspectionWorkspacePage() {
         {activeTab === 'attendees' && <AttendeesTab inspection={inspection} onReload={load} />}
         {activeTab === 'photos' && <PhotosTab inspection={inspection} onReload={load} />}
         {activeTab === 'observations' && <ObservationsTab inspection={inspection} onReload={load} />}
-        {activeTab === 'report' && <ReportTab inspection={inspection} />}
+        {activeTab === 'report' && <ReportTab inspection={inspection} onReload={load} />}
       </div>
 
       {/* RFI Import Modal (Accessible from all tabs) */}
@@ -1399,6 +1495,139 @@ function InspectionWorkspacePage() {
                 {savingLocation ? 'Saving...' : 'Save Location'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Scope, Supplier & Inspection Details Modal */}
+      {showEditDetailsModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 my-8 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <span>✏️</span> Edit Inspection, Supplier &amp; Scope Details
+              </h3>
+              <button onClick={() => setShowEditDetailsModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+            </div>
+            <form onSubmit={handleSaveDetails} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <AutocompleteInput
+                  label="Supplier Name"
+                  category="supplier"
+                  value={detailsForm.supplierName}
+                  onChange={v => setDetailsForm({ ...detailsForm, supplierName: v })}
+                  placeholder="e.g. KSB MIL Controls Limited"
+                  required
+                />
+                <Input
+                  label="Supplier Address"
+                  value={detailsForm.supplierAddress}
+                  onChange={v => setDetailsForm({ ...detailsForm, supplierAddress: v })}
+                  placeholder="e.g. Meladoor, Annamanada - 680741, Kerala"
+                />
+                <AutocompleteInput
+                  label="Inspection Location"
+                  category="location"
+                  value={detailsForm.location}
+                  onChange={v => setDetailsForm({ ...detailsForm, location: v })}
+                  placeholder="e.g. Meladoor, Kerala"
+                  required
+                />
+                <AutocompleteInput
+                  label="Customer Name"
+                  category="customer"
+                  value={detailsForm.customerName}
+                  onChange={v => setDetailsForm({ ...detailsForm, customerName: v })}
+                  placeholder="e.g. ADNOC Onshore"
+                  required
+                />
+                <Input
+                  label="Customer Address"
+                  value={detailsForm.customerAddress}
+                  onChange={v => setDetailsForm({ ...detailsForm, customerAddress: v })}
+                  placeholder="e.g. P.O. Box 270, Abu Dhabi, UAE"
+                />
+                <Input
+                  label="Contractor PO Number"
+                  value={detailsForm.poNumber}
+                  onChange={v => setDetailsForm({ ...detailsForm, poNumber: v })}
+                  placeholder="e.g. 04108-PM-INST-008"
+                />
+                <div className="md:col-span-2">
+                  <Input
+                    label="Project Name"
+                    value={detailsForm.projectName}
+                    onChange={v => setDetailsForm({ ...detailsForm, projectName: v })}
+                    placeholder="e.g. EPC for SE AiP5 Project (On plot) - ASAB/SAHIL (Package 1)"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <Input
+                    label="Materials / Scope Description (Section 2.0)"
+                    value={detailsForm.materialDescription}
+                    onChange={v => setDetailsForm({ ...detailsForm, materialDescription: v })}
+                    placeholder="e.g. CONTROL VALVES AND ITS COMPONENTS"
+                    required
+                  />
+                </div>
+                <Input
+                  label="ITP Number Reference"
+                  value={detailsForm.itpNumber}
+                  onChange={v => setDetailsForm({ ...detailsForm, itpNumber: v })}
+                  placeholder="e.g. P30339B-30-99-52-4607"
+                />
+                <Input
+                  label="ITP Revision"
+                  value={detailsForm.itpRevision}
+                  onChange={v => setDetailsForm({ ...detailsForm, itpRevision: v })}
+                  placeholder="e.g. Rev C"
+                />
+                <Input
+                  label="Report Number"
+                  value={detailsForm.reportNumber}
+                  onChange={v => setDetailsForm({ ...detailsForm, reportNumber: v })}
+                  placeholder="e.g. 001"
+                />
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Inspection Disposition</label>
+                  <select
+                    value={detailsForm.disposition}
+                    onChange={e => setDetailsForm({ ...detailsForm, disposition: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm"
+                  >
+                    <option value="Acceptable">Acceptable</option>
+                    <option value="Nonconformance(s) Identified">Nonconformance(s) Identified</option>
+                    <option value="Placed on Hold">Placed on Hold</option>
+                  </select>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Inspection Summary Narrative (Page 1)</label>
+                  <textarea
+                    value={detailsForm.summaryNarrative}
+                    onChange={e => setDetailsForm({ ...detailsForm, summaryNarrative: e.target.value })}
+                    rows={3}
+                    placeholder="Leave blank to auto-synthesize from attended ITP clauses, or provide custom summary."
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  />
+                </div>
+              </div>
+              <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEditDetailsModal(false)}
+                  className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingDetails}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold shadow-sm transition disabled:opacity-50"
+                >
+                  {savingDetails ? 'Saving Changes...' : 'Save All Details'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -2020,7 +2249,7 @@ function OfferListModal({ inspection, offerDocs, isOpen, onClose, onReload }: { 
 }
 
 // Tab: Overview
-function OverviewTab({ inspection, onValidate, validation, onOpenRfiModal, onOpenItpModal, onOpenOfferModal, onRecallRfi, recallingRfi }: any) {
+function OverviewTab({ inspection, onValidate, validation, onOpenRfiModal, onOpenItpModal, onOpenOfferModal, onRecallRfi, recallingRfi, onOpenEditDetailsModal }: any) {
   const totalAct = inspection.activities?.length || 0;
   const doneAct = inspection.activities?.filter((a: any) => a.status === 'ACCEPTABLE' || a.status === 'NOT_ACCEPTABLE').length || 0;
   const pct = totalAct > 0 ? Math.round((doneAct / totalAct) * 100) : 0;
@@ -2034,6 +2263,15 @@ function OverviewTab({ inspection, onValidate, validation, onOpenRfiModal, onOpe
             <span>📄</span> Referenced Project Documents &amp; Scope
           </h4>
           <div className="flex items-center gap-2">
+            {onOpenEditDetailsModal && (
+              <button
+                onClick={onOpenEditDetailsModal}
+                className="text-xs font-semibold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-lg shadow-xs transition flex items-center gap-1"
+                title="Edit supplier, location, customer, scope description, and ITP references"
+              >
+                <span>✏️</span> Edit Scope &amp; Details
+              </button>
+            )}
             {inspection.rfiDocument && (
               <button
                 onClick={onRecallRfi}
@@ -2064,7 +2302,7 @@ function OverviewTab({ inspection, onValidate, validation, onOpenRfiModal, onOpe
             </button>
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3 text-xs">
           <div className="bg-white p-3 rounded-lg border border-slate-200">
             <span className="text-slate-500 font-medium block mb-1">Linked RFI Document</span>
             {inspection.rfiDocument ? (
@@ -2074,10 +2312,36 @@ function OverviewTab({ inspection, onValidate, validation, onOpenRfiModal, onOpe
             )}
           </div>
           <div className="bg-white p-3 rounded-lg border border-slate-200">
-            <span className="text-slate-500 font-medium block mb-1">Approved ITP Reference</span>
-            <span className="font-semibold text-slate-800">
-              {inspection.itpDocument?.originalFilename || inspection.itpNumber || 'CV-L2-4441 QAP R3/SO (Default)'}
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-slate-500 font-medium block">Approved ITP</span>
+              {onOpenEditDetailsModal && (
+                <button type="button" onClick={onOpenEditDetailsModal} className="text-blue-600 hover:underline text-[11px] font-semibold">Edit</button>
+              )}
+            </div>
+            <span className="font-semibold text-slate-800 block truncate" title={inspection.itpNumber || 'CV-L2-4441 QAP R3/SO'}>
+              {inspection.itpNumber || 'CV-L2-4441 QAP R3/SO'} {inspection.itpRevision ? `(Rev ${inspection.itpRevision})` : ''}
             </span>
+          </div>
+          <div className="bg-white p-3 rounded-lg border border-slate-200">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-slate-500 font-medium block">Materials / Scope</span>
+              {onOpenEditDetailsModal && (
+                <button type="button" onClick={onOpenEditDetailsModal} className="text-blue-600 hover:underline text-[11px] font-semibold">Edit</button>
+              )}
+            </div>
+            <span className="font-semibold text-slate-800 block truncate" title={inspection.materialDescription || 'CONTROL VALVES'}>
+              {inspection.materialDescription || 'CONTROL VALVES'}
+            </span>
+          </div>
+          <div className="bg-white p-3 rounded-lg border border-slate-200">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-slate-500 font-medium block">Supplier &amp; Location</span>
+              {onOpenEditDetailsModal && (
+                <button type="button" onClick={onOpenEditDetailsModal} className="text-blue-600 hover:underline text-[11px] font-semibold">Edit</button>
+              )}
+            </div>
+            <span className="font-semibold text-slate-800 block truncate" title={inspection.project?.supplierName}>{inspection.project?.supplierName || '—'}</span>
+            <span className="text-slate-500 text-[11px] block truncate" title={inspection.location}>{inspection.location || '—'}</span>
           </div>
           <div className="bg-white p-3 rounded-lg border border-slate-200">
             <span className="text-slate-500 font-medium block mb-1">Customer Offer List</span>
@@ -2086,10 +2350,6 @@ function OverviewTab({ inspection, onValidate, validation, onOpenRfiModal, onOpe
             ) : (
               <span className="text-slate-400 italic">None linked</span>
             )}
-          </div>
-          <div className="bg-white p-3 rounded-lg border border-slate-200">
-            <span className="text-slate-500 font-medium block mb-1">Materials / Scope</span>
-            <span className="font-semibold text-slate-800">{inspection.materialDescription || 'CONTROL VALVES'}</span>
           </div>
         </div>
       </div>
@@ -2130,6 +2390,8 @@ function ItemsTab({ inspection, onReload, onOpenRfiModal, onOpenOfferModal, onRe
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ inspectionId: inspection.id, poItemNo: '', tagNumber: '', serialNumber: '', jobNo: '', itemName: 'Control Valve', sizeInch: '', rating: '', bodyMaterial: '' });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [editingItem, setEditingItem] = useState<any>(null);
+  const [savingItem, setSavingItem] = useState(false);
 
   const items = inspection.items || [];
 
@@ -2356,7 +2618,14 @@ function ItemsTab({ inspection, onReload, onOpenRfiModal, onOpenOfferModal, onRe
                     <td className="p-3 text-xs text-slate-600">
                       {item.sizeInch} {item.rating} • {item.bodyMaterial}
                     </td>
-                    <td className="p-3 text-right">
+                    <td className="p-3 text-right whitespace-nowrap">
+                      <button
+                        onClick={() => setEditingItem({ ...item })}
+                        className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition text-sm mr-1"
+                        title="Edit Material"
+                      >
+                        ✏️
+                      </button>
                       <button
                         onClick={() => handleDeleteItem(item.id, item.tagNumber)}
                         className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition text-sm"
@@ -2372,6 +2641,54 @@ function ItemsTab({ inspection, onReload, onOpenRfiModal, onOpenOfferModal, onRe
           </table>
         </div>
       )}
+
+      {/* Edit Material Item Modal */}
+      {editingItem && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 my-8">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <span>✏️</span> Edit Valve / Material
+              </h3>
+              <button onClick={() => setEditingItem(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+            </div>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              setSavingItem(true);
+              try {
+                await API.updateItem(editingItem.id, editingItem);
+                setEditingItem(null);
+                onReload();
+              } catch (err: any) {
+                alert(err.response?.data?.error || 'Failed to update item');
+              } finally {
+                setSavingItem(false);
+              }
+            }} className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <Input label="PO Item No" value={editingItem.poItemNo} onChange={v => setEditingItem({ ...editingItem, poItemNo: v })} placeholder="'79" required />
+                <Input label="Tag Number" value={editingItem.tagNumber} onChange={v => setEditingItem({ ...editingItem, tagNumber: v })} placeholder="14-01-FCV-1601-01A" required />
+                <Input label="Serial Number" value={editingItem.serialNumber} onChange={v => setEditingItem({ ...editingItem, serialNumber: v })} placeholder="25009567" />
+                <Input label="Job No" value={editingItem.jobNo} onChange={v => setEditingItem({ ...editingItem, jobNo: v })} placeholder="CD13E085" />
+                <Input label="Item Name" value={editingItem.itemName} onChange={v => setEditingItem({ ...editingItem, itemName: v })} />
+                <Input label="Size" value={editingItem.sizeInch} onChange={v => setEditingItem({ ...editingItem, sizeInch: v })} placeholder="24''" />
+                <Input label="Rating" value={editingItem.rating} onChange={v => setEditingItem({ ...editingItem, rating: v })} placeholder="ASME #600 RF" />
+                <Input label="Body Material" value={editingItem.bodyMaterial} onChange={v => setEditingItem({ ...editingItem, bodyMaterial: v })} placeholder="Gr WCC" />
+                <Input label="Valve Series" value={editingItem.valveSeries || ''} onChange={v => setEditingItem({ ...editingItem, valveSeries: v })} placeholder="41611" />
+                <Input label="Presented Qty" type="number" value={String(editingItem.presentedQty ?? 1)} onChange={v => setEditingItem({ ...editingItem, presentedQty: parseInt(v) || 0 })} />
+                <Input label="Accepted This Visit" type="number" value={String(editingItem.acceptedThisVisit ?? 1)} onChange={v => setEditingItem({ ...editingItem, acceptedThisVisit: parseInt(v) || 0 })} />
+                <Input label="Accepted To Date" type="number" value={String(editingItem.acceptedToDate ?? 1)} onChange={v => setEditingItem({ ...editingItem, acceptedToDate: parseInt(v) || 0 })} />
+              </div>
+              <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                <button type="button" onClick={() => setEditingItem(null)} className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50 font-medium">Cancel</button>
+                <button type="submit" disabled={savingItem} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold shadow-sm transition disabled:opacity-50">
+                  {savingItem ? 'Saving...' : 'Save Material'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2382,6 +2699,8 @@ function ActivitiesTab({ inspection, onReload, onOpenRfiModal, onOpenItpModal, o
   const [manualForm, setManualForm] = useState({ inspectionId: inspection.id, clauseNumber: '', activityName: '', acceptanceCriteria: '', interventionTPIA: 'W' });
   const [selectedDate, setSelectedDate] = useState(inspection.startDate ? new Date(inspection.startDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
   const [savingDaily, setSavingDaily] = useState(false);
+  const [editingActivity, setEditingActivity] = useState<any>(null);
+  const [savingActivity, setSavingActivity] = useState(false);
   
   // Local state for daily checklist entries
   const [entries, setEntries] = useState<Record<string, { isDone: boolean; status: string; remarks: string; testMedium: string; testPressure: string; holdingTimeMin: string }>>({});
@@ -2714,6 +3033,14 @@ function ActivitiesTab({ inspection, onReload, onOpenRfiModal, onOpenItpModal, o
                       </select>
                       <button
                         type="button"
+                        onClick={() => setEditingActivity({ ...act })}
+                        className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition text-sm"
+                        title="Edit Activity"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleDeleteActivity(act.id, act.clauseNumber, act.activityName)}
                         className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
                         title="Delete Activity"
@@ -2803,6 +3130,98 @@ function ActivitiesTab({ inspection, onReload, onOpenRfiModal, onOpenItpModal, o
         </div>
       )}
 
+      {/* Edit Activity Modal */}
+      {editingActivity && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 my-8">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <span>✏️</span> Edit Inspection Activity
+              </h3>
+              <button onClick={() => setEditingActivity(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+            </div>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              setSavingActivity(true);
+              try {
+                await API.updateActivity(editingActivity.id, editingActivity);
+                setEditingActivity(null);
+                onReload();
+              } catch (err: any) {
+                alert(err.response?.data?.error || 'Failed to update activity');
+              } finally {
+                setSavingActivity(false);
+              }
+            }} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Input
+                  label="ITP Clause Number"
+                  value={editingActivity.clauseNumber}
+                  onChange={v => setEditingActivity({ ...editingActivity, clauseNumber: v })}
+                  placeholder="7.1"
+                  required
+                />
+                <Input
+                  label="Activity Name"
+                  value={editingActivity.activityName}
+                  onChange={v => setEditingActivity({ ...editingActivity, activityName: v })}
+                  placeholder="Body mount Leakage test"
+                  required
+                />
+                <div className="md:col-span-2">
+                  <Input
+                    label="Acceptance Criteria"
+                    value={editingActivity.acceptanceCriteria}
+                    onChange={v => setEditingActivity({ ...editingActivity, acceptanceCriteria: v })}
+                    placeholder="Conform to approved ITP & project specifications"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">TPI Level</label>
+                  <select
+                    value={editingActivity.interventionTPIA || 'W'}
+                    onChange={e => setEditingActivity({ ...editingActivity, interventionTPIA: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg bg-white text-sm"
+                  >
+                    <option value="H">H - Hold</option>
+                    <option value="W">W - Witness</option>
+                    <option value="R">R - Review</option>
+                    <option value="A">A - Approval</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+                  <select
+                    value={editingActivity.status || 'ACCEPTABLE'}
+                    onChange={e => setEditingActivity({ ...editingActivity, status: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg bg-white text-sm"
+                  >
+                    <option value="ACCEPTABLE">Acceptable</option>
+                    <option value="NOT_ACCEPTABLE">Not Acceptable</option>
+                    <option value="ON_HOLD">On Hold</option>
+                    <option value="PENDING">Pending</option>
+                  </select>
+                </div>
+                <div className="md:col-span-2">
+                  <Input
+                    label="Extent of Examination"
+                    value={editingActivity.extentOfExam || '100%'}
+                    onChange={v => setEditingActivity({ ...editingActivity, extentOfExam: v })}
+                    placeholder="100%"
+                  />
+                </div>
+              </div>
+              <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                <button type="button" onClick={() => setEditingActivity(null)} className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50 font-medium">Cancel</button>
+                <button type="submit" disabled={savingActivity} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold shadow-sm transition disabled:opacity-50">
+                  {savingActivity ? 'Saving...' : 'Save Activity'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2897,6 +3316,7 @@ function ResultsTab({ inspection, onReload }: any) {
 // Tab: 5.0 Equipment and Instrumentation Used
 function InstrumentsTab({ inspection, onReload }: any) {
   const [showForm, setShowForm] = useState(false);
+  const [editingInstrument, setEditingInstrument] = useState<any>(null);
   const [form, setForm] = useState({
     inspectionId: inspection.id,
     projectId: inspection.projectId,
@@ -3076,19 +3496,102 @@ function InstrumentsTab({ inspection, onReload }: any) {
                       )}
                     </td>
                     <td className="p-3 text-right">
-                      <button
-                        onClick={() => handleDelete(inst.id, inst.instrumentName)}
-                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                        title="Delete Instrument"
-                      >
-                        🗑️
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => setEditingInstrument({
+                            ...inst,
+                            expiryDate: inst.expiryDate ? new Date(inst.expiryDate).toISOString().split('T')[0] : ''
+                          })}
+                          className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                          title="Edit Instrument"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          onClick={() => handleDelete(inst.id, inst.instrumentName)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                          title="Delete Instrument"
+                        >
+                          🗑️
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Edit Instrument Modal */}
+      {editingInstrument && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <span>✏️</span> Edit Equipment / Instrument
+              </h3>
+              <button onClick={() => setEditingInstrument(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+            </div>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  await API.updateInstrument(editingInstrument.id, {
+                    instrumentName: editingInstrument.instrumentName,
+                    serialNumber: editingInstrument.serialNumber,
+                    certificateNo: editingInstrument.certificateNo,
+                    expiryDate: editingInstrument.expiryDate || null,
+                  });
+                  setEditingInstrument(null);
+                  onReload();
+                } catch (err: any) {
+                  alert(err.response?.data?.error || 'Failed to update instrument');
+                }
+              }}
+              className="space-y-3"
+            >
+              <Input
+                label="Equipment / Instrument Description"
+                value={editingInstrument.instrumentName || ''}
+                onChange={v => setEditingInstrument({ ...editingInstrument, instrumentName: v })}
+                required
+              />
+              <Input
+                label="Serial No."
+                value={editingInstrument.serialNumber || ''}
+                onChange={v => setEditingInstrument({ ...editingInstrument, serialNumber: v })}
+                required
+              />
+              <Input
+                label="Calibration Cert. No."
+                value={editingInstrument.certificateNo || ''}
+                onChange={v => setEditingInstrument({ ...editingInstrument, certificateNo: v })}
+              />
+              <Input
+                label="Expiry Date"
+                value={editingInstrument.expiryDate || ''}
+                onChange={v => setEditingInstrument({ ...editingInstrument, expiryDate: v })}
+                type="date"
+              />
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingInstrument(null)}
+                  className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold shadow-sm"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
@@ -3098,6 +3601,7 @@ function InstrumentsTab({ inspection, onReload }: any) {
 // Tab: Attendees
 function AttendeesTab({ inspection, onReload }: any) {
   const [showForm, setShowForm] = useState(false);
+  const [editingAttendee, setEditingAttendee] = useState<any>(null);
   const [form, setForm] = useState({ inspectionId: inspection.id, name: '', company: '', representedOrg: '', title: '' });
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -3140,17 +3644,106 @@ function AttendeesTab({ inspection, onReload }: any) {
             <td className="p-2">{a.representedOrg}</td>
             <td className="p-2">{a.title}</td>
             <td className="p-2 text-right">
-              <button
-                onClick={() => handleDeleteAttendee(a.id, a.name)}
-                className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition text-xs"
-                title="Delete Attendee"
-              >
-                🗑️
-              </button>
+              <div className="flex items-center justify-end gap-1">
+                <button
+                  onClick={() => setEditingAttendee({ ...a })}
+                  className="p-1 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded transition text-xs"
+                  title="Edit Attendee"
+                >
+                  ✏️
+                </button>
+                <button
+                  onClick={() => handleDeleteAttendee(a.id, a.name)}
+                  className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition text-xs"
+                  title="Delete Attendee"
+                >
+                  🗑️
+                </button>
+              </div>
             </td>
           </tr>
         ))}</tbody>
       </table>
+
+      {/* Edit Attendee Modal */}
+      {editingAttendee && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <span>✏️</span> Edit Attendee
+              </h3>
+              <button onClick={() => setEditingAttendee(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+            </div>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  await API.updateAttendee(editingAttendee.id, {
+                    name: editingAttendee.name,
+                    company: editingAttendee.company,
+                    representedOrg: editingAttendee.representedOrg,
+                    title: editingAttendee.title,
+                  });
+                  setEditingAttendee(null);
+                  onReload();
+                } catch (err: any) {
+                  alert(err.response?.data?.error || 'Failed to update attendee');
+                }
+              }}
+              className="space-y-3"
+            >
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Name"
+                  value={editingAttendee.name || ''}
+                  onChange={v => setEditingAttendee({ ...editingAttendee, name: v })}
+                  placeholder="e.g. Adarsh MS"
+                  required
+                />
+                <Input
+                  label="Company"
+                  value={editingAttendee.company || ''}
+                  onChange={v => setEditingAttendee({ ...editingAttendee, company: v })}
+                  placeholder="e.g. Intertek"
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Represented Org"
+                  value={editingAttendee.representedOrg || ''}
+                  onChange={v => setEditingAttendee({ ...editingAttendee, representedOrg: v })}
+                  placeholder="e.g. ADNOC Onshore"
+                  required
+                />
+                <Input
+                  label="Title"
+                  value={editingAttendee.title || ''}
+                  onChange={v => setEditingAttendee({ ...editingAttendee, title: v })}
+                  placeholder="e.g. Inspection Engineer"
+                  required
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingAttendee(null)}
+                  className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold shadow-sm"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3249,6 +3842,7 @@ function PhotosTab({ inspection, onReload }: any) {
 // Tab: Observations
 function ObservationsTab({ inspection, onReload }: any) {
   const [showForm, setShowForm] = useState(false);
+  const [editingObs, setEditingObs] = useState<any>(null);
   const [form, setForm] = useState({ inspectionId: inspection.id, obsType: 'POSITIVE', criticality: 'NON_CRITICAL', category: 'Documentation', comments: '' });
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -3307,35 +3901,190 @@ function ObservationsTab({ inspection, onReload }: any) {
             </div>
             <p className="text-sm text-slate-700">{o.comments}</p>
           </div>
-          <button
-            onClick={() => handleDeleteObservation(o.id)}
-            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition text-sm ml-3"
-            title="Delete Observation"
-          >
-            🗑️
-          </button>
+          <div className="flex items-center gap-1 ml-3">
+            <button
+              onClick={() => setEditingObs({ ...o })}
+              className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded transition text-sm"
+              title="Edit Observation"
+            >
+              ✏️
+            </button>
+            <button
+              onClick={() => handleDeleteObservation(o.id)}
+              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition text-sm"
+              title="Delete Observation"
+            >
+              🗑️
+            </button>
+          </div>
         </div>
       ))}
+
+      {/* Edit Observation Modal */}
+      {editingObs && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <span>✏️</span> Edit Quality Observation
+              </h3>
+              <button onClick={() => setEditingObs(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+            </div>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  await API.updateObservation(editingObs.id, {
+                    obsType: editingObs.obsType,
+                    criticality: editingObs.criticality,
+                    category: editingObs.category,
+                    comments: editingObs.comments,
+                  });
+                  setEditingObs(null);
+                  onReload();
+                } catch (err: any) {
+                  alert(err.response?.data?.error || 'Failed to update observation');
+                }
+              }}
+              className="space-y-3"
+            >
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Type</label>
+                  <select
+                    value={editingObs.obsType}
+                    onChange={e => setEditingObs({ ...editingObs, obsType: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                  >
+                    <option value="POSITIVE">Positive</option>
+                    <option value="NEGATIVE">Negative</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Criticality</label>
+                  <select
+                    value={editingObs.criticality}
+                    onChange={e => setEditingObs({ ...editingObs, criticality: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                  >
+                    <option value="NON_CRITICAL">Non-Critical</option>
+                    <option value="CRITICAL">Critical</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
+                  <select
+                    value={editingObs.category}
+                    onChange={e => setEditingObs({ ...editingObs, category: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                  >
+                    <option>Documentation</option>
+                    <option>Testing</option>
+                    <option>Visual</option>
+                    <option>Dimensional</option>
+                    <option>Material</option>
+                    <option>Painting</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Comments</label>
+                <textarea
+                  value={editingObs.comments || ''}
+                  onChange={e => setEditingObs({ ...editingObs, comments: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                  rows={3}
+                  required
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingObs(null)}
+                  className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold shadow-sm"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // Tab: Report Generation
-function ReportTab({ inspection }: any) {
+function ReportTab({ inspection, onReload }: any) {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
   const [templates, setTemplates] = useState<any[]>([]);
-  const [selectedTemplate, setSelectedTemplate] = useState('master-template.docx');
+  const [reportType, setReportType] = useState<'IR' | 'FR'>(inspection.reportFormatType === 'FR' ? 'FR' : 'IR');
+  const [selectedTemplate, setSelectedTemplate] = useState(inspection.selectedTemplate || 'master-template.docx');
   const [uploadingTemplate, setUploadingTemplate] = useState(false);
 
   useEffect(() => {
     API.getTemplates().then(r => {
       setTemplates(r.data);
-      if (r.data.length > 0 && !r.data.some((t: any) => t.name === selectedTemplate)) {
-        setSelectedTemplate(r.data[0].name);
+      const currentType: 'IR' | 'FR' = inspection.reportFormatType === 'FR' ? 'FR' : 'IR';
+      setReportType(currentType);
+
+      const filtered = r.data.filter((t: any) => (t.type || 'IR') === currentType);
+      const initialTemplate = inspection.selectedTemplate;
+      if (initialTemplate && filtered.some((t: any) => t.name === initialTemplate)) {
+        setSelectedTemplate(initialTemplate);
+      } else if (filtered.length > 0) {
+        setSelectedTemplate(filtered[0].name);
+        API.updateInspection(inspection.id, { selectedTemplate: filtered[0].name }).catch(() => {});
       }
     }).catch(() => {});
-  }, []);
+  }, [inspection.id, inspection.reportFormatType, inspection.selectedTemplate]);
+
+  const handleTypeChange = async (newType: 'IR' | 'FR') => {
+    setReportType(newType);
+    const filtered = templates.filter((t: any) => (t.type || 'IR') === newType);
+    const newSelected = filtered.length > 0 ? filtered[0].name : '';
+    if (newSelected) {
+      setSelectedTemplate(newSelected);
+    }
+    try {
+      await API.updateInspection(inspection.id, {
+        reportFormatType: newType,
+        ...(newSelected ? { selectedTemplate: newSelected } : {})
+      });
+      if (onReload) onReload();
+    } catch (err: any) {
+      console.error('Failed to update inspection report format type:', err);
+    }
+  };
+
+  const handleTemplateSelect = async (tmplName: string) => {
+    setSelectedTemplate(tmplName);
+    try {
+      await API.updateInspection(inspection.id, { selectedTemplate: tmplName });
+      if (onReload) onReload();
+    } catch (err: any) {
+      console.error('Failed to save selected template:', err);
+    }
+  };
+
+  const handleToggleTemplateCategory = async (tmplName: string, currentCategory: string) => {
+    const targetCategory = currentCategory === 'FR' ? 'IR' : 'FR';
+    try {
+      await API.updateTemplateCategory(tmplName, targetCategory);
+      const res = await API.getTemplates();
+      setTemplates(res.data);
+      if (onReload) onReload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to update template category');
+    }
+  };
 
   const handleTemplateUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.[0]) return;
@@ -3347,12 +4096,15 @@ function ReportTab({ inspection }: any) {
     setUploadingTemplate(true);
     const fd = new FormData();
     fd.append('file', file);
+    fd.append('formatType', reportType);
     try {
       await API.uploadTemplate(fd);
       const res = await API.getTemplates();
       setTemplates(res.data);
       setSelectedTemplate(file.name);
-      alert(`Format template "${file.name}" uploaded successfully!`);
+      await API.updateInspection(inspection.id, { selectedTemplate: file.name, reportFormatType: reportType });
+      if (onReload) onReload();
+      alert(`Format template "${file.name}" uploaded successfully into ${reportType} category!`);
     } catch {
       alert('Failed to upload template format');
     }
@@ -3375,7 +4127,7 @@ function ReportTab({ inspection }: any) {
       const url = window.URL.createObjectURL(new Blob([r.data]));
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Inspection_Report_${inspection.reportNumber || 'draft'}.docx`;
+      a.download = `${reportType}_Report_${inspection.reportNumber || 'draft'}.docx`;
       a.click();
       window.URL.revokeObjectURL(url);
     } catch (e: any) {
@@ -3405,68 +4157,186 @@ function ReportTab({ inspection }: any) {
       await API.deleteTemplate(templateName);
       const res = await API.getTemplates();
       setTemplates(res.data);
-      if (res.data.length > 0) setSelectedTemplate(res.data[0].name);
+      const remainingFiltered = res.data.filter((t: any) => (t.type || 'IR') === reportType);
+      if (remainingFiltered.length > 0) {
+        handleTemplateSelect(remainingFiltered[0].name);
+      }
       alert('Template format deleted successfully');
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to delete template');
     }
   };
 
+  const irTemplatesCount = templates.filter((t: any) => (t.type || 'IR') === 'IR').length;
+  const frTemplatesCount = templates.filter((t: any) => t.type === 'FR').length;
+  const filteredTemplates = templates.filter((t: any) => (t.type || 'IR') === reportType);
+  const currentTmplObj = templates.find((t: any) => t.name === selectedTemplate);
+
   return (
     <div className="space-y-6">
-      <h3 className="font-semibold text-slate-800 text-lg">Report Generation & Format Customization</h3>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+        <div>
+          <h3 className="font-semibold text-slate-800 text-lg">Report Generation & Format Customization</h3>
+          <p className="text-xs text-slate-500">Choose between Inspection Report (IR) or Final Report (FR), select matching templates, and export.</p>
+        </div>
+      </div>
       
       {/* Template Format Selector & Uploader */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h4 className="font-semibold text-slate-800 flex items-center gap-2">
-              <span>📋</span> Active Report Template Format
-            </h4>
-            <p className="text-sm text-slate-500 mt-0.5">
-              Select or upload the inspection report format required by the company or client.
-            </p>
-          </div>
-          
-          <label className={`inline-flex items-center gap-2 bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg font-medium text-sm hover:bg-slate-100 cursor-pointer shadow-sm ${uploadingTemplate ? 'opacity-50' : ''}`}>
-            <span>📤</span> {uploadingTemplate ? 'Uploading...' : 'Upload New Company Format (.docx)'}
-            <input type="file" accept=".docx" onChange={handleTemplateUpload} className="hidden" />
+        {/* IR vs FR Category Selection Bar */}
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+            1. Select Report Type (Saved with this Inspection)
           </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
+            <button
+              type="button"
+              onClick={() => handleTypeChange('IR')}
+              className={`p-3.5 rounded-xl border text-left transition flex items-center justify-between ${
+                reportType === 'IR'
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-md ring-2 ring-blue-300'
+                  : 'bg-white text-slate-700 border-slate-200 hover:border-blue-300 hover:bg-slate-50'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">📄</span>
+                <div>
+                  <div className="font-bold text-sm flex items-center gap-1.5">
+                    <span>IR</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold uppercase tracking-wider ${
+                      reportType === 'IR' ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-600'
+                    }`}>
+                      Inspection Report
+                    </span>
+                  </div>
+                  <p className={`text-xs mt-0.5 ${reportType === 'IR' ? 'text-blue-100' : 'text-slate-400'}`}>
+                    Witness & hold point stages
+                  </p>
+                </div>
+              </div>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
+                reportType === 'IR' ? 'bg-white text-blue-700' : 'bg-slate-100 text-slate-600'
+              }`}>
+                {irTemplatesCount} formats
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleTypeChange('FR')}
+              className={`p-3.5 rounded-xl border text-left transition flex items-center justify-between ${
+                reportType === 'FR'
+                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-md ring-2 ring-indigo-300'
+                  : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">📑</span>
+                <div>
+                  <div className="font-bold text-sm flex items-center gap-1.5">
+                    <span>FR</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold uppercase tracking-wider ${
+                      reportType === 'FR' ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600'
+                    }`}>
+                      Final Report
+                    </span>
+                  </div>
+                  <p className={`text-xs mt-0.5 ${reportType === 'FR' ? 'text-indigo-100' : 'text-slate-400'}`}>
+                    Final Factory Acceptance / Release
+                  </p>
+                </div>
+              </div>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
+                reportType === 'FR' ? 'bg-white text-indigo-700' : 'bg-slate-100 text-slate-600'
+              }`}>
+                {frTemplatesCount} formats
+              </span>
+            </button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
-              Choose Template Format
+        <div className="border-t border-slate-200 pt-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h4 className="font-semibold text-slate-800 flex items-center gap-2">
+                <span>📋</span> 2. Choose Matching {reportType} Template Format
+              </h4>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Showing existing formats classified for <strong>{reportType === 'IR' ? 'Inspection Report (IR)' : 'Final Report (FR)'}</strong>.
+              </p>
+            </div>
+            
+            <label className={`inline-flex items-center gap-2 bg-white border border-slate-300 text-slate-700 px-3.5 py-1.5 rounded-lg font-medium text-xs hover:bg-slate-100 cursor-pointer shadow-sm ${uploadingTemplate ? 'opacity-50' : ''}`}>
+              <span>📤</span> {uploadingTemplate ? 'Uploading...' : `Upload New ${reportType} Format (.docx)`}
+              <input type="file" accept=".docx" onChange={handleTemplateUpload} className="hidden" />
             </label>
-            <div className="flex items-center gap-2">
-              <select
-                value={selectedTemplate}
-                onChange={e => setSelectedTemplate(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                {templates.map(t => (
-                  <option key={t.name} value={t.name}>
-                    {t.name} ({(t.size / 1024 / 1024).toFixed(2)} MB)
-                  </option>
-                ))}
-              </select>
-              {selectedTemplate !== 'master-template.docx' && (
-                <button
-                  type="button"
-                  onClick={() => handleDeleteTemplate(selectedTemplate)}
-                  className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                  title="Delete this template format"
-                >
-                  🗑️
-                </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                Active Template Format ({reportType})
+              </label>
+              {filteredTemplates.length === 0 ? (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                  No {reportType} formats found. Please upload a {reportType} document format using the button above.
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <select
+                    value={selectedTemplate}
+                    onChange={e => handleTemplateSelect(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    {filteredTemplates.map(t => (
+                      <option key={t.name} value={t.name}>
+                        {t.displayName || t.name} ({(t.size ? t.size / 1024 / 1024 : 0.05).toFixed(2)} MB)
+                      </option>
+                    ))}
+                  </select>
+                  {selectedTemplate !== 'master-template.docx' && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteTemplate(selectedTemplate)}
+                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition shrink-0"
+                      title="Delete this template format"
+                    >
+                      🗑️
+                    </button>
+                  )}
+                </div>
               )}
             </div>
-          </div>
-          <div className="bg-blue-50/50 border border-blue-100 rounded-lg p-3 text-xs text-blue-800 flex flex-col justify-center">
-            <span className="font-semibold">Selected Format:</span>
-            <span className="truncate font-mono">{selectedTemplate}</span>
-            <span className="text-slate-500 mt-0.5">Report engine will populate this exact layout preserving all styling, headers, footers & tables.</span>
+
+            <div className="bg-blue-50/50 border border-blue-100 rounded-lg p-3 text-xs text-blue-900 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-semibold text-slate-700">Selected Format Details:</span>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    reportType === 'IR' ? 'bg-blue-100 text-blue-700' : 'bg-indigo-100 text-indigo-700'
+                  }`}>
+                    {reportType}
+                  </span>
+                </div>
+                <p className="truncate font-mono text-slate-800 font-medium">{selectedTemplate}</p>
+                <p className="text-slate-500 mt-1">
+                  {currentTmplObj?.description || 'Word DOCX template file with exact headers, footers and tables.'}
+                </p>
+              </div>
+
+              {currentTmplObj && (
+                <div className="pt-2 border-t border-blue-200/50 flex items-center justify-between mt-2">
+                  <span className="text-[11px] text-slate-500">Wrong classification?</span>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleTemplateCategory(selectedTemplate, reportType)}
+                    className="text-[11px] text-blue-700 hover:underline font-semibold"
+                  >
+                    Move to {reportType === 'IR' ? 'FR' : 'IR'}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
