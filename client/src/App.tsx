@@ -4,6 +4,7 @@ import * as API from './api';
 import { DeploymentGuardian } from './DeploymentGuardian';
 import { AdminPage } from './AdminPage';
 import { saveDraft, loadDraft, clearDraft } from './draftStorage';
+import AutocompleteInput from './AutocompleteInput';
 
 // ============================================================
 // Auth Context
@@ -218,7 +219,7 @@ function ProjectsPage({ currentUser }: { currentUser?: any }) {
   });
   const [form, setForm] = useState(() => {
     const draft = loadDraft<any>('new_project');
-    return draft?.data || { projectNumber: '', projectName: '', customerName: '', supplierName: '', poNumber: '' };
+    return draft?.data || { projectNumber: '', projectName: '', customerName: '', supplierName: '', supplierAddress: '', poNumber: '' };
   });
 
   const load = () => API.getProjects().then(r => setProjects(r.data)).catch(() => {});
@@ -226,7 +227,7 @@ function ProjectsPage({ currentUser }: { currentUser?: any }) {
 
   // Auto-save draft on change
   useEffect(() => {
-    if (form.projectNumber || form.projectName || form.customerName || form.supplierName || form.poNumber) {
+    if (form.projectNumber || form.projectName || form.customerName || form.supplierName || form.supplierAddress || form.poNumber) {
       saveDraft('new_project', form);
     }
   }, [form]);
@@ -237,7 +238,7 @@ function ProjectsPage({ currentUser }: { currentUser?: any }) {
       await API.createProject(form);
       clearDraft('new_project');
       setShowForm(false);
-      setForm({ projectNumber: '', projectName: '', customerName: '', supplierName: '', poNumber: '' });
+      setForm({ projectNumber: '', projectName: '', customerName: '', supplierName: '', supplierAddress: '', poNumber: '' });
       load();
     } catch (err: any) {
       alert(err.response?.data?.error || err.message || 'Failed to create project');
@@ -279,7 +280,7 @@ function ProjectsPage({ currentUser }: { currentUser?: any }) {
                 type="button"
                 onClick={() => {
                   clearDraft('new_project');
-                  setForm({ projectNumber: '', projectName: '', customerName: '', supplierName: '', poNumber: '' });
+                  setForm({ projectNumber: '', projectName: '', customerName: '', supplierName: '', supplierAddress: '', poNumber: '' });
                   setShowForm(false);
                 }}
                 className="text-amber-900 underline font-semibold ml-2"
@@ -289,19 +290,20 @@ function ProjectsPage({ currentUser }: { currentUser?: any }) {
             </div>
           )}
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Project Number" value={form.projectNumber} onChange={v => setForm({ ...form, projectNumber: v })} placeholder="P30339B" />
-            <Input label="Project Name" value={form.projectName} onChange={v => setForm({ ...form, projectName: v })} placeholder="EPC for SE AiP5 Project..." />
-            <Input label="Customer" value={form.customerName} onChange={v => setForm({ ...form, customerName: v })} placeholder="ADNOC Onshore" />
-            <Input label="Supplier" value={form.supplierName} onChange={v => setForm({ ...form, supplierName: v })} placeholder="KSB MIL Controls Limited" />
-            <Input label="PO Number" value={form.poNumber} onChange={v => setForm({ ...form, poNumber: v })} placeholder="04108-PM-INST-008" />
+            <Input label="Project Number" value={form.projectNumber} onChange={v => setForm({ ...form, projectNumber: v })} placeholder="P30339B" required />
+            <Input label="Project Name" value={form.projectName} onChange={v => setForm({ ...form, projectName: v })} placeholder="EPC for SE AiP5 Project..." required />
+            <AutocompleteInput label="Customer" category="customer" value={form.customerName} onChange={v => setForm({ ...form, customerName: v })} placeholder="ADNOC Onshore" required />
+            <AutocompleteInput label="Supplier" category="supplier" value={form.supplierName} onChange={v => setForm({ ...form, supplierName: v })} placeholder="KSB MIL Controls Limited" required />
+            <Input label="PO Number" value={form.poNumber} onChange={v => setForm({ ...form, poNumber: v })} placeholder="04108-PM-INST-008" required />
+            <AutocompleteInput label="Supplier Location" category="location" value={form.supplierAddress || ''} onChange={v => setForm({ ...form, supplierAddress: v })} placeholder="Meladoor, Kerala" />
           </div>
           <div className="flex gap-2">
-            <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">Create Project</button>
+            <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-medium">Create Project</button>
             <button
               type="button"
               onClick={() => {
                 clearDraft('new_project');
-                setForm({ projectNumber: '', projectName: '', customerName: '', supplierName: '', poNumber: '' });
+                setForm({ projectNumber: '', projectName: '', customerName: '', supplierName: '', supplierAddress: '', poNumber: '' });
                 setShowForm(false);
               }}
               className="text-slate-600 px-4 py-2"
@@ -356,6 +358,31 @@ function ProjectDetailPage({ currentUser }: { currentUser?: any }) {
   const [availableUsers, setAvailableUsers] = useState<any[]>([]);
   const [selectedUserIdToAssign, setSelectedUserIdToAssign] = useState('');
   const [assigningMember, setAssigningMember] = useState(false);
+
+  // Edit Project Details state
+  const [showEditProjectModal, setShowEditProjectModal] = useState(false);
+  const [editProjectForm, setEditProjectForm] = useState({
+    projectName: '',
+    customerName: '',
+    supplierName: '',
+    supplierAddress: '',
+    poNumber: '',
+  });
+  const [savingProject, setSavingProject] = useState(false);
+
+  const handleSaveProject = async () => {
+    if (!id) return;
+    setSavingProject(true);
+    try {
+      await API.updateProject(id, editProjectForm);
+      setShowEditProjectModal(false);
+      load();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to update project details');
+    } finally {
+      setSavingProject(false);
+    }
+  };
 
   const load = useCallback(() => {
     if (!id) return;
@@ -472,12 +499,36 @@ function ProjectDetailPage({ currentUser }: { currentUser?: any }) {
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
-        <h2 className="font-semibold text-slate-800 mb-3">Project Details</h2>
+        <div className="flex justify-between items-center mb-3">
+          <h2 className="font-semibold text-slate-800">Project Details</h2>
+          <button
+            type="button"
+            onClick={() => {
+              setEditProjectForm({
+                projectName: project.projectName || '',
+                customerName: project.customerName || '',
+                supplierName: project.supplierName || '',
+                supplierAddress: project.supplierAddress || '',
+                poNumber: project.poNumber || '',
+              });
+              setShowEditProjectModal(true);
+            }}
+            className="text-xs px-2.5 py-1 border border-slate-200 text-slate-700 hover:text-blue-600 hover:bg-slate-50 rounded-md font-medium transition flex items-center gap-1 shadow-2xs"
+            title="Edit Customer, Supplier, Location, and Project info"
+          >
+            ✏️ Edit Details
+          </button>
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div><span className="text-slate-500">Name:</span> <span className="font-medium">{project.projectName}</span></div>
           <div><span className="text-slate-500">Customer:</span> <span className="font-medium">{project.customerName}</span></div>
           <div><span className="text-slate-500">Supplier:</span> <span className="font-medium">{project.supplierName}</span></div>
           <div><span className="text-slate-500">PO:</span> <span className="font-medium">{project.poNumber}</span></div>
+          {project.supplierAddress && (
+            <div className="col-span-2 md:col-span-4 mt-2 pt-2 border-t border-slate-100">
+              <span className="text-slate-500">Supplier Location:</span> <span className="font-medium">{project.supplierAddress}</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -640,6 +691,85 @@ function ProjectDetailPage({ currentUser }: { currentUser?: any }) {
           </div>
         )}
       </div>
+
+      {/* Edit Project Details Modal with Autocomplete */}
+      {showEditProjectModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <span>✏️</span> Edit Project Details
+              </h3>
+              <button onClick={() => setShowEditProjectModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+            </div>
+            <p className="text-sm text-slate-600">
+              Update customer, supplier, or location details. Previously entered records appear automatically in the dropdown.
+            </p>
+            <div className="space-y-3 py-1">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Project Name</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  value={editProjectForm.projectName}
+                  onChange={e => setEditProjectForm({ ...editProjectForm, projectName: e.target.value })}
+                  placeholder="Project Name"
+                />
+              </div>
+              <AutocompleteInput
+                label="Customer"
+                category="customer"
+                value={editProjectForm.customerName}
+                onChange={v => setEditProjectForm({ ...editProjectForm, customerName: v })}
+                placeholder="e.g. ADNOC Onshore"
+                required
+              />
+              <AutocompleteInput
+                label="Supplier"
+                category="supplier"
+                value={editProjectForm.supplierName}
+                onChange={v => setEditProjectForm({ ...editProjectForm, supplierName: v })}
+                placeholder="e.g. KSB MIL Controls Limited"
+                required
+              />
+              <AutocompleteInput
+                label="Supplier Location"
+                category="location"
+                value={editProjectForm.supplierAddress}
+                onChange={v => setEditProjectForm({ ...editProjectForm, supplierAddress: v })}
+                placeholder="e.g. Meladoor, Kerala"
+              />
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">PO Number</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  value={editProjectForm.poNumber}
+                  onChange={e => setEditProjectForm({ ...editProjectForm, poNumber: e.target.value })}
+                  placeholder="PO Number"
+                />
+              </div>
+            </div>
+            <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowEditProjectModal(false)}
+                className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveProject}
+                disabled={savingProject || !editProjectForm.customerName.trim() || !editProjectForm.supplierName.trim()}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+              >
+                {savingProject ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -724,11 +854,36 @@ function NewInspectionPage({ currentUser }: { currentUser?: any }) {
         )}
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Project</label>
-          <select value={form.projectId} onChange={e => setForm({ ...form, projectId: e.target.value })} className="w-full px-3 py-2 border rounded-lg" required>
+          <select
+            value={form.projectId}
+            onChange={e => {
+              const pId = e.target.value;
+              const proj = projects.find((p: any) => p.id === pId);
+              setForm((prev: any) => ({
+                ...prev,
+                projectId: pId,
+                ...(!prev.location && proj?.supplierAddress ? { location: proj.supplierAddress } : {}),
+              }));
+            }}
+            className="w-full px-3 py-2 border rounded-lg"
+            required
+          >
             <option value="">Select project...</option>
             {projects.map((p: any) => <option key={p.id} value={p.id}>{p.projectNumber} — {p.projectName}</option>)}
           </select>
         </div>
+
+        {form.projectId && (() => {
+          const selectedProj = projects.find((p: any) => p.id === form.projectId);
+          if (!selectedProj) return null;
+          return (
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs flex flex-wrap gap-4 text-slate-600">
+              <div><span className="font-semibold text-slate-700">Customer:</span> {selectedProj.customerName}</div>
+              <div><span className="font-semibold text-slate-700">Supplier:</span> {selectedProj.supplierName}</div>
+              {selectedProj.supplierAddress && <div><span className="font-semibold text-slate-700">Supplier Location:</span> {selectedProj.supplierAddress}</div>}
+            </div>
+          );
+        })()}
 
         {canAssignStaff && (
           <div>
@@ -765,7 +920,7 @@ function NewInspectionPage({ currentUser }: { currentUser?: any }) {
               <option>FAT</option><option>Stage Inspection</option><option>Final Inspection</option><option>Pre-Inspection Meeting</option>
             </select>
           </div>
-          <Input label="Location" value={form.location} onChange={v => setForm({ ...form, location: v })} placeholder="Meladoor, Kerala" required />
+          <AutocompleteInput label="Location" category="location" value={form.location} onChange={v => setForm({ ...form, location: v })} placeholder="Meladoor, Kerala" required />
           <Input label="Start Date" value={form.startDate} onChange={v => setForm({ ...form, startDate: v })} type="date" required />
         </div>
         <button type="submit" className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium">Create Inspection</button>
@@ -801,11 +956,30 @@ function InspectionWorkspacePage() {
   const [showOfferModal, setShowOfferModal] = useState(false);
   const [offerDocs, setOfferDocs] = useState<any[]>([]);
 
+  // Location edit state
+  const [showEditLocationModal, setShowEditLocationModal] = useState(false);
+  const [editLocationValue, setEditLocationValue] = useState('');
+  const [savingLocation, setSavingLocation] = useState(false);
+
   const load = useCallback(() => {
     if (!id) return;
     API.getInspection(id).then(r => setInspection(r.data)).catch(() => {});
   }, [id]);
   useEffect(() => { load(); }, [load]);
+
+  const handleSaveLocation = async () => {
+    if (!id) return;
+    setSavingLocation(true);
+    try {
+      await API.updateInspection(id, { location: editLocationValue });
+      setShowEditLocationModal(false);
+      load();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to update location');
+    } finally {
+      setSavingLocation(false);
+    }
+  };
 
   const loadRfiDocuments = async () => {
     if (!inspection?.projectId) return;
@@ -975,7 +1149,23 @@ function InspectionWorkspacePage() {
           <div><span className="text-slate-500">Project:</span> <span className="font-medium">{inspection.project?.projectNumber}</span></div>
           <div><span className="text-slate-500">Type:</span> <span className="font-medium">{inspection.inspectionType}</span></div>
           <div><span className="text-slate-500">Date:</span> <span className="font-medium">{new Date(inspection.startDate).toLocaleDateString()}</span></div>
-          <div><span className="text-slate-500">Location:</span> <span className="font-medium truncate block">{inspection.location}</span></div>
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500">Location:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditLocationValue(inspection.location || '');
+                  setShowEditLocationModal(true);
+                }}
+                className="text-xs text-blue-600 hover:text-blue-800 underline font-medium ml-1"
+                title="Edit Inspection Location"
+              >
+                Edit
+              </button>
+            </div>
+            <span className="font-medium truncate block" title={inspection.location}>{inspection.location || '—'}</span>
+          </div>
           <div><span className="text-slate-500">Supplier:</span> <span className="font-medium truncate block">{inspection.project?.supplierName}</span></div>
           <div>
             <span className="text-slate-500 block text-xs">Linked RFI:</span>{' '}
@@ -1164,6 +1354,50 @@ function InspectionWorkspacePage() {
                 <input type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.csv" onChange={handleUploadAndImportItp} className="hidden" />
               </label>
               <button onClick={() => setShowItpModal(false)} className="text-slate-500 hover:text-slate-700 text-sm font-medium">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Location Modal */}
+      {showEditLocationModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <span>📍</span> Edit Inspection Location
+              </h3>
+              <button onClick={() => setShowEditLocationModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+            </div>
+            <p className="text-sm text-slate-600">
+              Select a previously entered location from the auto dropdown or type a new one. Newly entered locations will automatically be saved for future searches.
+            </p>
+            <div className="py-2">
+              <AutocompleteInput
+                label="Location"
+                category="location"
+                value={editLocationValue}
+                onChange={setEditLocationValue}
+                placeholder="e.g. Meladoor, Kerala or Jebel Ali, Dubai"
+                required
+              />
+            </div>
+            <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowEditLocationModal(false)}
+                className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveLocation}
+                disabled={savingLocation || !editLocationValue.trim()}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+              >
+                {savingLocation ? 'Saving...' : 'Save Location'}
+              </button>
             </div>
           </div>
         </div>

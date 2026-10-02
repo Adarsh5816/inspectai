@@ -35,6 +35,7 @@ export const getMe = () => api.get('/auth/me');
 export const getProjects = () => api.get('/projects');
 export const createProject = (data: any) => api.post('/projects', data);
 export const getProject = (id: string) => api.get(`/projects/${id}`);
+export const updateProject = (id: string, data: any) => api.put(`/projects/${id}`, data);
 export const deleteProject = (id: string) => api.delete(`/projects/${id}`);
 
 // Documents
@@ -146,3 +147,9 @@ export const addProjectMember = (projectId: string, userId: string) =>
   api.post(`/projects/${projectId}/members`, { userId });
 export const removeProjectMember = (projectId: string, userId: string) =>
   api.delete(`/projects/${projectId}/members/${userId}`);
+
+// Suggestions (Customer, Supplier, Location)
+export const getSuggestions = () => api.get('/suggestions');
+export const addSuggestion = (category: string, value: string) =>
+  api.post('/suggestions', { category, value });
+
