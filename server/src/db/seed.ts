@@ -14,6 +14,33 @@ async function main() {
     },
   });
 
+  // Create sample manager
+  const manager = await prisma.user.upsert({
+    where: { email: 'manager@inspectai.com' },
+    update: {},
+    create: {
+      email: 'manager@inspectai.com',
+      passwordHash: 'manager123',
+      fullName: 'Operations Manager',
+      role: 'MANAGER',
+      organization: 'Intertek',
+    },
+  });
+
+  // Create sample field staff (reporting to manager)
+  const inspector = await prisma.user.upsert({
+    where: { email: 'inspector@inspectai.com' },
+    update: {},
+    create: {
+      email: 'inspector@inspectai.com',
+      passwordHash: 'inspector123',
+      fullName: 'Field Inspector (Adarsh MS)',
+      role: 'INSPECTOR',
+      managerId: manager.id,
+      organization: 'Intertek',
+    },
+  });
+
   // Create the real project
   const project = await prisma.project.upsert({
     where: { projectNumber: 'P30339B' },
@@ -41,7 +68,16 @@ async function main() {
     },
   });
 
-  console.log(`✅ Seed completed: Admin=${admin.email}, Project=${project.projectNumber}`);
+  // Assign team members to sample project
+  for (const uid of [admin.id, manager.id, inspector.id]) {
+    await prisma.projectMember.upsert({
+      where: { projectId_userId: { projectId: project.id, userId: uid } },
+      update: {},
+      create: { projectId: project.id, userId: uid },
+    });
+  }
+
+  console.log(`✅ Seed completed: Admin=${admin.email}, Manager=${manager.email}, Inspector=${inspector.email}, Project=${project.projectNumber}`);
 }
 
 main()
