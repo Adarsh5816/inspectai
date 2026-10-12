@@ -136,6 +136,7 @@ export class ReportService {
       [/Report No:\s*001/g, `Report No: ${escapeXml(inspection.reportNumber)}`],
       [/15 Sept 2026/g, dateLong],
       [/15\s*\/0\s*9\s*\/2026/g, dateStr],
+      [/<w:t>po<\/w:t>/g, `<w:t>${escapeXml(project.poNumber || '')}</w:t>`],
     ];
 
     for (const [pattern, replacement] of replacements) {
@@ -170,32 +171,83 @@ export class ReportService {
     }
     const effectiveProjectName = project.projectName || rfiExtracted.projectName || 'EPC for SE AiP5 Project (On plot) - ASAB/SAHIL (Package 1)';
 
-    // === 2.1 PAGE 1 FORM FIELD UPDATES ===
+    // === 2.1 PAGE 1 FORM FIELD UPDATES (Robust Label Matching for Blank & Custom Templates) ===
     const offeredItems = (inspection.items || []).filter((i: any) => i.presentedQty > 0 || i.presentedQty === undefined);
     const listToRender = offeredItems.length > 0 ? offeredItems : (inspection.items || []);
     const supplierJobs = listToRender.map((i: any) => i.jobNo).filter(Boolean).join(', ') || 'CD77E001-1';
 
+    // PO Number
+    docXml = this.setCellValueAfterLabel(docXml, 'P.O. No:', project.poNumber || '');
+    docXml = this.setCellValueAfterLabel(docXml, 'PO No:', project.poNumber || '');
+    docXml = this.setCellValueAfterLabel(docXml, 'P.O. No.:', project.poNumber || '');
+    docXml = this.setCellValueAfterLabel(docXml, 'PO No.:', project.poNumber || '');
+    docXml = this.setCellValueAfterLabel(docXml, 'Purchase Order No:', project.poNumber || '');
+    docXml = this.setCellValueAfterLabel(docXml, 'Purchase Order No.:', project.poNumber || '');
+
+    // Requisition & Report No
     docXml = this.setCellValueAfterLabel(docXml, 'Requisition No:', inspection.reportNumber);
+    docXml = this.setCellValueAfterLabel(docXml, 'Requisition No.:', inspection.reportNumber);
+    docXml = this.setCellValueAfterLabel(docXml, 'Report No:', inspection.reportNumber);
+    docXml = this.setCellValueAfterLabel(docXml, 'Report No.:', inspection.reportNumber);
+    docXml = this.setCellValueAfterLabel(docXml, 'Inspection Report No:', inspection.reportNumber);
+    docXml = this.setCellValueAfterLabel(docXml, 'Inspection Report No.:', inspection.reportNumber);
+
+    // Dates
     docXml = this.setCellValueAfterLabel(docXml, 'Date of Order:', dateLong);
     docXml = this.setCellValueAfterLabel(docXml, 'Date(s) of Visit(s):', dateStr);
+    docXml = this.setCellValueAfterLabel(docXml, 'Date of Visit:', dateStr);
+    docXml = this.setCellValueAfterLabel(docXml, 'Inspection Date:', dateStr);
     docXml = this.setCellValueAfterLabel(docXml, 'Date of Previous Visit:', inspection.previousVisitDate ? new Date(inspection.previousVisitDate).toLocaleDateString('en-GB') : 'NA');
     docXml = this.setCellValueAfterLabel(docXml, 'Date of Next Scheduled Visit:', inspection.nextVisitDate ? new Date(inspection.nextVisitDate).toLocaleDateString('en-GB') : '16/09/2026');
-    docXml = this.setCellValueAfterLabel(docXml, 'Supplier Job No:', supplierJobs);
-    docXml = this.setCellValueAfterLabel(docXml, 'Project Name:', effectiveProjectName);
 
-    // Populate Supplier and Location cleanly
+    // Supplier Job No & Project Name
+    docXml = this.setCellValueAfterLabel(docXml, 'Supplier Job No:', supplierJobs);
+    docXml = this.setCellValueAfterLabel(docXml, 'Job No:', supplierJobs);
+    docXml = this.setCellValueAfterLabel(docXml, 'Project Name:', effectiveProjectName);
+    docXml = this.setCellValueAfterLabel(docXml, 'Project:', effectiveProjectName);
+
+    // Supplier & Location
     const supplierFull = [project.supplierName, project.supplierAddress].filter(Boolean).join('\n') || project.supplierName || 'KSB MIL Controls Limited';
     docXml = this.setCellValueAfterLabel(docXml, 'Supplier:', supplierFull);
+    docXml = this.setCellValueAfterLabel(docXml, 'Vendor:', supplierFull);
+    docXml = this.setCellValueAfterLabel(docXml, 'Manufacturer:', supplierFull);
     docXml = this.setCellValueAfterLabel(docXml, 'Location:', inspection.location || project.supplierAddress || 'Meladoor, Annamanada, Kerala, India');
+    docXml = this.setCellValueAfterLabel(docXml, 'Place of Inspection:', inspection.location || project.supplierAddress || 'Meladoor, Annamanada, Kerala, India');
+
+    // Customer
     if (project.customerName) {
+      docXml = this.setCellValueAfterLabel(docXml, 'Customer:', project.customerName);
+      docXml = this.setCellValueAfterLabel(docXml, 'Client:', project.customerName);
+      docXml = this.setCellValueAfterLabel(docXml, 'Customer Name:', project.customerName);
+      docXml = this.setCellValueAfterLabel(docXml, 'Client Name:', project.customerName);
       docXml = this.setCellValueAfterLabel(docXml, 'Name:', project.customerName);
     }
     if (project.customerAddress) {
       docXml = this.setCellValueAfterLabel(docXml, 'Address:', project.customerAddress);
     }
 
+    // Template Token Placeholders (if template uses {{TAG}} syntax)
+    const tokenReplacements: [RegExp, string][] = [
+      [/\{\{\s*CUSTOMER_NAME\s*\}\}/gi, escapeXml(project.customerName || '')],
+      [/\{\{\s*CUSTOMER_ADDRESS\s*\}\}/gi, escapeXml(project.customerAddress || '')],
+      [/\{\{\s*SUPPLIER_NAME\s*\}\}/gi, escapeXml(project.supplierName || '')],
+      [/\{\{\s*SUPPLIER_ADDRESS\s*\}\}/gi, escapeXml(project.supplierAddress || '')],
+      [/\{\{\s*PO_NUMBER\s*\}\}/gi, escapeXml(project.poNumber || '')],
+      [/\{\{\s*PO_NO\s*\}\}/gi, escapeXml(project.poNumber || '')],
+      [/\{\{\s*PROJECT_NAME\s*\}\}/gi, escapeXml(effectiveProjectName)],
+      [/\{\{\s*REPORT_NUMBER\s*\}\}/gi, escapeXml(inspection.reportNumber || '')],
+      [/\{\{\s*REPORT_NO\s*\}\}/gi, escapeXml(inspection.reportNumber || '')],
+      [/\{\{\s*INSPECTION_DATE\s*\}\}/gi, dateStr],
+      [/\{\{\s*LOCATION\s*\}\}/gi, escapeXml(inspection.location || project.supplierAddress || '')],
+      [/\{\{\s*ITP_NUMBER\s*\}\}/gi, escapeXml(itpFullRef)],
+      [/\{\{\s*MATERIAL_DESCRIPTION\s*\}\}/gi, escapeXml(materialSummary)],
+    ];
+    for (const [tokenPat, tokenVal] of tokenReplacements) {
+      docXml = docXml.replace(tokenPat, tokenVal);
+    }
+
     // Update Materials/Items Inspected on Page 1 (lives inside the same cell in template)
-    const matLabelIdx = docXml.indexOf('Materials/Items Inspected:');
+    const matLabelIdx = this.findHeaderIndex(docXml, ['Materials/Items Inspected:', 'Materials/Items Inspected', 'Material Description:']);
     if (matLabelIdx !== -1) {
       const tcStart = docXml.lastIndexOf('<w:tc', matLabelIdx);
       const tcEnd = docXml.indexOf('</w:tc>', matLabelIdx) + 7;
@@ -279,7 +331,7 @@ export class ReportService {
 
     // === 2.4 GENERIC MATERIALS TABLE (Table 6) ===
     // Wipe old template sample generic materials and populate ONLY offered items
-    const gmHeaderIdx = docXml.indexOf('TAG / EQPT NO.');
+    const gmHeaderIdx = this.findHeaderIndex(docXml, ['TAG / EQPT NO.', 'TAG/EQPT NO', 'TAG NO.', 'TAG NO', 'EQUIPMENT NO', 'TAG / ITEM']);
     if (gmHeaderIdx !== -1) {
       const headerTrEnd = docXml.indexOf('</w:tr>', gmHeaderIdx) + 7;
       const innerTblEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
@@ -291,7 +343,7 @@ export class ReportService {
 
     // === 2.5 MATERIALS / EQUIPMENT INSPECTED TABLE (Table 7) ===
     // Wipe old template sample materials and populate ONLY offered inspection items
-    const matHeaderIdx = docXml.indexOf('PRODUCT / MATERIAL');
+    const matHeaderIdx = this.findHeaderIndex(docXml, ['PRODUCT / MATERIAL', 'PRODUCT/MATERIAL', 'MATERIALS INSPECTED', 'MATERIAL DESCRIPTION', 'ITEM NAME', 'ITEM DESCRIPTION']);
     if (matHeaderIdx !== -1) {
       const headerTrEnd = docXml.indexOf('</w:tr>', matHeaderIdx) + 7;
       const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
@@ -302,14 +354,19 @@ export class ReportService {
     }
 
     // === 3. FILTER ATTENDED ACTIVITIES ONLY ===
-    // Only include activities that were actually DONE/attended (Acceptable, Not Acceptable, or with results)
-    const attendedActivities = (inspection.activities || []).filter((act: any) => {
+    // Include activities that were actually DONE/attended (Acceptable, Not Acceptable, or with results)
+    let attendedActivities = (inspection.activities || []).filter((act: any) => {
       const result = inspection.results?.find((r: any) => r.activityId === act.id);
       return act.status === 'ACCEPTABLE' || act.status === 'NOT_ACCEPTABLE' || (result && result.status !== 'PENDING');
     });
 
+    // Fall back to all inspection activities if none are graded yet, so tables and engineering narrative are never blank
+    if (attendedActivities.length === 0 && (inspection.activities || []).length > 0) {
+      attendedActivities = inspection.activities || [];
+    }
+
     // === 4. DYNAMIC SCOPE OF INSPECTION TABLE (Table 9) ===
-    const itpHeaderIdx = docXml.indexOf('ITP LINE NO.');
+    const itpHeaderIdx = this.findHeaderIndex(docXml, ['ITP LINE NO.', 'ITP CLAUSE NO.', 'ITP CLAUSE', 'SCOPE OF INSPECTION']);
     if (itpHeaderIdx !== -1) {
       const headerTrEnd = docXml.indexOf('</w:tr>', itpHeaderIdx) + 7;
       const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
@@ -320,11 +377,17 @@ export class ReportService {
     }
 
     // === 5. EQUIPMENT AND INSTRUMENTATION (Table 10) ===
-    const eqIdx = docXml.indexOf('EQUIPMENT AND INSTRUMENTATION');
+    const eqIdx = this.findHeaderIndex(docXml, ['EQUIPMENT AND INSTRUMENTATION', 'EQUIPMENT / INSTRUMENTATION', 'CALIBRATION INSTRUMENTS', 'MEASURING INSTRUMENTS']);
     if (eqIdx !== -1) {
-      // Must end before INSPECTION DETAILS so Section 6.0 is never erased!
-      const nextH = docXml.indexOf('INSPECTION DETAILS', eqIdx);
-      if (nextH !== -1) {
+      // Must end before INSPECTION DETAILS, NON-CONFORMANCES, or next heading so Section 6.0 is never erased!
+      const nextH = Math.min(...[
+        docXml.indexOf('INSPECTION DETAILS', eqIdx),
+        docXml.indexOf('NON-CONFORMANCES', eqIdx),
+        docXml.indexOf('QUALITY OBSERVATIONS', eqIdx),
+        docXml.indexOf('ATTACHMENTS TO THIS REPORT', eqIdx),
+      ].filter(x => x !== -1));
+
+      if (nextH !== Infinity && nextH !== -1) {
         const tblStart = docXml.indexOf('<w:tbl', eqIdx);
         const tblEnd = docXml.lastIndexOf('</w:tbl>', nextH) + 8;
         if (tblStart !== -1 && tblEnd > tblStart) {
@@ -335,7 +398,7 @@ export class ReportService {
     }
 
     // === 5.5 INSPECTION DETAILS (Section 6.0) ===
-    const inspDetIdx = docXml.indexOf('INSPECTION DETAILS');
+    const inspDetIdx = this.findHeaderIndex(docXml, ['INSPECTION DETAILS', 'DETAILS OF INSPECTION', 'INSPECTION ACTIVITIES DETAILS']);
     if (inspDetIdx !== -1) {
       const tblStart = docXml.indexOf('<w:tbl', inspDetIdx);
       if (tblStart !== -1) {
@@ -351,10 +414,14 @@ export class ReportService {
 
     // === 6. DOCUMENTS USED (Table 8) ===
     // Clean old documents and replace with actual RFI & ITP
-    const docIdx = docXml.indexOf('DOCUMENTS USED');
+    const docIdx = this.findHeaderIndex(docXml, ['DOCUMENTS USED', 'REFERENCE DOCUMENTS', 'APPLICABLE DOCUMENTS']);
     if (docIdx !== -1) {
-      const nextH = docXml.indexOf('SCOPE OF INSPECTION', docIdx);
-      if (nextH !== -1) {
+      const nextH = Math.min(...[
+        docXml.indexOf('SCOPE OF INSPECTION', docIdx),
+        docXml.indexOf('ITP LINE NO.', docIdx),
+      ].filter(x => x !== -1));
+
+      if (nextH !== Infinity && nextH !== -1) {
         const tblStart = docXml.indexOf('<w:tbl', docIdx);
         const tblEnd = docXml.lastIndexOf('</w:tbl>', nextH) + 8;
         if (tblStart !== -1 && tblEnd > tblStart) {
@@ -365,7 +432,7 @@ export class ReportService {
     }
 
     // === 7. ATTENDEES TABLE (Table 5) ===
-    const attendeeHeaderIdx = docXml.indexOf('COMPANY REPRESENTED');
+    const attendeeHeaderIdx = this.findHeaderIndex(docXml, ['COMPANY REPRESENTED', 'PERSONS ATTENDING', 'ATTENDEES', 'ATTENDANCE LIST']);
     if (attendeeHeaderIdx !== -1) {
       const headerTrEnd = docXml.indexOf('</w:tr>', attendeeHeaderIdx) + 7;
       const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
@@ -376,7 +443,7 @@ export class ReportService {
     }
 
     // === 8. REPAIR & POPULATE PHOTO SECTION ===
-    const photoHeaderIdx = docXml.indexOf('Inspection Photos.');
+    const photoHeaderIdx = this.findHeaderIndex(docXml, ['Inspection Photos.', 'Inspection Photos', 'INSPECTION PHOTOS', 'PHOTOGRAPHS', 'PHOTO SHEET']);
     if (photoHeaderIdx !== -1) {
       const tblStart = docXml.indexOf('<w:tbl', photoHeaderIdx);
       const sectPrIdx = docXml.indexOf('<w:sectPr', tblStart);
@@ -437,36 +504,117 @@ export class ReportService {
   }
 
   /**
-   * Set text value in a cell immediately following a label cell on Page 1
+   * Find table header index with XML-tag tolerance and alternative naming variations
+   */
+  private findHeaderIndex(docXml: string, possibleHeaders: string[]): number {
+    for (const h of possibleHeaders) {
+      // 1. Direct index
+      let idx = docXml.indexOf(h);
+      if (idx !== -1) return idx;
+
+      // 2. Case-insensitive
+      const lowerXml = docXml.toLowerCase();
+      const lowerH = h.toLowerCase();
+      idx = lowerXml.indexOf(lowerH);
+      if (idx !== -1) return idx;
+
+      // 3. XML-tag tolerant search (when Word splits letters across runs)
+      try {
+        const pattern = lowerH
+          .split('')
+          .map(c => (/\s/.test(c) ? '(?:<[^>]+>|\\s)+' : c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:<[^>]+>)*'))
+          .join('');
+        const rx = new RegExp(pattern, 'i');
+        const match = rx.exec(docXml);
+        if (match) return match.index;
+      } catch {}
+    }
+    return -1;
+  }
+
+  /**
+   * Set text value in a cell immediately following a label cell, or within the label cell if blank line
    */
   private setCellValueAfterLabel(docXml: string, label: string, newText: string): string {
+    if (!newText && newText !== '0') return docXml;
     let labelIdx = docXml.indexOf(label);
     if (labelIdx === -1) {
       const cleanLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s*');
       const match = new RegExp(cleanLabel, 'i').exec(docXml);
       if (match) labelIdx = match.index;
-      else return docXml;
+      else {
+        try {
+          const pattern = label
+            .toLowerCase()
+            .split('')
+            .map(c => (/\s/.test(c) ? '(?:<[^>]+>|\\s)+' : c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:<[^>]+>)*'))
+            .join('');
+          const m = new RegExp(pattern, 'i').exec(docXml);
+          if (m) labelIdx = m.index;
+          else return docXml;
+        } catch {
+          return docXml;
+        }
+      }
     }
 
+    const nextTrEnd = docXml.indexOf('</w:tr>', labelIdx);
     const labelTcEnd = docXml.indexOf('</w:tc>', labelIdx);
     if (labelTcEnd === -1) return docXml;
 
+    // 1. Check if the cell containing the label has a subsequent paragraph (<w:p>) for the value (like P.O. No)
+    const labelPEnd = docXml.indexOf('</w:p>', labelIdx);
+    if (labelPEnd !== -1 && labelPEnd < labelTcEnd) {
+      const remainingInCell = docXml.substring(labelPEnd + 6, labelTcEnd);
+      if (remainingInCell.includes('<w:p')) {
+        const lines = String(newText || '').split(/\r?\n/).filter(l => l.trim().length > 0);
+        const paragraphs = lines.length > 0 ? lines.map(line =>
+          `<w:p><w:pPr><w:contextualSpacing/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t>${escapeXml(line)}</w:t></w:r></w:p>`
+        ).join('') : `<w:p><w:pPr><w:contextualSpacing/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr><w:r><w:t></w:t></w:r></w:p>`;
+        return docXml.substring(0, labelPEnd + 6) + paragraphs + docXml.substring(labelTcEnd);
+      }
+    }
+
     const valTcStart = docXml.indexOf('<w:tc', labelTcEnd);
     const valTcEnd = docXml.indexOf('</w:tc>', valTcStart);
-    if (valTcStart === -1 || valTcEnd === -1) return docXml;
 
-    const valCellXml = docXml.substring(valTcStart, valTcEnd);
-    const pStart = valCellXml.indexOf('<w:p');
-    const pEnd = valCellXml.lastIndexOf('</w:p>') + 6;
-    if (pStart === -1 || pEnd === -1) return docXml;
+    // If next cell is on the SAME row
+    if (valTcStart !== -1 && valTcEnd !== -1 && (nextTrEnd === -1 || valTcStart < nextTrEnd)) {
+      const valCellXml = docXml.substring(valTcStart, valTcEnd);
+      // Ensure the next cell is NOT another label (e.g. "Change No:", "Requisition No:", "P.O. Status:")
+      const isAnotherLabel = /<w:t[^>]*>\s*(Change No:|Requisition No:|P\.O\. Status:|Phone:|Date|E-Mail|Primary Contact)/i.test(valCellXml);
+      if (!isAnotherLabel) {
+        const pStart = valCellXml.indexOf('<w:p');
+        const pEnd = valCellXml.lastIndexOf('</w:p>') + 6;
+        if (pStart !== -1 && pEnd !== -1) {
+          const lines = String(newText || '').split(/\r?\n/).filter(l => l.trim().length > 0);
+          const paragraphs = lines.length > 0 ? lines.map(line =>
+            `<w:p><w:pPr><w:contextualSpacing/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t>${escapeXml(line)}</w:t></w:r></w:p>`
+          ).join('') : `<w:p><w:pPr><w:contextualSpacing/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr><w:r><w:t></w:t></w:r></w:p>`;
 
-    const lines = String(newText || '').split(/\r?\n/).filter(l => l.trim().length > 0);
-    const paragraphs = lines.length > 0 ? lines.map(line =>
-      `<w:p><w:pPr><w:contextualSpacing/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t>${escapeXml(line)}</w:t></w:r></w:p>`
-    ).join('') : `<w:p><w:pPr><w:contextualSpacing/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr><w:r><w:t></w:t></w:r></w:p>`;
+          const updatedCellXml = valCellXml.substring(0, pStart) + paragraphs + valCellXml.substring(pEnd);
+          return docXml.substring(0, valTcStart) + updatedCellXml + docXml.substring(valTcEnd);
+        }
+      } else {
+        // Next cell is another label; insert the value as a new paragraph inside the current cell
+        const newPara = `<w:p><w:pPr><w:contextualSpacing/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t>${escapeXml(newText)}</w:t></w:r></w:p>`;
+        return docXml.substring(0, labelTcEnd) + newPara + docXml.substring(labelTcEnd);
+      }
+    } else {
+      // In-cell label & value (same cell): append value to the cell's last paragraph
+      const cellStart = docXml.lastIndexOf('<w:tc', labelIdx);
+      if (cellStart !== -1 && labelTcEnd > cellStart) {
+        const cellXml = docXml.substring(cellStart, labelTcEnd);
+        const lastP = cellXml.lastIndexOf('</w:p>');
+        if (lastP !== -1) {
+          const insertRun = `<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t xml:space="preserve"> ${escapeXml(String(newText || ''))}</w:t></w:r>`;
+          const updatedCell = cellXml.substring(0, lastP) + insertRun + cellXml.substring(lastP);
+          return docXml.substring(0, cellStart) + updatedCell + docXml.substring(labelTcEnd);
+        }
+      }
+    }
 
-    const updatedCellXml = valCellXml.substring(0, pStart) + paragraphs + valCellXml.substring(pEnd);
-    return docXml.substring(0, valTcStart) + updatedCellXml + docXml.substring(valTcEnd);
+    return docXml;
   }
 
   /**
@@ -736,13 +884,13 @@ export class ReportService {
         } else if (isPaintingOrDft) {
           resultText = 'Acceptable - DFT within limits';
         } else {
-          resultText = result.status === 'ACCEPTABLE' || !result.status ? 'Acceptable' : result.status;
+          resultText = result.status === 'ACCEPTABLE' || !result.status ? 'Acceptable' : (result.status === 'PENDING' ? 'Conform to approved ITP / Acceptable' : result.status);
         }
       } else if (act.status) {
         if (isPaintingOrDft) {
           resultText = 'Acceptable - DFT within limits';
         } else {
-          resultText = act.status === 'ACCEPTABLE' ? 'Acceptable' : act.status;
+          resultText = act.status === 'ACCEPTABLE' ? 'Acceptable' : (act.status === 'PENDING' ? 'Conform to approved ITP / Acceptable' : act.status);
         }
       }
 

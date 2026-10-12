@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import * as API from './api';
 import { DeploymentGuardian } from './DeploymentGuardian';
 import { AdminPage } from './AdminPage';
@@ -936,8 +936,28 @@ function InspectionWorkspacePage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [inspection, setInspection] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const saved = loadDraft<string>(`workspace_tab_${id}`);
+    return saved?.data || 'overview';
+  });
   const [validation, setValidation] = useState<any>(null);
+
+  // Temporary Work & Draft State (Zero data loss on refresh)
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(() => {
+    const d = loadDraft<any>(`workspace_draft_${id}`);
+    return d?.savedAt ? new Date(d.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null;
+  });
+  const [hasRestoredDraft, setHasRestoredDraft] = useState<boolean>(() => {
+    const d = loadDraft<any>(`workspace_draft_${id}`);
+    return !!d?.data;
+  });
+  const [savingTempWork, setSavingTempWork] = useState(false);
+  const [saveToast, setSaveToast] = useState<string | null>(null);
+
+  const handleTabChange = (newTab: string) => {
+    setActiveTab(newTab);
+    if (id) saveDraft(`workspace_tab_${id}`, newTab);
+  };
 
   // RFI Selection & Import state
   const [showRfiModal, setShowRfiModal] = useState(false);
@@ -982,23 +1002,35 @@ function InspectionWorkspacePage() {
 
   const openEditDetailsModal = () => {
     if (!inspection) return;
-    setDetailsForm({
-      supplierName: inspection.project?.supplierName || '',
-      supplierAddress: inspection.project?.supplierAddress || '',
-      customerName: inspection.project?.customerName || '',
-      customerAddress: inspection.project?.customerAddress || '',
-      poNumber: inspection.project?.poNumber || '',
-      projectName: inspection.project?.projectName || '',
-      location: inspection.location || '',
-      materialDescription: inspection.materialDescription || 'CONTROL VALVES AND ITS COMPONENTS',
-      itpNumber: inspection.itpNumber || '',
-      itpRevision: inspection.itpRevision || '',
-      reportNumber: inspection.reportNumber || '',
-      disposition: inspection.disposition || 'Accept',
-      summaryNarrative: inspection.summaryNarrative || '',
-    });
+    const existingDraft = loadDraft<any>(`details_form_${id}`);
+    if (existingDraft?.data && Object.values(existingDraft.data).some(Boolean)) {
+      setDetailsForm(existingDraft.data);
+    } else {
+      setDetailsForm({
+        supplierName: inspection.project?.supplierName || '',
+        supplierAddress: inspection.project?.supplierAddress || '',
+        customerName: inspection.project?.customerName || '',
+        customerAddress: inspection.project?.customerAddress || '',
+        poNumber: inspection.project?.poNumber || '',
+        projectName: inspection.project?.projectName || '',
+        location: inspection.location || '',
+        materialDescription: inspection.materialDescription || 'CONTROL VALVES AND ITS COMPONENTS',
+        itpNumber: inspection.itpNumber || '',
+        itpRevision: inspection.itpRevision || '',
+        reportNumber: inspection.reportNumber || '',
+        disposition: inspection.disposition || 'Accept',
+        summaryNarrative: inspection.summaryNarrative || '',
+      });
+    }
     setShowEditDetailsModal(true);
   };
+
+  // Auto-save details form when user types in modal
+  useEffect(() => {
+    if (showEditDetailsModal && id) {
+      saveDraft(`details_form_${id}`, detailsForm);
+    }
+  }, [detailsForm, showEditDetailsModal, id]);
 
   const handleSaveDetails = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1026,6 +1058,7 @@ function InspectionWorkspacePage() {
         });
       }
 
+      clearDraft(`details_form_${id}`);
       setShowEditDetailsModal(false);
       load();
     } catch (err: any) {
@@ -1033,6 +1066,49 @@ function InspectionWorkspacePage() {
     } finally {
       setSavingDetails(false);
     }
+  };
+
+  const handleSaveTempWork = () => {
+    if (!id || !inspection) return;
+    setSavingTempWork(true);
+    try {
+      const checklistDraft = loadDraft<any>(`checklist_${id}`)?.data || null;
+      const workspacePayload = {
+        activeTab,
+        detailsForm,
+        editLocationValue: editLocationValue || inspection.location,
+        checklistEntries: checklistDraft,
+        savedAt: new Date().toISOString(),
+      };
+      saveDraft(`workspace_draft_${id}`, workspacePayload);
+      saveDraft(`workspace_tab_${id}`, activeTab);
+
+      const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      setDraftSavedAt(nowTime);
+      setHasRestoredDraft(true);
+      setSaveToast(`Temporary work saved at ${nowTime}! Your data will not be lost on refresh.`);
+      setTimeout(() => setSaveToast(null), 4000);
+    } catch (err) {
+      console.error('Failed to save temp work:', err);
+    } finally {
+      setSavingTempWork(false);
+    }
+  };
+
+  const handleDiscardTempWork = () => {
+    if (!confirm('Are you sure you want to discard your saved temporary draft and reload original server data?')) return;
+    if (id) {
+      clearDraft(`workspace_draft_${id}`);
+      clearDraft(`workspace_tab_${id}`);
+      clearDraft(`checklist_${id}`);
+      clearDraft(`details_form_${id}`);
+    }
+    setDraftSavedAt(null);
+    setHasRestoredDraft(false);
+    setActiveTab('overview');
+    load();
+    setSaveToast('Draft discarded. Restored clean data from server.');
+    setTimeout(() => setSaveToast(null), 3500);
   };
 
   const load = useCallback(() => {
@@ -1201,7 +1277,35 @@ function InspectionWorkspacePage() {
           <h1 className="text-2xl font-bold text-slate-800">{inspection.reportNumber}</h1>
           <StatusBadge status={inspection.status} />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {draftSavedAt && (
+            <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 font-medium shadow-2xs" title={`Temporary draft saved at ${draftSavedAt}`}>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              Draft Saved ({draftSavedAt})
+            </span>
+          )}
+
+          <button
+            type="button"
+            onClick={handleSaveTempWork}
+            disabled={savingTempWork}
+            className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-sm transition flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+            title="Save temporary work locally so no data is lost upon browser refresh"
+          >
+            <span>💾</span> {savingTempWork ? 'Saving...' : 'Save Temp Work'}
+          </button>
+
+          {hasRestoredDraft && (
+            <button
+              type="button"
+              onClick={handleDiscardTempWork}
+              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-medium transition"
+              title="Clear temporary draft and reload clean data from server"
+            >
+              Discard Draft
+            </button>
+          )}
+
           <button
             onClick={openEditDetailsModal}
             className="px-3.5 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 rounded-lg text-sm font-semibold transition flex items-center gap-1.5 shadow-xs"
@@ -1225,6 +1329,43 @@ function InspectionWorkspacePage() {
           </button>
         </div>
       </div>
+
+      {/* Save Notification Toast / Feedback */}
+      {saveToast && (
+        <div className="mb-4 bg-emerald-50 border border-emerald-300 text-emerald-800 text-sm px-4 py-3 rounded-xl flex items-center justify-between shadow-xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <span className="text-emerald-600 text-lg">🛡️</span>
+            <span>{saveToast}</span>
+          </div>
+          <button onClick={() => setSaveToast(null)} className="text-emerald-700 hover:text-emerald-900 font-bold ml-3 text-xs">✕</button>
+        </div>
+      )}
+
+      {/* Draft Active Banner */}
+      {hasRestoredDraft && !saveToast && (
+        <div className="mb-4 bg-amber-50 border border-amber-200 text-amber-900 text-xs px-4 py-2.5 rounded-xl flex items-center justify-between shadow-2xs">
+          <div className="flex items-center gap-2">
+            <span>🛡️</span>
+            <span>
+              <strong>Draft Active:</strong> Temporary work is saved ({draftSavedAt || 'recent session'}) and will persist across browser refreshes.
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSaveTempWork}
+              className="px-2.5 py-1 bg-amber-200 hover:bg-amber-300 text-amber-950 font-bold rounded text-xs transition"
+            >
+              Update Save
+            </button>
+            <button
+              onClick={handleDiscardTempWork}
+              className="text-amber-800 hover:text-amber-950 underline font-medium text-xs ml-2"
+            >
+              Discard Draft
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Progress / Info bar with Linked RFI, ITP, and Customer Offer List */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4 shadow-xs">
@@ -1314,7 +1455,7 @@ function InspectionWorkspacePage() {
       {/* Tabs */}
       <div className="flex gap-1 mb-4 overflow-x-auto pb-2">
         {tabs.map(t => (
-          <button key={t.key} onClick={() => setActiveTab(t.key)}
+          <button key={t.key} onClick={() => handleTabChange(t.key)}
             className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${activeTab === t.key ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}>
             {t.label}
           </button>
@@ -2529,8 +2670,21 @@ function MiniStat({ label, value }: { label: string; value: number }) {
 
 // Tab: Items / Offered Materials
 function ItemsTab({ inspection, onReload, onOpenRfiModal, onOpenOfferModal, onRecallRfi, recallingRfi }: any) {
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ inspectionId: inspection.id, poItemNo: '', tagNumber: '', serialNumber: '', jobNo: '', itemName: 'Control Valve', sizeInch: '', rating: '', bodyMaterial: '' });
+  const [showForm, setShowForm] = useState(() => {
+    const d = loadDraft<any>(`item_form_${inspection.id}`);
+    return !!(d?.data?.tagNumber || d?.data?.serialNumber);
+  });
+  const [form, setForm] = useState(() => {
+    const d = loadDraft<any>(`item_form_${inspection.id}`);
+    return d?.data || { inspectionId: inspection.id, poItemNo: '', tagNumber: '', serialNumber: '', jobNo: '', itemName: 'Control Valve', sizeInch: '', rating: '', bodyMaterial: '' };
+  });
+
+  useEffect(() => {
+    if (form.tagNumber || form.serialNumber || form.poItemNo) {
+      saveDraft(`item_form_${inspection.id}`, form);
+    }
+  }, [form, inspection.id]);
+
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingItem, setEditingItem] = useState<any>(null);
   const [savingItem, setSavingItem] = useState(false);
@@ -2540,6 +2694,7 @@ function ItemsTab({ inspection, onReload, onOpenRfiModal, onOpenOfferModal, onRe
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     await API.addItem({ ...form, presentedQty: 1, orderedQty: 1 });
+    clearDraft(`item_form_${inspection.id}`);
     setShowForm(false); onReload();
   };
 
@@ -2887,6 +3042,8 @@ function ActivitiesTab({ inspection, onReload, onOpenRfiModal, onOpenItpModal, o
   };
 
   const [hasDraftRestored, setHasDraftRestored] = useState(false);
+  const [draftToast, setDraftToast] = useState(false);
+  const hasUserModifiedRef = useRef(false);
 
   // Sync entries from inspection activities and results or restored draft
   useEffect(() => {
@@ -2928,6 +3085,7 @@ function ActivitiesTab({ inspection, onReload, onOpenRfiModal, onOpenItpModal, o
       }));
       await API.saveDailyChecklist(inspection.id, payload);
       clearDraft(`checklist_${inspection.id}`);
+      hasUserModifiedRef.current = false;
       setHasDraftRestored(false);
       alert('Daily inspection activities and notes saved successfully!');
       onReload();
@@ -2937,7 +3095,17 @@ function ActivitiesTab({ inspection, onReload, onOpenRfiModal, onOpenItpModal, o
     setSavingDaily(false);
   };
 
+  const handleSaveChecklistDraft = () => {
+    if (Object.keys(entries).length > 0) {
+      saveDraft(`checklist_${inspection.id}`, entries);
+      setHasDraftRestored(true);
+      setDraftToast(true);
+      setTimeout(() => setDraftToast(false), 3000);
+    }
+  };
+
   const toggleAll = (done: boolean) => {
+    hasUserModifiedRef.current = true;
     const updated = { ...entries };
     for (const key of Object.keys(updated)) {
       updated[key] = {
@@ -2949,9 +3117,9 @@ function ActivitiesTab({ inspection, onReload, onOpenRfiModal, onOpenItpModal, o
     setEntries(updated);
   };
 
-  // Auto-save draft on any checklist change
+  // Auto-save draft on any checklist change initiated by user
   useEffect(() => {
-    if (Object.keys(entries).length > 0) {
+    if (hasUserModifiedRef.current && Object.keys(entries).length > 0) {
       saveDraft(`checklist_${inspection.id}`, entries);
     }
   }, [entries, inspection.id]);
@@ -2967,6 +3135,7 @@ function ActivitiesTab({ inspection, onReload, onOpenRfiModal, onOpenItpModal, o
           <button
             onClick={() => {
               clearDraft(`checklist_${inspection.id}`);
+              hasUserModifiedRef.current = false;
               setHasDraftRestored(false);
               onReload();
             }}
@@ -3058,11 +3227,19 @@ function ActivitiesTab({ inspection, onReload, onOpenRfiModal, onOpenItpModal, o
               Clear
             </button>
             <button
+              type="button"
+              onClick={handleSaveChecklistDraft}
+              className="bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 px-3 py-2 rounded-lg font-semibold text-xs flex items-center gap-1 transition shadow-2xs"
+              title="Save in-progress activities to local draft so they are not lost on refresh"
+            >
+              <span>💾</span> {draftToast ? 'Draft Saved!' : 'Save Temp Draft'}
+            </button>
+            <button
               onClick={handleSaveDailyChecklist}
               disabled={savingDaily}
               className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-sm transition disabled:opacity-50 flex items-center gap-1.5"
             >
-              <span>💾</span> {savingDaily ? 'Saving...' : 'Save Daily Progress'}
+              <span>📤</span> {savingDaily ? 'Saving...' : 'Save Daily Progress'}
             </button>
           </div>
         </div>
@@ -3370,15 +3547,28 @@ function ActivitiesTab({ inspection, onReload, onOpenRfiModal, onOpenItpModal, o
 
 // Tab: Results
 function ResultsTab({ inspection, onReload }: any) {
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
-    inspectionId: inspection.id, itemId: '', activityId: '', status: 'ACCEPTABLE',
-    testMedium: '', testPressure: '', pressureUnit: 'kg/cm²', holdingTimeMin: '', leakageObserved: 'None', remarks: '',
+  const [showForm, setShowForm] = useState(() => {
+    const d = loadDraft<any>(`result_form_${inspection.id}`);
+    return !!(d?.data?.itemId || d?.data?.activityId);
   });
+  const [form, setForm] = useState(() => {
+    const d = loadDraft<any>(`result_form_${inspection.id}`);
+    return d?.data || {
+      inspectionId: inspection.id, itemId: '', activityId: '', status: 'ACCEPTABLE',
+      testMedium: '', testPressure: '', pressureUnit: 'kg/cm²', holdingTimeMin: '', leakageObserved: 'None', remarks: '',
+    };
+  });
+
+  useEffect(() => {
+    if (form.itemId || form.activityId || form.remarks || form.testMedium || form.testPressure) {
+      saveDraft(`result_form_${inspection.id}`, form);
+    }
+  }, [form, inspection.id]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     await API.addResult({ ...form, testPressure: form.testPressure ? parseFloat(form.testPressure) : null, holdingTimeMin: form.holdingTimeMin ? parseFloat(form.holdingTimeMin) : null, confirmedByUser: true });
+    clearDraft(`result_form_${inspection.id}`);
     setShowForm(false); onReload();
   };
 
@@ -3457,22 +3647,36 @@ function ResultsTab({ inspection, onReload }: any) {
 
 // Tab: 5.0 Equipment and Instrumentation Used
 function InstrumentsTab({ inspection, onReload }: any) {
-  const [showForm, setShowForm] = useState(false);
-  const [editingInstrument, setEditingInstrument] = useState<any>(null);
-  const [form, setForm] = useState({
-    inspectionId: inspection.id,
-    projectId: inspection.projectId,
-    instrumentName: '',
-    serialNumber: '',
-    certificateNo: '',
-    expiryDate: '',
+  const [showForm, setShowForm] = useState(() => {
+    const d = loadDraft<any>(`instrument_form_${inspection.id}`);
+    return !!(d?.data?.instrumentName || d?.data?.serialNumber);
   });
+  const [editingInstrument, setEditingInstrument] = useState<any>(null);
+  const [form, setForm] = useState(() => {
+    const d = loadDraft<any>(`instrument_form_${inspection.id}`);
+    return d?.data || {
+      inspectionId: inspection.id,
+      projectId: inspection.projectId,
+      instrumentName: '',
+      serialNumber: '',
+      certificateNo: '',
+      expiryDate: '',
+    };
+  });
+
+  useEffect(() => {
+    if (form.instrumentName || form.serialNumber || form.certificateNo) {
+      saveDraft(`instrument_form_${inspection.id}`, form);
+    }
+  }, [form, inspection.id]);
+
   const [loadingAuto, setLoadingAuto] = useState(false);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       await API.addInstrument(form);
+      clearDraft(`instrument_form_${inspection.id}`);
       setShowForm(false);
       setForm({
         inspectionId: inspection.id,
@@ -3742,13 +3946,26 @@ function InstrumentsTab({ inspection, onReload }: any) {
 
 // Tab: Attendees
 function AttendeesTab({ inspection, onReload }: any) {
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(() => {
+    const d = loadDraft<any>(`attendee_form_${inspection.id}`);
+    return !!(d?.data?.name || d?.data?.company);
+  });
   const [editingAttendee, setEditingAttendee] = useState<any>(null);
-  const [form, setForm] = useState({ inspectionId: inspection.id, name: '', company: '', representedOrg: '', title: '' });
+  const [form, setForm] = useState(() => {
+    const d = loadDraft<any>(`attendee_form_${inspection.id}`);
+    return d?.data || { inspectionId: inspection.id, name: '', company: '', representedOrg: '', title: '' };
+  });
+
+  useEffect(() => {
+    if (form.name || form.company || form.title) {
+      saveDraft(`attendee_form_${inspection.id}`, form);
+    }
+  }, [form, inspection.id]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     await API.addAttendee(form);
+    clearDraft(`attendee_form_${inspection.id}`);
     setShowForm(false); onReload();
   };
 
