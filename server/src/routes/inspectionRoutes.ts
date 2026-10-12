@@ -367,10 +367,65 @@ router.post('/:id/import-rfi', async (req, res) => {
     let itemsAdded = 0;
     let activitiesAdded = 0;
 
-    // 1. Add Items (strictly from RFI)
-    if (extractedData.items && Array.isArray(extractedData.items)) {
-      // Remove any previously existing items that do not belong to this RFI
-      const validTags = new Set(extractedData.items.map((i: any) => i.tagNumber));
+    // 1. Add Items (strictly from RFI, or fall back to linked Offer List if no material details in RFI)
+    let itemsToProcess = extractedData.items || [];
+    const rfiHasNoDetails = extractedData.rfiHasNoDetails || itemsToProcess.length === 0 || itemsToProcess.some((i: any) => i.isPlaceholder);
+
+    let linkedOfferDocId = inspection.offerDocumentId;
+    if (rfiHasNoDetails && !linkedOfferDocId) {
+      // Find an offer list in the same project if not yet linked
+      const projOfferDoc = await prisma.document.findFirst({
+        where: {
+          projectId: inspection.projectId,
+          documentType: { in: ['OFFER_LIST', 'OFFER_LETTER'] },
+        },
+        orderBy: { uploadedAt: 'desc' },
+      });
+      if (projOfferDoc) {
+        linkedOfferDocId = projOfferDoc.id;
+      }
+    }
+
+    if (rfiHasNoDetails && linkedOfferDocId) {
+      // Clause: If no material details available in RFI, pick up from linked Offer List!
+      try {
+        const offerDoc = await prisma.document.findUnique({ where: { id: linkedOfferDocId } });
+        if (offerDoc) {
+          const offerExt = await docSvc.extractTextFromFile(path.resolve(offerDoc.storageKey));
+          const parsedOffer = docSvc.parseOfferList(offerExt.rawText, [], []);
+          if (parsedOffer.newItems && parsedOffer.newItems.length > 0) {
+            itemsToProcess = parsedOffer.newItems;
+            console.log(`[import-rfi] Auto-fallback to Offer List: picked up ${parsedOffer.newItems.length} items from ${offerDoc.originalFilename}.`);
+            
+            // Auto link offerDocId if not linked
+            if (!inspection.offerDocumentId) {
+              await prisma.inspection.update({
+                where: { id: inspectionId },
+                data: { offerDocumentId: linkedOfferDocId },
+              });
+            }
+
+            // Also enrich project if offer list has customer / supplier details
+            if (parsedOffer.customerName || parsedOffer.poNumber || parsedOffer.supplierName) {
+              await prisma.project.update({
+                where: { id: inspection.projectId },
+                data: {
+                  ...(parsedOffer.customerName && { customerName: parsedOffer.customerName }),
+                  ...(parsedOffer.poNumber && { poNumber: parsedOffer.poNumber }),
+                  ...(parsedOffer.supplierName && { supplierName: parsedOffer.supplierName }),
+                },
+              }).catch(() => {});
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Could not auto-fetch offer list items in import-rfi:', err);
+      }
+    }
+
+    if (itemsToProcess && Array.isArray(itemsToProcess) && itemsToProcess.length > 0) {
+      // Remove any previously existing items that do not belong to this RFI/Offer list
+      const validTags = new Set(itemsToProcess.map((i: any) => i.tagNumber));
       const invalidItems = (inspection.items || []).filter(i => !validTags.has(i.tagNumber));
       if (invalidItems.length > 0) {
         const invalidItemIds = invalidItems.map(i => i.id);
@@ -386,9 +441,10 @@ router.post('/:id/import-rfi', async (req, res) => {
         });
       }
 
-      for (const item of extractedData.items) {
+      for (const item of itemsToProcess) {
         const existing = inspection.items.find(i => i.tagNumber === item.tagNumber || (item.serialNumber && i.serialNumber === item.serialNumber));
         if (!existing) {
+          const qty = item.presentedQty || item.orderedQty || 1;
           await prisma.inspectionItem.create({
             data: {
               inspectionId,
@@ -401,10 +457,10 @@ router.post('/:id/import-rfi', async (req, res) => {
               rating: item.rating || 'ASME #600 RF',
               bodyMaterial: item.bodyMaterial || 'Gr WCC',
               valveSeries: item.valveSeries || '',
-              orderedQty: item.orderedQty || 1,
-              presentedQty: item.presentedQty || 1,
-              acceptedThisVisit: item.acceptedThisVisit || 1,
-              acceptedToDate: item.acceptedToDate || 1,
+              orderedQty: item.orderedQty || qty,
+              presentedQty: qty,
+              acceptedThisVisit: item.acceptedThisVisit || qty,
+              acceptedToDate: item.acceptedToDate || qty,
             },
           });
           itemsAdded++;
@@ -412,14 +468,23 @@ router.post('/:id/import-rfi', async (req, res) => {
       }
     }
 
-    // 2. Add Activities
-    if (extractedData.activities && Array.isArray(extractedData.activities)) {
+    // 2. Add Activities (strictly as per RFI!)
+    if (extractedData.activities && Array.isArray(extractedData.activities) && extractedData.activities.length > 0) {
+      // Remove non-RFI activities (e.g. if all ITP clauses were previously imported)
+      const rfiClauses = new Set(extractedData.activities.map((a: any) => (a.clauseNumber || '').replace(',', '.').trim()));
+      const unneededActs = (inspection.activities || []).filter(a => !rfiClauses.has((a.clauseNumber || '').replace(',', '.').trim()));
+      if (unneededActs.length > 0) {
+        const unneededIds = unneededActs.map(a => a.id);
+        await prisma.inspectionResult.deleteMany({ where: { activityId: { in: unneededIds } } });
+        await prisma.inspectionActivity.deleteMany({ where: { id: { in: unneededIds } } });
+      }
+
       for (const act of extractedData.activities) {
-        const clause = act.clauseNumber || act.clause || '';
+        const clause = (act.clauseNumber || act.clause || '').replace(',', '.').trim();
         const name = act.activityName || act.desc || act.name || '';
         if (!clause) continue;
 
-        const existing = inspection.activities.find(a => a.clauseNumber === clause);
+        const existing = (inspection.activities || []).find(a => (a.clauseNumber || '').replace(',', '.').trim() === clause);
         if (!existing) {
           await prisma.inspectionActivity.create({
             data: {
@@ -429,9 +494,45 @@ router.post('/:id/import-rfi', async (req, res) => {
               acceptanceCriteria: act.acceptanceCriteria || 'Conform to approved ITP & project specifications',
               interventionTPIA: act.interventionTPIA || 'W',
               status: 'PENDING',
+              isMandatoryInRFI: true,
             },
           });
           activitiesAdded++;
+        }
+      }
+
+      // If an ITP document is already linked, immediately enrich the RFI activities with criteria from the ITP!
+      if (inspection.itpDocumentId) {
+        try {
+          const itpDoc = await prisma.document.findUnique({
+            where: { id: inspection.itpDocumentId },
+            include: { extractions: true },
+          });
+          if (itpDoc && itpDoc.extractions && itpDoc.extractions.length > 0) {
+            const itpData = JSON.parse(itpDoc.extractions[0].extractedData);
+            const clauses = itpData.clauses || itpData.activities || [];
+            const currentActs = await prisma.inspectionActivity.findMany({ where: { inspectionId } });
+            for (const cAct of currentActs) {
+              const cNorm = (cAct.clauseNumber || '').replace(',', '.').trim();
+              const cName = (cAct.activityName || '').toLowerCase();
+              const match = clauses.find((c: any) => {
+                const num = (c.clauseNumber || '').replace(',', '.').trim();
+                const desc = (c.activityDescription || '').toLowerCase();
+                return num === cNorm || (cName.includes('visual') && (num === '19.9' || num === '19.5')) || (cName.includes('pmi') && (num === '19.6' || num === '19.61'));
+              });
+              if (match) {
+                await prisma.inspectionActivity.update({
+                  where: { id: cAct.id },
+                  data: {
+                    acceptanceCriteria: match.acceptanceCriteria || match.referenceDocument || cAct.acceptanceCriteria,
+                    interventionTPIA: match.interventionTPIA || cAct.interventionTPIA || 'W',
+                  },
+                });
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Could not auto-enrich RFI activities with ITP:', e);
         }
       }
     }
@@ -524,16 +625,66 @@ router.post('/:id/import-itp', async (req, res) => {
       extractedData = result.extractedData;
     }
 
-    let activitiesAdded = 0;
-    const clauses = extractedData.clauses || extractedData.activities || [];
-    if (Array.isArray(clauses)) {
-      for (const c of clauses) {
-        const clauseNum = c.clauseNumber || c.clause || '';
-        const name = c.activityDescription || c.activityName || c.name || '';
-        if (!clauseNum) continue;
+    // Helper to find matching ITP clause for an activity
+    const findMatchingClause = (act: any, clauses: any[]) => {
+      const actClause = (act.clauseNumber || '').replace(',', '.').trim();
+      const actName = (act.activityName || '').toLowerCase().trim();
 
-        const existing = inspection.activities.find(a => a.clauseNumber === clauseNum);
-        if (!existing) {
+      // Exact clause match
+      let found = clauses.find((c: any) => (c.clauseNumber || '').replace(',', '.').trim() === actClause);
+      if (found) return found;
+
+      // Match by keyword for standard inspection disciplines
+      if (actName.includes('visual') || actName.includes('dimension')) {
+        found = clauses.find((c: any) => {
+          const num = (c.clauseNumber || '').replace(',', '.').trim();
+          const desc = (c.activityDescription || '').toLowerCase();
+          return num === '19.9' || num === '19.5' || desc.includes('visual') || desc.includes('dimensional');
+        });
+        if (found) return found;
+      }
+
+      if (actName.includes('pmi') || actName.includes('positive material')) {
+        found = clauses.find((c: any) => {
+          const num = (c.clauseNumber || '').replace(',', '.').trim();
+          const desc = (c.activityDescription || '').toLowerCase();
+          return num === '19.6' || num === '19.61' || desc.includes('pmi') || desc.includes('positive material');
+        });
+        if (found) return found;
+      }
+
+      return null;
+    };
+
+    let enrichedCount = 0;
+    let activitiesAdded = 0;
+    const itpClauses = extractedData.clauses || extractedData.activities || [];
+
+    // CRITICAL USER CLAUSE:
+    // "The activites should be picked from RFI and other details like the sope, documents used all this info should be from ITP bacuse ITP will have all the activites. Engineers would need only the activites as per RFI"
+    if (inspection.activities && inspection.activities.length > 0) {
+      // Enrich ONLY the existing RFI activities with ITP reference documents, acceptance criteria, and intervention points!
+      for (const act of inspection.activities) {
+        const match = findMatchingClause(act, itpClauses);
+        if (match) {
+          await prisma.inspectionActivity.update({
+            where: { id: act.id },
+            data: {
+              acceptanceCriteria: match.acceptanceCriteria || match.referenceDocument || act.acceptanceCriteria,
+              interventionTPIA: match.interventionTPIA || act.interventionTPIA || 'W',
+            },
+          });
+          enrichedCount++;
+        }
+      }
+    } else {
+      // If inspection had NO activities at all, import from ITP
+      if (Array.isArray(itpClauses)) {
+        for (const c of itpClauses) {
+          const clauseNum = (c.clauseNumber || c.clause || '').replace(',', '.').trim();
+          const name = c.activityDescription || c.activityName || c.name || '';
+          if (!clauseNum) continue;
+
           await prisma.inspectionActivity.create({
             data: {
               inspectionId,
@@ -569,8 +720,11 @@ router.post('/:id/import-itp', async (req, res) => {
 
     res.json({
       success: true,
-      message: `Successfully imported ${activitiesAdded} activities from ITP.`,
+      message: enrichedCount > 0
+        ? `Successfully enriched ${enrichedCount} RFI activities with ITP reference documents, acceptance criteria, and intervention points. (Only RFI activities retained as per inspection scope).`
+        : `Successfully imported ${activitiesAdded} activities from ITP.`,
       activitiesAdded,
+      enrichedCount,
       itpNumber: extractedData.itpNumber || inspection.itpNumber,
       inspection: updated,
     });
@@ -608,13 +762,50 @@ router.post('/:id/recall-rfi', async (req, res) => {
     const result = await docSvc.processDocument(document.id, path.resolve(document.storageKey), 'RFI');
     const extractedData = result.extractedData;
 
-    const rfiItems = extractedData.items || [];
-    if (!Array.isArray(rfiItems) || rfiItems.length === 0) {
-      return res.status(400).json({ error: 'No materials or equipment items found in this RFI.' });
+    let rfiItems = extractedData.items || [];
+    const rfiHasNoDetails = extractedData.rfiHasNoDetails || rfiItems.length === 0 || rfiItems.some((i: any) => i.isPlaceholder);
+
+    let linkedOfferDocId = inspection.offerDocumentId;
+    if (rfiHasNoDetails && !linkedOfferDocId) {
+      const projOfferDoc = await prisma.document.findFirst({
+        where: {
+          projectId: inspection.projectId,
+          documentType: { in: ['OFFER_LIST', 'OFFER_LETTER'] },
+        },
+        orderBy: { uploadedAt: 'desc' },
+      });
+      if (projOfferDoc) {
+        linkedOfferDocId = projOfferDoc.id;
+      }
     }
 
-    // Clean up any items that do not exist in the RFI (e.g. previously mis-parsed tags)
-    // to strictly enforce: "Only consider materials from RFI"
+    if (rfiHasNoDetails && linkedOfferDocId) {
+      try {
+        const offerDoc = await prisma.document.findUnique({ where: { id: linkedOfferDocId } });
+        if (offerDoc) {
+          const offerExt = await docSvc.extractTextFromFile(path.resolve(offerDoc.storageKey));
+          const parsedOffer = docSvc.parseOfferList(offerExt.rawText, [], []);
+          if (parsedOffer.newItems && parsedOffer.newItems.length > 0) {
+            rfiItems = parsedOffer.newItems;
+            console.log(`[recall-rfi] Auto-fallback to Offer List: picked up ${parsedOffer.newItems.length} items from ${offerDoc.originalFilename}.`);
+            if (!inspection.offerDocumentId) {
+              await prisma.inspection.update({
+                where: { id: inspectionId },
+                data: { offerDocumentId: linkedOfferDocId },
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Could not auto-fetch offer list items in recall-rfi:', err);
+      }
+    }
+
+    if (!Array.isArray(rfiItems) || rfiItems.length === 0) {
+      return res.status(400).json({ error: 'No materials or equipment items found in this RFI or linked Offer List.' });
+    }
+
+    // Clean up any items that do not exist in the RFI/Offer List
     const validTags = new Set(rfiItems.map((i: any) => i.tagNumber));
     const invalidItems = (inspection.items || []).filter(i => !validTags.has(i.tagNumber));
     if (invalidItems.length > 0 || clearFirst) {
@@ -642,6 +833,7 @@ router.post('/:id/recall-rfi', async (req, res) => {
     let recalledCount = 0;
     for (const item of rfiItems) {
       const existing = inspection.items.find(i => i.tagNumber === item.tagNumber || (item.serialNumber && i.serialNumber === item.serialNumber));
+      const qty = item.presentedQty || item.orderedQty || 1;
       if (existing) {
         await prisma.inspectionItem.update({
           where: { id: existing.id },
@@ -654,7 +846,8 @@ router.post('/:id/recall-rfi', async (req, res) => {
             rating: item.rating || existing.rating,
             bodyMaterial: item.bodyMaterial || existing.bodyMaterial,
             valveSeries: item.valveSeries || existing.valveSeries,
-            presentedQty: item.presentedQty || existing.presentedQty || 1,
+            orderedQty: item.orderedQty || existing.orderedQty || qty,
+            presentedQty: qty,
           },
         });
         recalledCount++;
@@ -671,10 +864,10 @@ router.post('/:id/recall-rfi', async (req, res) => {
             rating: item.rating || 'ASME #600 RF',
             bodyMaterial: item.bodyMaterial || 'Gr WCC',
             valveSeries: item.valveSeries || '',
-            orderedQty: item.orderedQty || 1,
-            presentedQty: item.presentedQty || 1,
-            acceptedThisVisit: item.acceptedThisVisit || 1,
-            acceptedToDate: item.acceptedToDate || 1,
+            orderedQty: item.orderedQty || qty,
+            presentedQty: qty,
+            acceptedThisVisit: item.acceptedThisVisit || qty,
+            acceptedToDate: item.acceptedToDate || qty,
           },
         });
         recalledCount++;
@@ -943,10 +1136,15 @@ router.post('/:id/apply-offer-list', async (req, res) => {
     const {
       documentId,
       offerReference,
-      selectedItemIds, // array of item IDs to mark offered (presentedQty: 1)
+      selectedItemIds, // array of item IDs to mark offered (presentedQty: > 0)
       selectedActivityIds, // array of activity IDs to mark active/offered
-      newItems, // optional array of new items to add: [{ tagNumber, itemName, poItemNo, serialNumber }]
+      newItems, // optional array of new items to add: [{ tagNumber, itemName, poItemNo, serialNumber, ... }]
       newActivities, // optional array of new activities: [{ clauseNumber, activityName, acceptanceCriteria }]
+      allOfferItemsAsPrimary, // boolean: replace placeholders or populate items from offer list
+      customerName,
+      customerPoNumber,
+      poNumber,
+      supplierName,
     } = req.body;
 
     const inspection = await prisma.inspection.findUnique({
@@ -955,51 +1153,146 @@ router.post('/:id/apply-offer-list', async (req, res) => {
     });
     if (!inspection) return res.status(404).json({ error: 'Inspection not found' });
 
-    // 1. Update Existing Items: Auto-select offered vs omitted
     let offeredItemCount = 0;
     let omittedItemCount = 0;
 
-    if (Array.isArray(selectedItemIds)) {
-      const selectedSet = new Set(selectedItemIds);
-      for (const item of inspection.items) {
-        const isOffered = selectedSet.has(item.id);
-        const newQty = isOffered ? 1 : 0;
-        if (item.presentedQty !== newQty) {
-          await prisma.inspectionItem.update({
-            where: { id: item.id },
-            data: { presentedQty: newQty },
-          });
-        }
-        if (isOffered) offeredItemCount++;
-        else omittedItemCount++;
-      }
-    }
+    // Helper to identify generic/placeholder items from RFI
+    const isPlaceholderItem = (item: any) => {
+      const tag = (item.tagNumber || '').toLowerCase().trim();
+      const name = (item.itemName || '').toLowerCase().trim();
+      return (
+        !tag ||
+        tag === '-' ||
+        tag === 'na' ||
+        tag.includes('for all') ||
+        tag.includes('ball & seat') ||
+        tag.includes('annexure') ||
+        tag.includes('offer list') ||
+        name.includes('for all') ||
+        name.includes('ball & seat') ||
+        name.includes('annexure')
+      );
+    };
 
-    // 1b. Create New Items if specified
-    if (Array.isArray(newItems) && newItems.length > 0) {
+    const hasOnlyPlaceholders = (inspection.items || []).length === 0 || (inspection.items || []).every(isPlaceholderItem);
+
+    // 1. If allOfferItemsAsPrimary or existing items are just placeholders: Replace with Offer List items
+    if ((allOfferItemsAsPrimary || hasOnlyPlaceholders) && Array.isArray(newItems) && newItems.length > 0) {
+      // Remove any existing placeholder items
+      const itemsToDelete = inspection.items.filter(isPlaceholderItem);
+      if (itemsToDelete.length > 0) {
+        const delIds = itemsToDelete.map(i => i.id);
+        await prisma.photo.updateMany({ where: { itemId: { in: delIds } }, data: { itemId: null } });
+        await prisma.inspectionResult.deleteMany({ where: { itemId: { in: delIds } } });
+        await prisma.inspectionItem.deleteMany({ where: { id: { in: delIds } } });
+      }
+
       for (const ni of newItems) {
         if (!ni.tagNumber) continue;
-        const exists = inspection.items.some(i => i.tagNumber === ni.tagNumber);
-        if (!exists) {
+        const exists = inspection.items.find(i => !isPlaceholderItem(i) && (i.tagNumber === ni.tagNumber || (ni.serialNumber && i.serialNumber === ni.serialNumber)));
+        const qty = ni.presentedQty || ni.orderedQty || 1;
+        if (exists) {
+          await prisma.inspectionItem.update({
+            where: { id: exists.id },
+            data: {
+              poItemNo: ni.poItemNo || exists.poItemNo,
+              serialNumber: ni.serialNumber || exists.serialNumber,
+              jobNo: ni.jobNo || exists.jobNo,
+              itemName: ni.itemName || exists.itemName,
+              sizeInch: ni.sizeInch || exists.sizeInch,
+              rating: ni.rating || exists.rating,
+              bodyMaterial: ni.bodyMaterial || exists.bodyMaterial,
+              valveSeries: ni.valveSeries || exists.valveSeries,
+              orderedQty: ni.orderedQty || exists.orderedQty || qty,
+              presentedQty: qty,
+            },
+          });
+          offeredItemCount++;
+        } else {
           await prisma.inspectionItem.create({
             data: {
               inspectionId,
               tagNumber: ni.tagNumber,
-              itemName: ni.itemName || 'Control Valve',
+              itemName: ni.itemName || 'Valve Component',
               poItemNo: ni.poItemNo || "'1",
               serialNumber: ni.serialNumber || '',
               jobNo: ni.jobNo || '',
-              sizeInch: ni.sizeInch || "24''",
+              sizeInch: ni.sizeInch || "2''",
               rating: ni.rating || 'ASME #600 RF',
-              bodyMaterial: ni.bodyMaterial || 'Gr WCC',
-              orderedQty: 1,
-              presentedQty: 1,
-              acceptedThisVisit: 1,
-              acceptedToDate: 1,
+              bodyMaterial: ni.bodyMaterial || 'B564 N08825',
+              valveSeries: ni.valveSeries || 'FBV',
+              orderedQty: ni.orderedQty || qty,
+              presentedQty: qty,
+              acceptedThisVisit: ni.acceptedThisVisit || qty,
+              acceptedToDate: ni.acceptedToDate || qty,
             },
           });
           offeredItemCount++;
         }
+      }
+    } else {
+      // Standard flow: update existing items based on selection
+      if (Array.isArray(selectedItemIds)) {
+        const selectedSet = new Set(selectedItemIds);
+        for (const item of inspection.items) {
+          const isOffered = selectedSet.has(item.id);
+          const newQty = isOffered ? (item.orderedQty || 1) : 0;
+          if (item.presentedQty !== newQty) {
+            await prisma.inspectionItem.update({
+              where: { id: item.id },
+              data: { presentedQty: newQty },
+            });
+          }
+          if (isOffered) offeredItemCount++;
+          else omittedItemCount++;
+        }
+      }
+
+      // Add any new items
+      if (Array.isArray(newItems) && newItems.length > 0) {
+        for (const ni of newItems) {
+          if (!ni.tagNumber) continue;
+          const exists = inspection.items.some(i => i.tagNumber === ni.tagNumber);
+          if (!exists) {
+            const qty = ni.presentedQty || ni.orderedQty || 1;
+            await prisma.inspectionItem.create({
+              data: {
+                inspectionId,
+                tagNumber: ni.tagNumber,
+                itemName: ni.itemName || 'Control Valve',
+                poItemNo: ni.poItemNo || "'1",
+                serialNumber: ni.serialNumber || '',
+                jobNo: ni.jobNo || '',
+                sizeInch: ni.sizeInch || "24''",
+                rating: ni.rating || 'ASME #600 RF',
+                bodyMaterial: ni.bodyMaterial || 'Gr WCC',
+                valveSeries: ni.valveSeries || '',
+                orderedQty: ni.orderedQty || qty,
+                presentedQty: qty,
+                acceptedThisVisit: ni.acceptedThisVisit || qty,
+                acceptedToDate: ni.acceptedToDate || qty,
+              },
+            });
+            offeredItemCount++;
+          }
+        }
+      }
+    }
+
+    // Update Project details if present in Offer List
+    const effectivePo = poNumber || customerPoNumber;
+    if (customerName || effectivePo || supplierName) {
+      try {
+        await prisma.project.update({
+          where: { id: inspection.projectId },
+          data: {
+            ...(customerName && { customerName }),
+            ...(effectivePo && { poNumber: effectivePo }),
+            ...(supplierName && { supplierName }),
+          },
+        });
+      } catch (e) {
+        console.warn('Could not update project from apply-offer-list:', e);
       }
     }
 

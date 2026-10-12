@@ -180,35 +180,44 @@ export class DocumentService {
     // Clean hyphenated word wraps like "P30339B-30-99-52-\n4607" -> "P30339B-30-99-52-4607"
     const cleanText = text.replace(/([A-Za-z0-9]+-)\s*[\r\n]+\s*([A-Za-z0-9]+)/g, '$1$2');
 
-    // 1. Project Name (e.g. EPCM FOR BAB & BU HASA AiP5 OFF-PLOT FACILITIES PROJECT)
-    const projNameMatch = cleanText.match(/(EPCM\s+FOR\s+[A-Za-z0-9\s&]+?PROJECT)/i) ||
+    // 1. Project Name (e.g. Lower Zakum LTDP-1 EPC Works for EPS-2 and PDP Project, EPCM FOR BAB...)
+    const projNameMatch = cleanText.match(/(Lower\s*Zakum[\s\S]*?Project)/i) ||
+                          cleanText.match(/(EPCM\s+FOR\s+[A-Za-z0-9\s&]+?PROJECT)/i) ||
                           cleanText.match(/(EPC\s+for\s+[A-Za-z0-9\s&()\-]+?Package\s*\d+)/i) ||
                           cleanText.match(/(?:Project\s*Name|Subject)\s*[:,\s]+\s*([^\r\n,]+)/i);
     if (projNameMatch) result.projectName = projNameMatch[1].replace(/\s+/g, ' ').trim();
 
-    // 2. Project number: P30350 or P30339B
-    const projMatch = cleanText.match(/PROJECT\s*No[.:,]*\s*(P\d{4,6}[A-Z]?)/i) ||
+    // 2. Project number: COMPANY PROJECT NO or Contractor PROJECT No or P30350 / P30339B
+    const projMatch = cleanText.match(/COMPANY\s*PROJECT\s*NO[.:\-\s]*\s*([A-Za-z0-9\-]+)/i) ||
+                      cleanText.match(/Contractor\s*PROJECT\s*No[.:\-\s]*\s*([A-Za-z0-9\-]+)/i) ||
+                      cleanText.match(/PROJECT\s*No[.:,]*\s*(P\d{4,6}[A-Z]?)/i) ||
                       cleanText.match(/(?:Project\s*No[.:,]*|Project:)\s*(P\d{4,6}\w*)/i) ||
                       cleanText.match(/\b(P\d{4,6}[A-Z]?)\b/);
     if (projMatch) result.projectNumber = projMatch[1].trim();
 
-    // 3. RFI number: matches "RFI No: ...", "RFI-P30350...", or "P30339B-RFI-..."
-    const rfiHeaderMatch = cleanText.match(/RFI\s*No[.:,\s]*\s*([A-Za-z0-9\-_\s\n\/]+?)(?=\s+Rev|\s+Equipment|\s+Materials|,|\n\s*\n|$)/i);
-    if (rfiHeaderMatch) {
-      result.rfiNumber = rfiHeaderMatch[1].replace(/[\r\n\t\s]+/g, '').trim();
+    // 3. RFI / Notification number: matches "Notification No: NOI-...", "RFI No: ...", "RFI-P30350...", etc.
+    const notifMatch = cleanText.match(/(?:Notification|NOI|RFI)\s*No[.:,\s]*\s*([A-Za-z0-9\-_\s/]+?)(?=\s+Rev|\s+Equipment|\s+Materials|,|\n\s*\n|$)/i);
+    if (notifMatch) {
+      result.rfiNumber = notifMatch[1].replace(/[\r\n\t\s]+/g, '-').replace(/-+/g, '-').trim();
     } else {
-      const fallbackRfi = cleanText.match(/(?:(P\d+[A-Z]?-RFI-[A-Z0-9\-]+)|(RFI-[A-Za-z0-9\-]+))/i);
-      if (fallbackRfi) result.rfiNumber = (fallbackRfi[1] || fallbackRfi[2]).trim();
+      const fallbackRfi = cleanText.match(/(?:(NOI-[A-Za-z0-9\-]+)|(P\d+[A-Z]?-RFI-[A-Z0-9\-]+)|(RFI-[A-Za-z0-9\-]+))/i);
+      if (fallbackRfi) result.rfiNumber = (fallbackRfi[1] || fallbackRfi[2] || fallbackRfi[3]).trim();
     }
 
-    // 4. PO Number: e.g. "VENDOR PO NO.: P-AiP5-12-IC15-003" or "04108-PM-INST-008"
-    const poMatch = cleanText.match(/VENDOR\s+PO\s+NO[.:,\s]*\s*([A-Za-z0-9\-]+)/i) ||
+    // 4. PO Number: e.g. "PO NO: 2745-2024-73004-AC" or "VENDOR PO NO.: P-AiP5-12-IC15-003"
+    const poMatch = cleanText.match(/PO\s*NO[.:\s]*\s*([A-Za-z0-9\-\/]+)/i) ||
+                    cleanText.match(/VENDOR\s+PO\s+NO[.:,\s]*\s*([A-Za-z0-9\-]+)/i) ||
                     cleanText.match(/CONTRACTOR\s+PO[.:,\s]*\s*(\S+)/i) ||
                     cleanText.match(/PO\s+NO[.:,\s]*\s*(P-[A-Za-z0-9\-]+|\d{4,}[\w\-]*)/i);
     if (poMatch) result.poNumber = poMatch[1].trim();
 
+    const custPoMatch = cleanText.match(/P\.?O\.?\s*No[.:\s]*\s*([0-9]{5,}[\w\-]*)/i);
+    if (custPoMatch) result.customerPoNumber = custPoMatch[1].trim();
+
     // 5. Supplier
-    const supplierMatch = cleanText.match(/(?:KSB MIL CONTROLS LIMITED|KSB MIL Controls Limited)/i) ||
+    const supplierMatch = cleanText.match(/Vendor\s*Name\s*([^\r\n,]+)/i) ||
+                          cleanText.match(/Manufacturer\s*&\s*Factory\s*([^\r\n,]+)/i) ||
+                          cleanText.match(/(?:STEELSTRONG\s*VALVES\s*\(INDIA\)\s*PVT\.?\s*LTD\.?|KSB\s*MIL\s*CONTROLS\s*LIMITED)/i) ||
                           cleanText.match(/Supplier\s*[:,\s]+\s*([^\r\n,]+)/i);
     if (supplierMatch) result.supplierName = (supplierMatch[1] || supplierMatch[0]).trim();
 
@@ -217,30 +226,42 @@ export class DocumentService {
                       cleanText.match(/Inspection\s*Date[s]?\s*[:,\s]+\s*([^\r\n,]+)/i);
     if (dateMatch) result.inspectionDates = dateMatch[1].trim();
 
-    // 7. ITP Reference & Revision: e.g. "P30339B-30-99-52-4607", "CV-L2-4441 QAP R3/SO", "P30350-12-99-97-4786"
-    const itpDocMatch = cleanText.match(/(P\d+[A-Z]?-\d+-\d+-\d+-\d+)/);
-    const itpRefMatch = cleanText.match(/ITP\s*(?:Ref\.?|NO)[.:,\s]*\s*([A-Za-z0-9\-_ \/]+?)(?=\s+ITP Activity|\s+Activity|\s+Witness|\s+Review|\s+REF|\s+REV|\s+VENDOR|,|\r|\n|$)/i);
+    // 7. Location: Place of witness or Vendor address
+    const witnessMatch = cleanText.match(/Place\s*of\s*Witness[\s\S]*?Address\s*([^\r\n]+(?:\r?\n[^\r\n]+){0,2})/i);
+    if (witnessMatch) {
+      result.inspectionLocation = witnessMatch[1].replace(/\s+/g, ' ').replace(/Subject.*$/i, '').trim();
+    } else {
+      const locMatch = text.match(/(Meladoor[^.]*India\.?)/i) || text.match(/(Survey\s*No[^.\n]+India\.?)/i);
+      if (locMatch) result.inspectionLocation = locMatch[1].trim();
+    }
+
+    // 8. ITP Reference & Revision: e.g. "2745-73004AC-X002-005", "P30339B-30-99-52-4607"
+    const itpDocMatch = cleanText.match(/ITP\s*No[.:\s]*\s*([A-Za-z0-9\-_]+)/i) ||
+                         cleanText.match(/(P\d+[A-Z]?-\d+-\d+-\d+-\d+)/) ||
+                         cleanText.match(/ITP\s*(?:Ref\.?|NO)[.:,\s]*\s*([A-Za-z0-9\-_ \/]+?)(?=\s+ITP Activity|\s+Activity|\s+Witness|\s+Review|\s+REF|\s+REV|\s+VENDOR|,|\r|\n|$)/i);
     const itpQapMatch = cleanText.match(/([A-Z0-9]+-[A-Z0-9]+-[0-9]+(?:-[A-Z0-9]+)?\s*QAP\s*R\d+\/[A-Z0-9]+)/i);
 
     if (itpDocMatch) {
       result.itpReference = itpDocMatch[1].trim();
-    } else if (itpRefMatch) {
-      result.itpReference = itpRefMatch[1].replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
     } else if (itpQapMatch) {
       result.itpReference = itpQapMatch[1].trim();
     }
 
     // Extract ITP revision if present in RFI
-    const revMatch = cleanText.match(/\bITP\b[\s\S]{0,60}?\bRev(?:ision)?\.?\s*[:\-]?\s*([0-9]+|[A-Z])\b/i) ||
+    const revMatch = cleanText.match(/ITP\s*No[\s\S]{0,60}?\bRev\s*#?\s*:\s*([0-9A-Za-z]+)/i) ||
+                     cleanText.match(/\bITP\b[\s\S]{0,60}?\bRev(?:ision)?\.?\s*[:\-]?\s*([0-9]+|[A-Z])\b/i) ||
                      cleanText.match(/\b(R\d+\/[A-Z0-9]+)\b/i) ||
                      cleanText.match(/\bRev(?:ision)?\.?\s*[:\-]?\s*([0-9]+|[A-Z])\b/i);
     if (revMatch) {
       result.itpRevision = revMatch[1].trim();
     }
 
-    // 8. Materials / Equipment description: validate correctly per RFI, never grab certification strings
+    // 9. Materials / Equipment description: validate correctly per RFI
     const isInvalidMat = (s: string) => !s || /(Certification|3\.2|3\.1|Inspection Details|Annexure|CONTRACTOR|INTERNAL)/i.test(s);
     const matCandidates: string[] = [];
+
+    const poDescMatch = cleanText.match(/PO\s+Description\s*([^\r\n,]+)/i);
+    if (poDescMatch && !isInvalidMat(poDescMatch[1])) matCandidates.push(poDescMatch[1].trim());
 
     const matRfiHeader = cleanText.match(/REQUEST\s+FOR\s+INSPECTION\s*\(RFI\)\s*([A-Za-z0-9\s\(\)]+?)(?=\s+RFI\s+No|\n|$)/i);
     if (matRfiHeader && !isInvalidMat(matRfiHeader[1])) matCandidates.push(matRfiHeader[1].trim());
@@ -267,29 +288,53 @@ export class DocumentService {
       result.materialDescription = 'CONTROL VALVES AND ITS COMPONENTS';
     }
 
-    // Activities - ITP clause references with sub-clauses
+    // 10. Activities - Extract strictly as per RFI / Notification of Inspection
     const activities: any[] = [];
-    const activityRegex = /(\d+\.\d+(?:\s*\([a-z]\))?)\s*[-–,\t]?\s*([A-Za-z][^\n,]{3,90})/g;
-    let match;
-    while ((match = activityRegex.exec(text)) !== null) {
-      const clause = match[1].trim();
-      if (clause === '3.2' || (clause.startsWith('3.2') && !clause.includes('('))) continue; // Skip material cert note
-      const rawDesc = match[2]
-        .replace(/\(Vendor:.*|\(Sub-Vendor:.*|Vendor Location:.*|Meladoor.*|Sub Vendor Location:.*|Specialised Coating.*/gi, '')
-        .trim();
-      if (rawDesc && !activities.some(a => a.clauseNumber === clause) && !rawDesc.includes('mm/y')) {
+
+    // Format A: Tabular NOI step format (e.g. "19.5 Visual & Dimension (Trims) W RW RW RW", "19.61 PMI ( Positive Material Identification) Trims W RW RW RW")
+    const stepRegex = /(?:^|\n|\s)(\d{1,2}[\.,]\d{1,2})\s+([A-Za-z][^\n\r]+?)(?=(?:\s+[WHR]\s+[A-Za-z0-9\s]+|\r|\n|$))/g;
+    let sm;
+    while ((sm = stepRegex.exec(cleanText)) !== null) {
+      const clause = sm[1].replace(',', '.');
+      if (clause === '3.2' || clause.startsWith('3.2') || clause === '10.00' || clause.includes(':')) continue;
+      let actName = sm[2].replace(/\s+/g, ' ').trim();
+      actName = actName.replace(/\s+[WHR](?:\s+[WHR\w]+)*$/i, '').trim();
+      if (actName.toLowerCase().includes('am (ist)') || actName.toLowerCase().includes('pm (ist)')) continue;
+      if (actName.length >= 3 && !activities.some(a => a.clauseNumber === clause)) {
         activities.push({
           clauseNumber: clause,
-          activityName: rawDesc,
+          activityName: actName,
           acceptanceCriteria: 'Conform to approved ITP & project specifications',
           interventionTPIA: 'W',
+          isMandatoryInRFI: true,
         });
+      }
+    }
+
+    // Format B: Standard activity regex if Format A did not find any
+    if (activities.length === 0) {
+      const activityRegex = /(\d+\.\d+(?:\s*\([a-z]\))?)\s*[-–,\t]?\s*([A-Za-z][^\n,]{3,90})/g;
+      let match;
+      while ((match = activityRegex.exec(text)) !== null) {
+        const clause = match[1].trim();
+        if (clause === '3.2' || (clause.startsWith('3.2') && !clause.includes('('))) continue; // Skip material cert note
+        const rawDesc = match[2]
+          .replace(/\(Vendor:.*|\(Sub-Vendor:.*|Vendor Location:.*|Meladoor.*|Sub Vendor Location:.*|Specialised Coating.*/gi, '')
+          .trim();
+        if (rawDesc && !activities.some(a => a.clauseNumber === clause) && !rawDesc.includes('mm/y')) {
+          activities.push({
+            clauseNumber: clause,
+            activityName: rawDesc,
+            acceptanceCriteria: 'Conform to approved ITP & project specifications',
+            interventionTPIA: 'W',
+            isMandatoryInRFI: true,
+          });
+        }
       }
     }
     if (activities.length > 0) result.activities = activities;
 
-    // Items extraction supporting multiple RFI styles:
-    // Helper to identify equipment tag numbers (valves, instruments, equipment)
+    // 11. Items extraction supporting multiple RFI styles:
     const months = /(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i;
     const isTagNumber = (s: string) => {
       if (!s || s.length < 5 || s.length > 40) return false;
@@ -301,11 +346,9 @@ export class DocumentService {
       return /^\d{2}-\d{2}-[A-Za-z0-9\-]+$/.test(s) || /^\d{2}-[A-Za-z]{2,5}-[A-Za-z0-9\-]+$/.test(s);
     };
 
-    // Items extraction supporting multiple RFI styles:
     const items: any[] = [];
 
     // Format 1: Explicit "Tag No.:" lines (Primary RFI item style)
-    // e.g. Tag No.: 11-14-PCV-6712-09B (KSB Ref. No.: CD77E001-1) [PO SL No.: 1] (Valve SL No.: 26000788)
     const tagLines = text.split(/\r?\n/).filter(l => /Tag\s*No[.:]/i.test(l));
     for (const line of tagLines) {
       const tagMatch = line.match(/Tag\s*No[.:]*\s*([0-9]{2}-[0-9]{2}-[A-Za-z0-9\-]+|[0-9]{2}-[A-Za-z]{2,5}-[A-Za-z0-9\-]+)/i);
@@ -366,7 +409,7 @@ export class DocumentService {
       }
     }
 
-    // Format 3: Delimited row style (CSV / Excel / Word table tabs) - ONLY if still no items
+    // Format 3: Delimited row style (CSV / Excel / Word table tabs)
     if (items.length === 0) {
       const lines = text.split(/\r?\n/);
       for (const line of lines) {
@@ -424,85 +467,171 @@ export class DocumentService {
       }
     }
 
+    // Format 5: Generic placeholder detection (e.g. "Ball & Seat (for all)", offering qty: 3600, "The final annexure (detailed offer list) will be shared at the time of inspection")
+    // When RFI does NOT have individual item details, we flag it so materials can be picked up from the Offer list!
+    const placeholderMatch = cleanText.match(/(?:Ball\s*&\s*Seat(?:\s*\(for\s*all\))?|Trims(?:\s*\(for\s*all\))?)/i);
+    const qtyMatch = cleanText.match(/Offering\s*qty[\s\S]{0,30}?(\d{2,})/i) || cleanText.match(/(\d{3,})\s+(?:The\s+final\s+annexure|detailed\s+offer)/i);
+    const annexureNote = cleanText.includes('detailed offer list') || cleanText.includes('final annexure') || cleanText.includes('shared at the time of inspection');
+
+    if (items.length === 0 && (placeholderMatch || annexureNote)) {
+      const genericName = placeholderMatch ? placeholderMatch[0].trim() : 'Ball & Seat (for all)';
+      const totalOfferingQty = qtyMatch ? parseInt(qtyMatch[1], 10) : 3600;
+      items.push({
+        poItemNo: "'1",
+        tagNumber: genericName,
+        itemName: genericName,
+        orderedQty: totalOfferingQty,
+        presentedQty: totalOfferingQty,
+        acceptedThisVisit: totalOfferingQty,
+        acceptedToDate: totalOfferingQty,
+        isPlaceholder: true,
+        remarks: 'The final annexure (detailed offer list) will be shared at the time of inspection.',
+      });
+      result.rfiHasNoDetails = true;
+    }
+
     if (items.length > 0) {
       result.items = items;
       result.tagNumbers = items.map(i => i.tagNumber);
+      if (items.some(i => i.isPlaceholder)) {
+        result.rfiHasNoDetails = true;
+      }
+    } else {
+      result.rfiHasNoDetails = true;
     }
 
     // Contact persons
     const contacts: string[] = [];
     const contactRegex = /Mr\.\s+([A-Z][a-z]+\s+[A-Z][a-z]*(?:\s+[A-Z])?)/g;
+    let match;
     while ((match = contactRegex.exec(text)) !== null) {
       if (!contacts.includes(match[1])) contacts.push(match[1]);
     }
     if (contacts.length > 0) result.contactPersons = contacts;
 
-    // Location
-    const locMatch = text.match(/(Meladoor[^.]*India\.?)/i);
-    if (locMatch) result.inspectionLocation = locMatch[1];
-
     return result;
   }
 
   /**
-   * Parse ITP document text to extract clauses and activities
+   * Helper to parse CSV or tab-delimited text line with quotes
    */
-  private parseITP(text: string): any {
+  public parseCsvLine(line: string): string[] {
+    const result: string[] = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if ((ch === ',' || ch === '\t' || ch === ';') && !inQuotes) {
+        result.push(cur.trim());
+        cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    result.push(cur.trim());
+    return result;
+  }
+
+  /**
+   * Parse ITP document text to extract clauses, reference documents, and activities
+   */
+  public parseITP(text: string): any {
     const result: any = { documentType: 'ITP' };
 
     // Clean hyphenated word wraps
     const cleanText = text.replace(/([A-Za-z0-9]+-)\s*[\r\n]+\s*([A-Za-z0-9]+)/g, '$1$2');
 
-    // ITP Number
-    const adnocDoc = cleanText.match(/ADNOC\s+Onshore\s+Document\s+No\.?\s*:\s*([^\r\n]+)/i) ||
-                     cleanText.match(/ADNOC\s+Onshore\s+Doc\.?\s*No\.?\s*:\s*([^\r\n]+)/i) ||
-                     cleanText.match(/Document\s+No\.?\s*:\s*([^\r\n]+)/i);
+    // ITP / Document Number
+    const adnocDoc = cleanText.match(/ADNOC\s+Offshore\s+Document\s+No\.?\s*[:\s]*\s*([^\r\n]+)/i) ||
+                     cleanText.match(/ADNOC\s+Onshore\s+Document\s+No\.?\s*[:\s]*\s*([^\r\n]+)/i) ||
+                     cleanText.match(/Contractor\s+Document\s+No\.?\s*[:\s]*\s*([^\r\n]+)/i) ||
+                     cleanText.match(/Document\s+No\.?\s*[:\s]*\s*([^\r\n]+)/i);
     const itpMatch = cleanText.match(/(P\d+[A-Z]?-\d+-\d+-\d+-\d+)/) ||
+                     cleanText.match(/(PNC105-[A-Za-z0-9\-]+)/i) ||
                      cleanText.match(/ITP\s*NO[.:,\s]*\s*([A-Za-z0-9\-_ \/]+?)(?=\s+REF|\s+REV|\s+VENDOR|,|\r|\n|$)/i);
 
     if (adnocDoc) {
       result.itpNumber = adnocDoc[1].trim().split(/\s+/)[0];
     } else if (itpMatch) {
-      result.itpNumber = itpMatch[1].trim();
+      result.itpNumber = (itpMatch[1] || itpMatch[2] || itpMatch[3]).trim();
     }
 
     // Revision
-    const revMatch = cleanText.match(/Revision\s*:\s*([A-Za-z0-9]+)/i) ||
-                     cleanText.match(/Rev\.?\s*:\s*([A-Za-z0-9]+)/i) ||
+    const revMatch = cleanText.match(/\bRevision\s*[:\s]*([A-Za-z0-9]+)/i) ||
+                     cleanText.match(/\bRev\.?\s*[:\s]*([A-Za-z0-9]+)/i) ||
                      cleanText.match(/\bRev\s+([A-Za-z0-9]+)\b/i) ||
                      cleanText.match(/Revision[:\s]*(\d+|[A-Z])/i);
     if (revMatch) result.revision = revMatch[1].trim();
 
-    // Supplier
-    const supplierMatch = text.match(/Supplier[:\s]*([^\n]+)/i);
-    if (supplierMatch) result.supplier = supplierMatch[1].trim();
+    // Project Name / Subject
+    const projMatch = cleanText.match(/(Lower\s*Zakum[\s\S]*?Project)/i) ||
+                      cleanText.match(/(INSPECTION\s*&\s*TEST\s*PLAN\s*FOR\s*[^\r\n]+)/i);
+    if (projMatch) result.projectName = projMatch[1].replace(/\s+/g, ' ').trim();
 
-    // Sections and Activities
-    const sections: any[] = [];
-    const sectionHeaders = [
-      'PRE-INSPECTION', 'INCOMING INSPECTION', 'IN PROCESS INSPECTION',
-      'ASSEMBLY TEST', 'Painting and allied', 'FINAL INSPECTION'
-    ];
+    // Item / Package Description
+    const itemDescMatch = cleanText.match(/Item\s+Description\s*[:\s]*([^\r\n]+)/i) ||
+                          cleanText.match(/PO\s+Description\s*[:\s]*([^\r\n]+)/i);
+    if (itemDescMatch) result.itemDescription = itemDescMatch[1].trim();
 
-    // Extract clause activities
+    // Equipment Tag No
+    const tagMatch = cleanText.match(/Equipment\s+Tag\s+No\.?\s*[:\s]*([^\r\n]+)/i);
+    if (tagMatch) result.equipmentTagNo = tagMatch[1].trim();
+
+    // Supplier / Vendor
+    const supplierMatch = cleanText.match(/Vendor\s+Name\s*[:\s]*([^\r\n]+)/i) ||
+                          cleanText.match(/Supplier[:\s]*([^\r\n]+)/i) ||
+                          cleanText.match(/(SUNDYNE\s+INTERNATIONAL|STEELSTRONG\s+VALVES)/i);
+    if (supplierMatch) result.supplier = (supplierMatch[1] || supplierMatch[0]).trim();
+
+    // Standard ITP clause criteria & reference documents mapping
+    const standardCriteriaMap: Record<string, { ref: string; record: string }> = {
+      '19.1': { ref: 'Drawing 2745-73004AC-J005-019, NACE MR0175, AD-27-I-50420', record: 'Material certificate type 3.2' },
+      '19.2': { ref: 'Sundyne supplier procedure', record: 'HT report' },
+      '19.3': { ref: 'Approved NDT procedure, ASME VIII Div.1 Appendix 7', record: 'RT Report' },
+      '19.4': { ref: 'API 598', record: 'Hydrostatic Test Report' },
+      '19.5': { ref: 'Approved NDT procedure, ASME VIII Div.1 Appendix 7, Drawing 2745-73004AC-J005-019', record: 'PT Report' },
+      '19.6': { ref: 'Approved Drawing 2745-73004AC-J005-019, PMI procedure, ASME VIII Div.1 Appendix 7', record: 'PMI Report' },
+      '19.7': { ref: 'Manual valve drawing 2745-73004AC-J005-011, Sundyne procedure 2745-J-SP-0013, AD-27-I-50420', record: 'FAT report' },
+      '19.8': { ref: 'ISO 15848 Part 1 & 2', record: 'FET report' },
+      '19.9': { ref: 'Approved Drawing 2745-73004AC-J036-008', record: 'Visual & Dimensional certificate' },
+      '19.10': { ref: 'Approved Painting procedure AD-27-D-10124 (Addendum to AGES-SP-07-004)', record: 'Surface preparation inspection report' },
+      '19.11': { ref: 'FROSIO level 2 or NACE level 2, AD-27-D-10124', record: 'Painting Certificate' },
+      '19.12': { ref: 'Approved Painting procedure AD-27-D-10124', record: 'Painting Adhesion Test report' },
+      '19.13': { ref: 'Sundyne supplier documentation', record: 'Final inspection clearance report' },
+    };
+
+    // Extract clause activities (supporting dot and comma: 19.5, 19,5, 19.6, 19,6, 19.9, etc.)
     const clauses: any[] = [];
-    const clauseRegex = /(\d+\.\d+)\s+([A-Z][^\n]{10,100})/g;
+    const clauseRegex = /(?:^|\n|\s)(\d{1,2}[\.,]\d{1,2})\s+([A-Za-z][^\n\r]{6,120})/g;
     let match;
-    while ((match = clauseRegex.exec(text)) !== null) {
-      clauses.push({
-        clauseNumber: match[1],
-        activityDescription: match[2].trim(),
-      });
+    while ((match = clauseRegex.exec(cleanText)) !== null) {
+      const clauseNum = match[1].replace(',', '.');
+      let desc = match[2].trim().replace(/\s+/g, ' ');
+      // Clean trailing intervention markers
+      desc = desc.replace(/\s+[WHR]\s+[WHR\s]+$/i, '').trim();
+
+      const std = standardCriteriaMap[clauseNum];
+      const criteriaStr = std ? `${std.ref}. Verifying record: ${std.record}` : `Conform to approved ITP & project specifications (Clause ${clauseNum})`;
+
+      if (!clauses.some(c => c.clauseNumber === clauseNum)) {
+        clauses.push({
+          clauseNumber: clauseNum,
+          activityDescription: desc,
+          referenceDocument: std ? std.ref : '',
+          verifyingRecord: std ? std.record : '',
+          acceptanceCriteria: criteriaStr,
+          interventionTPIA: 'W',
+        });
+      }
     }
     result.clauses = clauses;
-
-    // Intervention levels
-    const interventionPattern = /\b([HWRMAhwrma])\s+([HWRMAhwrma])\s+([HWRMAhwrma])\b/g;
-    const interventions: string[] = [];
-    while ((match = interventionPattern.exec(text)) !== null) {
-      interventions.push(`${match[1]}/${match[2]}/${match[3]}`);
-    }
-    if (interventions.length > 0) result.interventionSamples = interventions.slice(0, 10);
 
     return result;
   }
@@ -510,29 +639,16 @@ export class DocumentService {
   /**
    * Parse calibration certificate text
    */
-  private parseCalibration(text: string): any {
+  public parseCalibration(text: string): any {
     const result: any = { documentType: 'CALIBRATION_CERTIFICATE' };
-
-    // Serial number
-    const serialMatch = text.match(/(?:Serial|SL|S\/N)[.\s:No]*\s*([A-Z0-9-]+)/i);
-    if (serialMatch) result.serialNumber = serialMatch[1];
-
-    // Certificate number
-    const certMatch = text.match(/(?:Certificate|Cert)[.\s:No]*\s*([A-Z0-9/\-]+)/i);
-    if (certMatch) result.certificateNumber = certMatch[1];
-
-    // Dates
-    const dateRegex = /(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})/g;
-    const dates: string[] = [];
-    let match;
-    while ((match = dateRegex.exec(text)) !== null) {
-      dates.push(match[1]);
-    }
-    if (dates.length > 0) {
-      result.calibrationDate = dates[0];
-      if (dates.length > 1) result.expiryDate = dates[dates.length - 1];
-    }
-
+    const certMatch = text.match(/(?:Certificate\s*No\.?|Cert\s*#?)\s*([A-Za-z0-9\-_/]+)/i);
+    if (certMatch) result.certificateNumber = certMatch[1].trim();
+    const instMatch = text.match(/(?:Instrument|Gauge|Device|Equipment)\s*(?:Name|Type|Description)?[.:\s]*([^\r\n]{3,60})/i);
+    if (instMatch) result.instrumentName = instMatch[1].trim();
+    const calDateMatch = text.match(/(?:Calibration\s*Date|Cal\s*Date)[.:\s]*([0-9\-\/\.]{8,12})/i);
+    if (calDateMatch) result.calibrationDate = calDateMatch[1].trim();
+    const expDateMatch = text.match(/(?:Due\s*Date|Expiry\s*Date|Valid\s*Upto)[.:\s]*([0-9\-\/\.]{8,12})/i);
+    if (expDateMatch) result.expiryDate = expDateMatch[1].trim();
     return result;
   }
 
@@ -554,143 +670,212 @@ export class DocumentService {
       newActivities: [] as any[],
       offeredTags: [] as string[],
       offeredClauses: [] as string[],
+      rfiHasNoDetails: false,
+      allOfferItemsAsPrimary: false,
       summary: '',
     };
 
     const cleanText = text || '';
     const norm = (s: string) => (s || '').toLowerCase().replace(/[\s\-_()]/g, '');
 
-    // 1. Offer letter reference and date
+    // 1. Offer letter reference and metadata
     const refMatch = cleanText.match(/(?:Offer\s*(?:Ref|Letter|No|Number)?|Ref\s*No[.:]*)\s*([A-Za-z0-9\-_/]+)/i);
     if (refMatch) result.offerReference = refMatch[1].trim();
 
-    const dateMatch = cleanText.match(/(?:Offer\s*Date|Date[.:]*\s*)\s*(\d{1,2}(?:st|nd|rd|th)?[\s\-\/]+[A-Za-z0-9]+[\s\-\/]+\d{2,4})/i);
+    const dateMatch = cleanText.match(/(?:Offer\s*Date|P\.?O\.?\s*Date|Date[.:]*\s*)\s*(\d{1,2}(?:st|nd|rd|th)?[\s\-\/]+[A-Za-z0-9]+[\s\-\/]+\d{2,4})/i);
     if (dateMatch) result.offerDate = dateMatch[1].trim();
 
-    // 2. Identify candidate tags in the offer text
-    const months = /(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i;
-    const isCandidateTag = (s: string) => {
-      if (!s || s.length < 5 || s.length > 40) return false;
-      if (/^(?:rfi|itp|po|project|item|sl|rev|qap|iso|vendor|p30)/i.test(s)) return false;
-      if (months.test(s)) return false;
-      if (s.endsWith('-') || s.startsWith('-')) return false;
-      if (!/[a-z]{2,}/i.test(s)) return false;
-      return /^\d{2}-\d{2}-[A-Za-z0-9\-]+$/.test(s) || /^\d{2}-[A-Za-z]{2,5}-[A-Za-z0-9\-]+$/.test(s);
-    };
+    const custMatch = cleanText.match(/Customer\s*Name[.:,\s]*\s*([^\r\n,]+)/i);
+    if (custMatch) result.customerName = custMatch[1].trim();
 
-    // Extract tags from text lines or words
-    const detectedTags: string[] = [];
-    const tagMatches = cleanText.match(/\b(\d{2}-\d{2}-[A-Za-z0-9\-]+|\d{2}-[A-Za-z]{2,5}-[A-Za-z0-9\-]+)\b/g) || [];
-    for (const tm of tagMatches) {
-      const cleanTag = tm.trim();
-      if (isCandidateTag(cleanTag) && !detectedTags.includes(cleanTag)) {
-        detectedTags.push(cleanTag);
+    const poMatch = cleanText.match(/Customer\s*Purchase\s*Order[.:,\s]*\s*([^\r\n,]+)/i) ||
+                    cleanText.match(/Customer\s*PO[.:,\s]*\s*([^\r\n,]+)/i);
+    if (poMatch) result.poNumber = poMatch[1].trim();
+
+    const companyMatch = cleanText.match(/(STEELSTRONG\s*VALVES[^\r\n,]*)/i) ||
+                         cleanText.match(/^(?:Company|Vendor)?\s*([A-Za-z0-9\s().]+?PVT\.?\s*LTD\.?)/im);
+    if (companyMatch) result.supplierName = companyMatch[1].trim();
+
+    const soMatch = cleanText.match(/Sales\s*Order\s*Number[.:,\s]*\s*([A-Za-z0-9\-]+)/i);
+    if (soMatch) result.salesOrderNumber = soMatch[1].trim();
+
+    // 2. Parse Tabular / CSV rows from Offer List
+    const lines = cleanText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const parsedOfferItems: any[] = [];
+    let headerIndex = -1;
+    let colSl = -1, colSo = -1, colItem = -1, colDrawing = -1, colDesc = -1, colQty = -1, colMat = -1;
+
+    for (let i = 0; i < lines.length; i++) {
+      const parts = this.parseCsvLine(lines[i]);
+      const lower = parts.map(p => p.toLowerCase());
+      if (lower.some(p => p.includes('sl no') || p.includes('drawing') || p.includes('item description') || p.includes('offer qty') || (p.includes('so no') && p.includes('item')))) {
+        headerIndex = i;
+        colSl = lower.findIndex(p => p.includes('sl no') || p === 'sl' || p.includes('item no') || p === 'pos');
+        colSo = lower.findIndex(p => p.includes('so no') || p.includes('sales order') || p.includes('so #'));
+        colItem = lower.findIndex(p => p === 'item' || p.includes('item type') || p.includes('part name'));
+        colDrawing = lower.findIndex(p => p.includes('drawing') || p.includes('drg') || p.includes('part no') || p.includes('ref'));
+        colDesc = lower.findIndex(p => p.includes('item description') || p.includes('description') || p.includes('desc'));
+        colQty = lower.findIndex(p => p.includes('offer qty') || p.includes('offered qty') || p.includes('qty') || p.includes('quantity'));
+        colMat = lower.findIndex(p => p.includes('material') || p.includes('moc') || p.includes('grade'));
+        break;
       }
     }
 
-    // 3. Match against existing inspection items
-    const matchedItemIds = new Set<string>();
+    if (headerIndex !== -1) {
+      for (let i = headerIndex + 1; i < lines.length; i++) {
+        const parts = this.parseCsvLine(lines[i]);
+        if (parts.length < 3) continue;
+        if (parts.some(p => p.toLowerCase().includes('total') || p.toLowerCase().includes('comments') || p.toLowerCase().includes('inspection notes'))) break;
 
-    for (const item of existingItems) {
-      let isOffered = false;
+        const slStr = colSl !== -1 && parts[colSl] ? parts[colSl] : `${parsedOfferItems.length + 1}`;
+        if (!/^\d+$/.test(slStr)) continue;
 
-      // Check tag match
-      if (item.tagNumber) {
-        const itemTagNorm = norm(item.tagNumber);
-        if (detectedTags.some(t => norm(t) === itemTagNorm)) {
-          isOffered = true;
-        } else if (cleanText.toLowerCase().includes(item.tagNumber.toLowerCase())) {
-          isOffered = true;
-        }
+        const soNo = colSo !== -1 ? parts[colSo] : '';
+        const itemType = colItem !== -1 ? parts[colItem] : '';
+        const drawingRef = colDrawing !== -1 ? parts[colDrawing] : '';
+        const desc = colDesc !== -1 ? parts[colDesc] : '';
+        const qtyStr = colQty !== -1 ? parts[colQty] : '1';
+        const qty = parseInt(qtyStr.replace(/[^0-9]/g, ''), 10) || 1;
+        const mat = colMat !== -1 ? parts[colMat] : '';
+
+        const fullItemName = desc ? (itemType && !desc.toLowerCase().includes(itemType.toLowerCase()) ? `${itemType} - ${desc}` : desc) : (itemType || 'Valve Component');
+        const sizeMatch = desc.match(/(?:^|\s|["'])(\d+(?:\/\d+)?["']|\d+(?:\.\d+)?["'])/);
+        const sizeInch = sizeMatch ? sizeMatch[1] : "2''";
+        const ratingMatch = desc.match(/\b(\d{3,4}#|ASME\s*#?\d+|CL(?:ASS)?\s*\d+)\b/i);
+        const rating = ratingMatch ? (ratingMatch[1].endsWith('#') ? `ASME #${ratingMatch[1].replace('#', '')} RF` : ratingMatch[1]) : 'ASME #600 RF';
+        const seriesMatch = desc.match(/\b(FBV(?:\/[A-Za-z0-9\-]+)?|TBV(?:\/[A-Za-z0-9\-]+)?|DBB(?:\/[A-Za-z0-9\-]+)?)\b/i);
+        const valveSeries = seriesMatch ? seriesMatch[1] : 'FBV';
+
+        parsedOfferItems.push({
+          poItemNo: `'${slStr}`,
+          jobNo: soNo,
+          tagNumber: drawingRef || `PART-${slStr}`,
+          serialNumber: drawingRef,
+          itemName: fullItemName,
+          sizeInch,
+          rating,
+          valveSeries,
+          bodyMaterial: mat || 'B564 N08825',
+          orderedQty: qty,
+          presentedQty: qty,
+          acceptedThisVisit: qty,
+          acceptedToDate: qty,
+        });
       }
+    }
 
-      // Check serial number match (min 4 chars)
-      if (!isOffered && item.serialNumber && item.serialNumber.length >= 4) {
-        const serialRegex = new RegExp(`\\b${item.serialNumber.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'i');
-        if (serialRegex.test(cleanText)) {
-          isOffered = true;
-        }
-      }
+    // 3. Determine if RFI has NO material details
+    const isGenericPlaceholder = (item: any) => {
+      if (!item) return true;
+      if (item.isPlaceholder) return true;
+      const tag = (item.tagNumber || '').toLowerCase().trim();
+      const name = (item.itemName || '').toLowerCase().trim();
+      return (
+        !tag ||
+        tag === '-' ||
+        tag === 'na' ||
+        tag.includes('for all') ||
+        tag.includes('ball & seat') ||
+        tag.includes('annexure') ||
+        tag.includes('offer list') ||
+        name.includes('for all') ||
+        name.includes('annexure') ||
+        name.includes('offer list')
+      );
+    };
 
-      // Check PO Item No match (e.g. "PO SL No: 1" or "PO Item: '79" or "Item 1")
-      if (!isOffered && item.poItemNo) {
-        const cleanPo = item.poItemNo.replace(/['"`]/g, '').trim();
-        if (cleanPo) {
-          const poRegex = new RegExp(`(?:PO\\s*(?:SL|Item|No)?|Item)\\s*[:#.]*\\s*['"]?${cleanPo}['"]?\\b`, 'i');
-          if (poRegex.test(cleanText)) {
+    const rfiHasNoDetails = !existingItems || existingItems.length === 0 || existingItems.every(isGenericPlaceholder);
+    result.rfiHasNoDetails = rfiHasNoDetails;
+
+    // 4. CLAUSE: If no material details available in RFI, pick up from Offer List!
+    if (rfiHasNoDetails && parsedOfferItems.length > 0) {
+      result.allOfferItemsAsPrimary = true;
+      result.newItems = parsedOfferItems;
+      result.matchedItems = [];
+      result.matchedItemIds = [];
+      const totalQty = parsedOfferItems.reduce((acc, it) => acc + (it.presentedQty || 0), 0);
+      result.summary = `No detailed materials available in RFI. Found ${parsedOfferItems.length} items with complete specifications in Offer List (Total Qty: ${totalQty}). Populating inspection materials from Offer List.`;
+    } else {
+      // RFI has real materials: match existing items against offer list
+      const matchedItemIds = new Set<string>();
+
+      for (const item of existingItems) {
+        let isOffered = false;
+
+        // Check drawing reference or tag match
+        if (item.tagNumber) {
+          const itemTagNorm = norm(item.tagNumber);
+          if (parsedOfferItems.some(poi => norm(poi.tagNumber) === itemTagNorm)) {
+            isOffered = true;
+          } else if (cleanText.toLowerCase().includes(item.tagNumber.toLowerCase())) {
             isOffered = true;
           }
         }
-      }
 
-      if (isOffered) {
-        matchedItemIds.add(item.id);
-        result.matchedItems.push(item);
-        if (item.tagNumber && !result.offeredTags.includes(item.tagNumber)) {
-          result.offeredTags.push(item.tagNumber);
+        // Check serial number match
+        if (!isOffered && item.serialNumber && item.serialNumber.length >= 4) {
+          if (cleanText.toLowerCase().includes(item.serialNumber.toLowerCase())) {
+            isOffered = true;
+          }
         }
-      } else {
-        result.omittedItems.push(item);
+
+        // Check PO item number match
+        if (!isOffered && item.poItemNo) {
+          const cleanPo = item.poItemNo.replace(/['"`]/g, '').trim();
+          if (parsedOfferItems.some(poi => poi.poItemNo.replace(/['"`]/g, '').trim() === cleanPo)) {
+            isOffered = true;
+          }
+        }
+
+        if (isOffered) {
+          matchedItemIds.add(item.id);
+          result.matchedItems.push(item);
+          if (item.tagNumber && !result.offeredTags.includes(item.tagNumber)) {
+            result.offeredTags.push(item.tagNumber);
+          }
+        } else {
+          result.omittedItems.push(item);
+        }
+      }
+
+      result.matchedItemIds = Array.from(matchedItemIds);
+      result.omittedItemIds = result.omittedItems.map((i: any) => i.id);
+
+      // Any offer items not present in RFI
+      for (const poi of parsedOfferItems) {
+        if (!existingItems.some((ei: any) => norm(ei.tagNumber) === norm(poi.tagNumber))) {
+          result.newItems.push(poi);
+        }
       }
     }
 
-    result.matchedItemIds = Array.from(matchedItemIds);
-    result.omittedItemIds = result.omittedItems.map((i: any) => i.id);
-
-    // Any detected tags that are NOT in existing items
-    for (const dt of detectedTags) {
-      if (!existingItems.some((i: any) => norm(i.tagNumber) === norm(dt))) {
-        result.newItems.push({
-          tagNumber: dt,
-          itemName: 'Control Valve',
-          presentedQty: 1,
-          orderedQty: 1,
-        });
-        if (!result.offeredTags.includes(dt)) result.offeredTags.push(dt);
-      }
-    }
-
-    // 4. Identify candidate clauses in offer text (e.g. 4.1(a), 4.1 (a), 7.1, 8.13)
-    const clauseRegex = /\b(\d+\.\d+(?:\s*\([a-z]\))?)\b/gi;
-    const detectedClauses: string[] = [];
-    let cm;
-    while ((cm = clauseRegex.exec(cleanText)) !== null) {
-      const c = cm[1].replace(/\s+/g, '');
-      if (!detectedClauses.includes(c)) detectedClauses.push(c);
-    }
-
-    // 5. Match against existing inspection activities
+    // 5. Match Activities from Offer comments / inspection notes
+    // e.g. "2.16 Visual & Dimension (SEAT RING & BALL)", "2.17 PMI (SEAT RING & BALL)"
     const matchedActIds = new Set<string>();
 
     for (const act of existingActivities) {
       let isOffered = false;
-      const actClauseNorm = (act.clauseNumber || '').replace(/\s+/g, '').toLowerCase();
+      const actNameLower = (act.activityName || '').toLowerCase();
+      const clauseNorm = (act.clauseNumber || '').toLowerCase().replace(',', '.');
 
-      // Check clause match
-      if (actClauseNorm) {
-        if (detectedClauses.some(c => c.toLowerCase() === actClauseNorm)) {
+      // Check comments matching Visual & Dimension
+      if (actNameLower.includes('visual') || actNameLower.includes('dimension') || clauseNorm === '19.5' || clauseNorm === '19.9') {
+        if (cleanText.toLowerCase().includes('visual') || cleanText.toLowerCase().includes('dimension')) {
           isOffered = true;
-        } else {
-          // Check base clause e.g. "4.1" if act is "4.1(a)"
-          const baseClause = actClauseNorm.replace(/\([a-z]\)/, '');
-          if (baseClause && detectedClauses.some(c => c.toLowerCase() === baseClause)) {
-            isOffered = true;
-          }
         }
       }
 
-      // Check activity name keywords in offer text
-      if (!isOffered && act.activityName && act.activityName.length > 5) {
-        const keywords = act.activityName
-          .split(/[-–,/()]/)
-          .map((k: string) => k.trim())
-          .filter((k: string) => k.length >= 6 && !/^(conform|approved|project|specification|general|standard)/i.test(k));
+      // Check comments matching PMI
+      if (actNameLower.includes('pmi') || actNameLower.includes('positive material') || clauseNorm === '19.6' || clauseNorm === '19.61') {
+        if (cleanText.toLowerCase().includes('pmi') || cleanText.toLowerCase().includes('positive material')) {
+          isOffered = true;
+        }
+      }
 
-        for (const kw of keywords) {
-          if (cleanText.toLowerCase().includes(kw.toLowerCase())) {
-            isOffered = true;
-            break;
-          }
+      // Check generic clause mentions
+      if (!isOffered && clauseNorm) {
+        if (cleanText.includes(clauseNorm)) {
+          isOffered = true;
         }
       }
 
@@ -708,8 +893,9 @@ export class DocumentService {
     result.matchedActivityIds = Array.from(matchedActIds);
     result.omittedActivityIds = result.omittedActivities.map((a: any) => a.id);
 
-    // Summary description
-    result.summary = `Auto-selected ${result.matchedItemIds.length} item(s) and ${result.matchedActivityIds.length} activity/activities from offer letter.`;
+    if (!result.summary) {
+      result.summary = `Auto-selected ${result.matchedItemIds.length} item(s) and ${result.matchedActivityIds.length} activity/activities from offer letter.`;
+    }
 
     return result;
   }

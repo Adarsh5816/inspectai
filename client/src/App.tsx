@@ -1661,6 +1661,7 @@ function OfferListModal({ inspection, offerDocs, isOpen, onClose, onReload }: { 
   // Selection states
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [selectedActivityIds, setSelectedActivityIds] = useState<Set<string>>(new Set());
+  const [selectedNewItemIndexes, setSelectedNewItemIndexes] = useState<Set<number>>(new Set());
   const [addNewItems, setAddNewItems] = useState(true);
   const [addNewActivities, setAddNewActivities] = useState(true);
   const [activeTab, setActiveTab] = useState<'items' | 'activities'>('items');
@@ -1715,6 +1716,9 @@ function OfferListModal({ inspection, offerDocs, isOpen, onClose, onReload }: { 
       if (data.matchedActivityIds) {
         setSelectedActivityIds(new Set(data.matchedActivityIds));
       }
+      if (data.newItems && Array.isArray(data.newItems)) {
+        setSelectedNewItemIndexes(new Set(data.newItems.map((_: any, idx: number) => idx)));
+      }
       if (!offerReference && data.offerReference) {
         setOfferReference(data.offerReference);
       }
@@ -1728,15 +1732,22 @@ function OfferListModal({ inspection, offerDocs, isOpen, onClose, onReload }: { 
   const handleApply = async () => {
     setApplying(true);
     try {
+      const isPrimary = parseResult?.allOfferItemsAsPrimary || (allItems.length === 0 && parseResult?.newItems?.length > 0);
       const payload: any = {
         documentId: parseResult?.documentId || (inputMode === 'existing' ? selectedDocId : undefined),
         offerReference: offerReference || (selectedFile?.name) || 'Customer Offer List',
         selectedItemIds: Array.from(selectedItemIds),
         selectedActivityIds: Array.from(selectedActivityIds),
+        allOfferItemsAsPrimary: isPrimary,
+        customerName: parseResult?.customerName,
+        customerPoNumber: parseResult?.poNumber,
+        supplierName: parseResult?.supplierName,
       };
 
-      if (addNewItems && parseResult?.newItems?.length > 0) {
-        payload.newItems = parseResult.newItems;
+      if (isPrimary) {
+        payload.newItems = (parseResult?.newItems || []).filter((_: any, idx: number) => selectedNewItemIndexes.has(idx));
+      } else if (addNewItems && parseResult?.newItems?.length > 0) {
+        payload.newItems = (parseResult?.newItems || []).filter((_: any, idx: number) => selectedNewItemIndexes.has(idx));
       }
       if (addNewActivities && parseResult?.newActivities?.length > 0) {
         payload.newActivities = parseResult.newActivities;
@@ -1760,6 +1771,25 @@ function OfferListModal({ inspection, offerDocs, isOpen, onClose, onReload }: { 
       else next.add(id);
       return next;
     });
+  };
+
+  const toggleNewItem = (idx: number) => {
+    setSelectedNewItemIndexes(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
+
+  const selectAllNewItems = () => {
+    if (parseResult?.newItems) {
+      setSelectedNewItemIndexes(new Set(parseResult.newItems.map((_: any, idx: number) => idx)));
+    }
+  };
+
+  const deselectAllNewItems = () => {
+    setSelectedNewItemIndexes(new Set());
   };
 
   const toggleActivity = (id: string) => {
@@ -1980,160 +2010,271 @@ function OfferListModal({ inspection, offerDocs, isOpen, onClose, onReload }: { 
           </div>
 
           {/* Step 2: Analysis Results & Fine-Tuning */}
-          {parseResult && (
-            <div className="space-y-4 pt-4 border-t border-slate-200">
-              {/* Highlight summary cards */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl">
-                  <span className="text-xs text-purple-600 font-bold block">Offered Items</span>
-                  <span className="text-xl font-bold text-purple-900">{offeredCount} of {allItems.length}</span>
-                  <span className="text-[11px] text-purple-700 block mt-0.5">({omittedCount} will be omitted)</span>
-                </div>
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
-                  <span className="text-xs text-emerald-600 font-bold block">Checklist Activities</span>
-                  <span className="text-xl font-bold text-emerald-900">{matchedActCount} of {allActivities.length}</span>
-                  <span className="text-[11px] text-emerald-700 block mt-0.5">Offered in scope</span>
-                </div>
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
-                  <span className="text-xs text-blue-600 font-bold block">Tags in Offer</span>
-                  <span className="text-xl font-bold text-blue-900">{parseResult.offeredTags?.length || 0}</span>
-                  <span className="text-[11px] text-blue-700 block mt-0.5">Identified from document</span>
-                </div>
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
-                  <span className="text-xs text-amber-600 font-bold block">Clauses in Offer</span>
-                  <span className="text-xl font-bold text-amber-900">{parseResult.offeredClauses?.length || 0}</span>
-                  <span className="text-[11px] text-amber-700 block mt-0.5">ITP clauses detected</span>
-                </div>
-              </div>
+          {parseResult && (() => {
+            const isFallbackPrimary = parseResult.allOfferItemsAsPrimary || (allItems.length === 0 && parseResult.newItems?.length > 0);
+            const newItemsTotalQty = (parseResult.newItems || []).reduce((acc: number, it: any) => acc + (it.presentedQty || 0), 0);
+            const newItemsSelectedQty = (parseResult.newItems || []).filter((_: any, idx: number) => selectedNewItemIndexes.has(idx)).reduce((acc: number, it: any) => acc + (it.presentedQty || 0), 0);
 
-              {/* Notice if new items detected */}
-              {parseResult.newItems?.length > 0 && (
-                <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900 flex items-center justify-between gap-3">
-                  <div>
-                    <span className="font-bold">✨ {parseResult.newItems.length} New Valve(s) Detected in Offer:</span>{' '}
-                    <span>{parseResult.newItems.map((n: any) => n.tagNumber).join(', ')}</span>
-                  </div>
-                  <label className="flex items-center gap-1.5 cursor-pointer font-bold whitespace-nowrap">
-                    <input
-                      type="checkbox"
-                      checked={addNewItems}
-                      onChange={e => setAddNewItems(e.target.checked)}
-                      className="rounded text-indigo-600"
-                    />
-                    <span>Add to inspection</span>
-                  </label>
-                </div>
-              )}
-
-              {/* Notice if new activities detected */}
-              {parseResult.newActivities?.length > 0 && (
-                <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl text-xs text-purple-900 flex items-center justify-between gap-3">
-                  <div>
-                    <span className="font-bold">✨ {parseResult.newActivities.length} New Activity / Clause(s) Detected in Offer:</span>{' '}
-                    <span>{parseResult.newActivities.map((n: any) => `Clause ${n.clauseNumber}`).join(', ')}</span>
-                  </div>
-                  <label className="flex items-center gap-1.5 cursor-pointer font-bold whitespace-nowrap">
-                    <input
-                      type="checkbox"
-                      checked={addNewActivities}
-                      onChange={e => setAddNewActivities(e.target.checked)}
-                      className="rounded text-purple-600"
-                    />
-                    <span>Add to inspection</span>
-                  </label>
-                </div>
-              )}
-
-              {/* Selection Tabs */}
-              <div className="space-y-3">
-                <div className="flex border-b border-slate-200 gap-4">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('items')}
-                    className={`pb-2 text-sm font-bold border-b-2 transition ${activeTab === 'items' ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-                  >
-                    🔧 Offered Valves / Materials ({offeredCount}/{allItems.length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('activities')}
-                    className={`pb-2 text-sm font-bold border-b-2 transition ${activeTab === 'activities' ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-                  >
-                    📋 Scope Activities ({matchedActCount}/{allActivities.length})
-                  </button>
-                </div>
-
-                {/* Tab: Items */}
-                {activeTab === 'items' && (
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <input
-                        type="text"
-                        placeholder="Search items by tag, serial, PO..."
-                        value={itemSearch}
-                        onChange={e => setItemSearch(e.target.value)}
-                        className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs w-64"
-                      />
-                      <div className="flex items-center gap-1.5 text-xs">
-                        <button
-                          type="button"
-                          onClick={selectAllMatchedItems}
-                          className="px-2.5 py-1 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded-md font-semibold border border-purple-200 transition"
-                        >
-                          Select Matched Only ({parseResult.matchedItemIds?.length || 0})
-                        </button>
-                        <button
-                          type="button"
-                          onClick={selectAllItems}
-                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-semibold transition"
-                        >
-                          Select All
-                        </button>
-                        <button
-                          type="button"
-                          onClick={deselectAllItems}
-                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-semibold transition"
-                        >
-                          Clear
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="border border-slate-200 rounded-xl overflow-hidden max-h-60 overflow-y-auto divide-y divide-slate-100">
-                      {filteredItems.length === 0 ? (
-                        <p className="p-4 text-center text-xs text-slate-500">No matching items found.</p>
-                      ) : (
-                        filteredItems.map((item: any) => {
-                          const isOffered = selectedItemIds.has(item.id);
-                          return (
-                            <div
-                              key={item.id}
-                              onClick={() => toggleItem(item.id)}
-                              className={`p-2.5 flex items-center justify-between text-xs cursor-pointer transition ${isOffered ? 'bg-purple-50/40 hover:bg-purple-50/70' : 'bg-white hover:bg-slate-50 opacity-60'}`}
-                            >
-                              <div className="flex items-center gap-3">
-                                <input
-                                  type="checkbox"
-                                  checked={isOffered}
-                                  onChange={() => toggleItem(item.id)}
-                                  className="rounded text-purple-600 focus:ring-purple-500"
-                                />
-                                <div>
-                                  <span className="font-bold text-slate-800 text-xs">{item.tagNumber}</span>
-                                  <span className="text-slate-500 ml-2 font-mono">PO: {item.poItemNo}</span>
-                                  {item.serialNumber && <span className="text-slate-500 ml-2">SN: {item.serialNumber}</span>}
-                                </div>
-                              </div>
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isOffered ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'}`}>
-                                {isOffered ? 'Offered this Visit' : 'Omitted (Qty: 0)'}
-                              </span>
-                            </div>
-                          );
-                        })
-                      )}
+            return (
+              <div className="space-y-4 pt-4 border-t border-slate-200">
+                {/* Fallback Banner if RFI had no details */}
+                {isFallbackPrimary && (
+                  <div className="p-3.5 bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 border border-purple-200 rounded-xl text-xs text-purple-950 flex items-start gap-3 shadow-xs">
+                    <span className="text-2xl leading-none">⚡</span>
+                    <div>
+                      <p className="font-bold text-sm text-purple-900">Material Fallback Active: Offer List Specifications Loaded</p>
+                      <p className="text-purple-800 mt-1">
+                        The RFI did not provide detailed material breakdown. Found <strong>{parseResult.newItems?.length || 0} material items</strong> with drawing references, sizes (3/4" to 4"), ratings (300#/600#), MOC (B564 N08825), and quantities (Total: <strong>{newItemsTotalQty}</strong>) from the Customer Offer List.
+                      </p>
                     </div>
                   </div>
                 )}
+
+                {/* Highlight summary cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl">
+                    <span className="text-xs text-purple-600 font-bold block">Offered Items</span>
+                    <span className="text-xl font-bold text-purple-900">
+                      {isFallbackPrimary ? `${selectedNewItemIndexes.size} of ${parseResult.newItems?.length || 0}` : `${offeredCount} of ${allItems.length}`}
+                    </span>
+                    <span className="text-[11px] text-purple-700 block mt-0.5">
+                      {isFallbackPrimary ? `(Total Qty: ${newItemsSelectedQty})` : `(${omittedCount} will be omitted)`}
+                    </span>
+                  </div>
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                    <span className="text-xs text-emerald-600 font-bold block">Checklist Activities</span>
+                    <span className="text-xl font-bold text-emerald-900">{matchedActCount} of {allActivities.length}</span>
+                    <span className="text-[11px] text-emerald-700 block mt-0.5">Offered in scope</span>
+                  </div>
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
+                    <span className="text-xs text-blue-600 font-bold block">Items / Tags in Offer</span>
+                    <span className="text-xl font-bold text-blue-900">{isFallbackPrimary ? (parseResult.newItems?.length || 0) : (parseResult.offeredTags?.length || 0)}</span>
+                    <span className="text-[11px] text-blue-700 block mt-0.5">Identified from document</span>
+                  </div>
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                    <span className="text-xs text-amber-600 font-bold block">Clauses in Offer</span>
+                    <span className="text-xl font-bold text-amber-900">{parseResult.offeredClauses?.length || 0}</span>
+                    <span className="text-[11px] text-amber-700 block mt-0.5">ITP clauses detected</span>
+                  </div>
+                </div>
+
+                {/* Notice if new items detected (when NOT fallback) */}
+                {!isFallbackPrimary && parseResult.newItems?.length > 0 && (
+                  <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900 flex items-center justify-between gap-3">
+                    <div>
+                      <span className="font-bold">✨ {parseResult.newItems.length} New Valve(s) Detected in Offer:</span>{' '}
+                      <span>{parseResult.newItems.map((n: any) => n.tagNumber).join(', ')}</span>
+                    </div>
+                    <label className="flex items-center gap-1.5 cursor-pointer font-bold whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={addNewItems}
+                        onChange={e => setAddNewItems(e.target.checked)}
+                        className="rounded text-indigo-600"
+                      />
+                      <span>Add to inspection</span>
+                    </label>
+                  </div>
+                )}
+
+                {/* Notice if new activities detected */}
+                {parseResult.newActivities?.length > 0 && (
+                  <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl text-xs text-purple-900 flex items-center justify-between gap-3">
+                    <div>
+                      <span className="font-bold">✨ {parseResult.newActivities.length} New Activity / Clause(s) Detected in Offer:</span>{' '}
+                      <span>{parseResult.newActivities.map((n: any) => `Clause ${n.clauseNumber}`).join(', ')}</span>
+                    </div>
+                    <label className="flex items-center gap-1.5 cursor-pointer font-bold whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={addNewActivities}
+                        onChange={e => setAddNewActivities(e.target.checked)}
+                        className="rounded text-purple-600"
+                      />
+                      <span>Add to inspection</span>
+                    </label>
+                  </div>
+                )}
+
+                {/* Selection Tabs */}
+                <div className="space-y-3">
+                  <div className="flex border-b border-slate-200 gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('items')}
+                      className={`pb-2 text-sm font-bold border-b-2 transition ${activeTab === 'items' ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                    >
+                      🔧 Offered Valves / Materials ({isFallbackPrimary ? `${selectedNewItemIndexes.size}/${parseResult.newItems?.length || 0}` : `${offeredCount}/${allItems.length}`})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('activities')}
+                      className={`pb-2 text-sm font-bold border-b-2 transition ${activeTab === 'activities' ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                    >
+                      📋 Scope Activities ({matchedActCount}/{allActivities.length})
+                    </button>
+                  </div>
+
+                  {/* Tab: Items */}
+                  {activeTab === 'items' && (
+                    <div className="space-y-3">
+                      {isFallbackPrimary ? (
+                        <>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <input
+                              type="text"
+                              placeholder="Search offer items by drawing, desc, size, material..."
+                              value={itemSearch}
+                              onChange={e => setItemSearch(e.target.value)}
+                              className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs w-72"
+                            />
+                            <div className="flex items-center gap-1.5 text-xs">
+                              <button
+                                type="button"
+                                onClick={selectAllNewItems}
+                                className="px-2.5 py-1 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded-md font-semibold border border-purple-200 transition"
+                              >
+                                Select All ({parseResult.newItems?.length || 0})
+                              </button>
+                              <button
+                                type="button"
+                                onClick={deselectAllNewItems}
+                                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-semibold transition"
+                              >
+                                Clear
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="border border-slate-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto divide-y divide-slate-100 shadow-xs">
+                            <table className="w-full text-left text-xs border-collapse">
+                              <thead className="bg-slate-50 sticky top-0 text-[11px] font-bold text-slate-600 uppercase tracking-wider border-b border-slate-200">
+                                <tr>
+                                  <th className="py-2 px-3 w-10">Select</th>
+                                  <th className="py-2 px-3 w-16">Item #</th>
+                                  <th className="py-2 px-3">Drawing / Tag Ref</th>
+                                  <th className="py-2 px-3">Description</th>
+                                  <th className="py-2 px-3">Size &amp; Rating</th>
+                                  <th className="py-2 px-3">Material</th>
+                                  <th className="py-2 px-3 text-right">Offer Qty</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {((parseResult.newItems || []) as any[])
+                                  .map((item: any, idx: number) => ({ ...item, _idx: idx }))
+                                  .filter((item: any) => {
+                                    if (!itemSearch) return true;
+                                    const q = itemSearch.toLowerCase();
+                                    return (
+                                      (item.tagNumber || '').toLowerCase().includes(q) ||
+                                      (item.poItemNo || '').toLowerCase().includes(q) ||
+                                      (item.itemName || '').toLowerCase().includes(q) ||
+                                      (item.bodyMaterial || '').toLowerCase().includes(q) ||
+                                      (item.sizeInch || '').toLowerCase().includes(q) ||
+                                      (item.rating || '').toLowerCase().includes(q)
+                                    );
+                                  })
+                                  .map((item: any) => {
+                                    const isSelected = selectedNewItemIndexes.has(item._idx);
+                                    return (
+                                      <tr
+                                        key={item._idx}
+                                        onClick={() => toggleNewItem(item._idx)}
+                                        className={`cursor-pointer transition ${isSelected ? 'bg-purple-50/50 hover:bg-purple-50/80 font-medium' : 'bg-white hover:bg-slate-50 opacity-60'}`}
+                                      >
+                                        <td className="py-2 px-3" onClick={e => e.stopPropagation()}>
+                                          <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={() => toggleNewItem(item._idx)}
+                                            className="rounded text-purple-600 focus:ring-purple-500"
+                                          />
+                                        </td>
+                                        <td className="py-2 px-3 font-mono text-slate-600">{item.poItemNo}</td>
+                                        <td className="py-2 px-3 font-bold text-slate-800">{item.tagNumber}</td>
+                                        <td className="py-2 px-3 text-slate-700">{item.itemName}</td>
+                                        <td className="py-2 px-3 text-slate-600 font-mono">{item.sizeInch} {item.rating}</td>
+                                        <td className="py-2 px-3 text-slate-600">{item.bodyMaterial}</td>
+                                        <td className="py-2 px-3 text-right font-bold text-purple-800">{item.presentedQty}</td>
+                                      </tr>
+                                    );
+                                  })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <input
+                              type="text"
+                              placeholder="Search items by tag, serial, PO..."
+                              value={itemSearch}
+                              onChange={e => setItemSearch(e.target.value)}
+                              className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs w-64"
+                            />
+                            <div className="flex items-center gap-1.5 text-xs">
+                              <button
+                                type="button"
+                                onClick={selectAllMatchedItems}
+                                className="px-2.5 py-1 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded-md font-semibold border border-purple-200 transition"
+                              >
+                                Select Matched Only ({parseResult.matchedItemIds?.length || 0})
+                              </button>
+                              <button
+                                type="button"
+                                onClick={selectAllItems}
+                                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-semibold transition"
+                              >
+                                Select All
+                              </button>
+                              <button
+                                type="button"
+                                onClick={deselectAllItems}
+                                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-semibold transition"
+                              >
+                                Clear
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="border border-slate-200 rounded-xl overflow-hidden max-h-60 overflow-y-auto divide-y divide-slate-100">
+                            {filteredItems.length === 0 ? (
+                              <p className="p-4 text-center text-xs text-slate-500">No matching items found.</p>
+                            ) : (
+                              filteredItems.map((item: any) => {
+                                const isOffered = selectedItemIds.has(item.id);
+                                return (
+                                  <div
+                                    key={item.id}
+                                    onClick={() => toggleItem(item.id)}
+                                    className={`p-2.5 flex items-center justify-between text-xs cursor-pointer transition ${isOffered ? 'bg-purple-50/40 hover:bg-purple-50/70' : 'bg-white hover:bg-slate-50 opacity-60'}`}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <input
+                                        type="checkbox"
+                                        checked={isOffered}
+                                        onChange={() => toggleItem(item.id)}
+                                        className="rounded text-purple-600 focus:ring-purple-500"
+                                      />
+                                      <div>
+                                        <span className="font-bold text-slate-800 text-xs">{item.tagNumber}</span>
+                                        <span className="text-slate-500 ml-2 font-mono">PO: {item.poItemNo}</span>
+                                        {item.serialNumber && <span className="text-slate-500 ml-2">SN: {item.serialNumber}</span>}
+                                      </div>
+                                    </div>
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isOffered ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'}`}>
+                                      {isOffered ? 'Offered this Visit' : 'Omitted (Qty: 0)'}
+                                    </span>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
 
                 {/* Tab: Activities */}
                 {activeTab === 'activities' && (
@@ -2209,7 +2350,8 @@ function OfferListModal({ inspection, offerDocs, isOpen, onClose, onReload }: { 
                 )}
               </div>
             </div>
-          )}
+          );
+        })()}
         </div>
 
         {/* Footer */}
