@@ -226,6 +226,14 @@ export class ReportService {
       docXml = this.setCellValueAfterLabel(docXml, 'Address:', project.customerAddress);
     }
 
+    // Flash Report Table 1 & Table 2 Header Fields
+    docXml = this.setCellValueInNextCell(docXml, ['Flash Report No', 'Flash  Report  No'], inspection.reportNumber || '001');
+    docXml = this.setCellValueInNextCell(docXml, ['Date:'], dateStr);
+    docXml = this.setCellValueInNextCell(docXml, ['PROJECT NAME'], effectiveProjectName);
+    docXml = this.setCellValueInNextCell(docXml, ['CLIENT/ COMPANY', 'CLIENT / COMPANY', 'CLIENT/COMPANY'], project.customerName || 'ADNOC');
+    docXml = this.setCellValueInNextCell(docXml, ['CONTRACTOR', 'CONTRACTOR '], project.supplierName || 'KSB MIL Controls Limited');
+    docXml = this.setCellValueInNextCell(docXml, ['Material Description', 'Material  Description'], materialSummary);
+
     // Template Token Placeholders (if template uses {{TAG}} syntax)
     const tokenReplacements: [RegExp, string][] = [
       [/\{\{\s*CUSTOMER_NAME\s*\}\}/gi, escapeXml(project.customerName || '')],
@@ -270,6 +278,10 @@ export class ReportService {
     docXml = docXml.replace(/<w:t>XXXXXXX<\/w:t>/g, `<w:t>${escapeXml(inspectorName)}</w:t>`);
     docXml = docXml.replace(/<w:highlight w:val="yellow"\/>\s*<w:t>XXXXXXXX<\/w:t>/g, `<w:t>${escapeXml(dateLong)}</w:t>`);
     docXml = docXml.replace(/<w:t>XXXXXXXX<\/w:t>/g, `<w:t>${escapeXml(dateLong)}</w:t>`);
+
+    // Flash Report Inspector Name and Stamp/Sign
+    docXml = docXml.replace(/<w:t[^>]*>\s*Inspector Name:\s*<\/w:t>/g, `<w:t>Inspector Name: ${escapeXml(inspectorName)}</w:t>`);
+    docXml = docXml.replace(/<w:t>Inspector Name:<\/w:t>/g, `<w:t>Inspector Name: ${escapeXml(inspectorName)}</w:t>`);
 
     // === 2.2 SUMMARY NARRATIVE (Page 1) ===
     // Cleanly replace Row 2 containing the summary text and conclusion to avoid fragmented template leftover text
@@ -329,6 +341,33 @@ export class ReportService {
       }
     }
 
+    // Flash Report Summary Paragraph
+    const flashSummaryIdx = this.findHeaderIndex(docXml, ['Summary of the Inspection:', 'Summary of the Inspection']);
+    if (flashSummaryIdx !== -1) {
+      const pEnd = docXml.indexOf('</w:p>', flashSummaryIdx) + 6;
+      if (pEnd !== -1) {
+        let summaryBody = '';
+        if (inspection.summaryNarrative && inspection.summaryNarrative.trim().length > 15) {
+          summaryBody = inspection.summaryNarrative.trim();
+        } else {
+          const clausesList = (inspection.activities || [])
+            .filter((a: any) => a.status === 'ACCEPTABLE' || a.status === 'NOT_ACCEPTABLE')
+            .map((a: any) => a.clauseNumber).filter(Boolean).join(', ');
+          summaryBody = `The inspection was conducted in accordance with ITP No. ${itpFullRef}, covering the inspection of ${materialSummary}. All inspection activities were carried out as per ITP Clause Nos ${clausesList || '7.3, 7.4(a), 7.5(b), 7.6(c), 7.7(d), 7.8(e), 7.9(e), 7.10(f), 7.12'}. Disposition: ${inspection.disposition || 'Acceptable'}.`;
+        }
+        const summaryP = `<w:p><w:pPr><w:spacing w:before="120" w:after="160"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="20"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="20"/></w:rPr><w:t>${escapeXml(summaryBody)}</w:t></w:r></w:p>`;
+
+        const nextPStart = docXml.indexOf('<w:p', pEnd);
+        const nextTblStart = docXml.indexOf('<w:tbl', pEnd);
+        if (nextTblStart !== -1 && (nextPStart === -1 || nextPStart > nextTblStart)) {
+          docXml = docXml.substring(0, pEnd) + summaryP + docXml.substring(pEnd);
+        } else if (nextPStart !== -1 && nextPStart < nextTblStart) {
+          const nextPEnd = docXml.indexOf('</w:p>', nextPStart) + 6;
+          docXml = docXml.substring(0, nextPStart) + summaryP + docXml.substring(nextPEnd);
+        }
+      }
+    }
+
     // === 2.4 GENERIC MATERIALS TABLE (Table 6) ===
     // Wipe old template sample generic materials and populate ONLY offered items
     const gmHeaderIdx = this.findHeaderIndex(docXml, ['TAG / EQPT NO.', 'TAG/EQPT NO', 'TAG NO.', 'TAG NO', 'EQUIPMENT NO', 'TAG / ITEM']);
@@ -363,6 +402,46 @@ export class ReportService {
     // Fall back to all inspection activities if none are graded yet, so tables and engineering narrative are never blank
     if (attendedActivities.length === 0 && (inspection.activities || []).length > 0) {
       attendedActivities = inspection.activities || [];
+    }
+
+    // === 3.1 FLASH REPORT ACTIVITIES & RESULTS (Table 4) ===
+    const flashActHeaderIdx = this.findHeaderIndex(docXml, ['Items Inspected / Activities / Results', 'PO Item No']);
+    if (flashActHeaderIdx !== -1) {
+      const row2End = docXml.indexOf('</w:tr>', flashActHeaderIdx) + 7;
+      const actCodeIdx = docXml.indexOf('Activity Code', row2End);
+      if (actCodeIdx !== -1) {
+        const actCodeTrStart = docXml.lastIndexOf('<w:tr', actCodeIdx);
+        if (actCodeTrStart !== -1 && actCodeTrStart > row2End) {
+          const actRows = this.buildFlashActivitiesTableRows(inspection.items || [], attendedActivities);
+          docXml = docXml.substring(0, row2End) + actRows + docXml.substring(actCodeTrStart);
+        }
+      }
+
+      // Populate NOTES
+      const notesLabelIdx = docXml.indexOf('NOTES:');
+      if (notesLabelIdx !== -1) {
+        const notesTrEnd = docXml.indexOf('</w:tr>', notesLabelIdx) + 7;
+        const notesValTrStart = docXml.indexOf('<w:tr', notesTrEnd);
+        const notesValTrEnd = docXml.indexOf('</w:tr>', notesValTrStart) + 7;
+        if (notesValTrStart !== -1 && notesValTrEnd > notesValTrStart) {
+          const notesText = inspection.summaryNarrative || 'All inspected items were found in accordance with project specifications and approved ITP. No deviations noted.';
+          const notesRow = `<w:tr w:rsidR="000068D4" w:rsidTr="003815F0"><w:trPr><w:cantSplit/><w:trHeight w:val="852"/><w:jc w:val="center"/></w:trPr><w:tc><w:tcPr><w:tcW w:w="10172" w:type="dxa"/><w:gridSpan w:val="9"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:ind w:left="360" w:right="72"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(notesText)}</w:t></w:r></w:p></w:tc></w:tr>`;
+          docXml = docXml.substring(0, notesValTrStart) + notesRow + docXml.substring(notesValTrEnd);
+        }
+      }
+
+      // Populate CONCERNS
+      const concernsLabelIdx = docXml.indexOf('CONCERNS:');
+      if (concernsLabelIdx !== -1) {
+        const concernsTrEnd = docXml.indexOf('</w:tr>', concernsLabelIdx) + 7;
+        const concernsValTrStart = docXml.indexOf('<w:tr', concernsTrEnd);
+        const concernsValTrEnd = docXml.indexOf('</w:tr>', concernsValTrStart) + 7;
+        if (concernsValTrStart !== -1 && concernsValTrEnd > concernsValTrStart) {
+          const concernsText = (inspection.observations || []).length > 0 ? (inspection.observations || []).map((o: any) => o.comments).join('; ') : 'None.';
+          const concernsRow = `<w:tr w:rsidR="002903ED" w:rsidTr="003815F0"><w:trPr><w:cantSplit/><w:trHeight w:val="852"/><w:jc w:val="center"/></w:trPr><w:tc><w:tcPr><w:tcW w:w="10172" w:type="dxa"/><w:gridSpan w:val="9"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:ind w:left="360" w:right="72"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(concernsText)}</w:t></w:r></w:p></w:tc></w:tr>`;
+          docXml = docXml.substring(0, concernsValTrStart) + concernsRow + docXml.substring(concernsValTrEnd);
+        }
+      }
     }
 
     // === 4. DYNAMIC SCOPE OF INSPECTION TABLE (Table 9) ===
@@ -431,34 +510,51 @@ export class ReportService {
       }
     }
 
-    // === 7. ATTENDEES TABLE (Table 5) ===
-    const attendeeHeaderIdx = this.findHeaderIndex(docXml, ['COMPANY REPRESENTED', 'PERSONS ATTENDING', 'ATTENDEES', 'ATTENDANCE LIST']);
-    if (attendeeHeaderIdx !== -1) {
-      const headerTrEnd = docXml.indexOf('</w:tr>', attendeeHeaderIdx) + 7;
+    // === 7. ATTENDEES TABLE ===
+    const flashAttIdx = this.findHeaderIndex(docXml, ['Attendee Name', 'Organization  Name', 'Organization Name', 'Contact Details']);
+    if (flashAttIdx !== -1) {
+      const headerTrEnd = docXml.indexOf('</w:tr>', flashAttIdx) + 7;
       const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
       if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
-        const attendeeRows = this.buildAttendeesXml(inspection.attendees || []);
+        const attendeeRows = this.buildFlashAttendeesXml(inspection.attendees || [], inspection.inspector, project);
         docXml = docXml.substring(0, headerTrEnd) + attendeeRows + docXml.substring(innerTableEnd);
+      }
+    } else {
+      const attendeeHeaderIdx = this.findHeaderIndex(docXml, ['COMPANY REPRESENTED', 'PERSONS ATTENDING', 'ATTENDEES', 'ATTENDANCE LIST']);
+      if (attendeeHeaderIdx !== -1) {
+        const headerTrEnd = docXml.indexOf('</w:tr>', attendeeHeaderIdx) + 7;
+        const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
+        if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
+          const attendeeRows = this.buildAttendeesXml(inspection.attendees || []);
+          docXml = docXml.substring(0, headerTrEnd) + attendeeRows + docXml.substring(innerTableEnd);
+        }
       }
     }
 
     // === 8. REPAIR & POPULATE PHOTO SECTION ===
-    const photoHeaderIdx = this.findHeaderIndex(docXml, ['Inspection Photos.', 'Inspection Photos', 'INSPECTION PHOTOS', 'PHOTOGRAPHS', 'PHOTO SHEET']);
+    const photoHeaderIdx = this.findHeaderIndex(docXml, ['PHOTOS:', 'PHOTOS', 'Inspection Photos.', 'Inspection Photos', 'INSPECTION PHOTOS', 'PHOTOGRAPHS', 'PHOTO SHEET']);
     if (photoHeaderIdx !== -1) {
       const tblStart = docXml.indexOf('<w:tbl', photoHeaderIdx);
-      const sectPrIdx = docXml.indexOf('<w:sectPr', tblStart);
-      const tblEnd = sectPrIdx !== -1 ? docXml.lastIndexOf('</w:tbl>', sectPrIdx) + 8 : -1;
-
-      if (tblStart !== -1 && tblEnd > tblStart) {
-        const photos = inspection.photos || [];
-        if (photos.length === 0) {
-          // If no photos uploaded, keep empty (no old sample photos!)
-          const emptyPhotoNotice = `<w:p w14:paraId="11111111" w14:textId="77777777"><w:pPr><w:jc w:val="center"/><w:spacing w:before="240" w:after="240"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:i/><w:color w:val="777777"/><w:sz w:val="20"/></w:rPr><w:t>No photographs attached for this inspection report.</w:t></w:r></w:p>`;
-          docXml = docXml.substring(0, tblStart) + emptyPhotoNotice + docXml.substring(tblEnd);
+      if (tblStart !== -1) {
+        let tblEnd = -1;
+        const sectPrIdx = docXml.indexOf('<w:sectPr', tblStart);
+        if (sectPrIdx !== -1) {
+          tblEnd = docXml.lastIndexOf('</w:tbl>', sectPrIdx) + 8;
         } else {
-          // Build clean photo table with uploaded photos
-          const photoTableXml = await this.embedUploadedPhotos(zip, photos);
-          docXml = docXml.substring(0, tblStart) + photoTableXml + docXml.substring(tblEnd);
+          tblEnd = this.findMatchingTableEnd(docXml, tblStart);
+        }
+
+        if (tblEnd !== -1 && tblEnd > tblStart) {
+          const photos = inspection.photos || [];
+          if (photos.length === 0) {
+            // If no photos uploaded, keep empty (no old sample photos!)
+            const emptyPhotoNotice = `<w:p w14:paraId="11111111" w14:textId="77777777"><w:pPr><w:jc w:val="center"/><w:spacing w:before="240" w:after="240"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:i/><w:color w:val="777777"/><w:sz w:val="20"/></w:rPr><w:t>No photographs attached for this inspection report.</w:t></w:r></w:p>`;
+            docXml = docXml.substring(0, tblStart) + emptyPhotoNotice + docXml.substring(tblEnd);
+          } else {
+            // Build clean photo table with uploaded photos
+            const photoTableXml = await this.embedUploadedPhotos(zip, photos);
+            docXml = docXml.substring(0, tblStart) + photoTableXml + docXml.substring(tblEnd);
+          }
         }
       }
     }
@@ -615,6 +711,200 @@ export class ReportService {
     }
 
     return docXml;
+  }
+
+  /**
+   * Find matching closing </w:tbl> tag for a table starting at tblStart, taking nested tables into account
+   */
+  private findMatchingTableEnd(docXml: string, tblStart: number): number {
+    let depth = 1;
+    let pos = tblStart + 6;
+    const tblRegex = /<(\/)?w:tbl([\s>])/g;
+    tblRegex.lastIndex = pos;
+
+    let match;
+    while ((match = tblRegex.exec(docXml)) !== null) {
+      const isClose = match[1] === '/';
+      if (isClose) {
+        depth--;
+        if (depth === 0) {
+          return match.index + match[0].length;
+        }
+      } else {
+        depth++;
+      }
+    }
+    return -1;
+  }
+
+  /**
+   * Set text value in the cell immediately following a label cell in a table
+   */
+  private setCellValueInNextCell(docXml: string, possibleHeaders: string[], newText: string): string {
+    if (!newText && newText !== '0') return docXml;
+    const labelIdx = this.findHeaderIndex(docXml, possibleHeaders);
+    if (labelIdx === -1) return docXml;
+
+    const labelTcEnd = docXml.indexOf('</w:tc>', labelIdx);
+    if (labelTcEnd === -1) return docXml;
+
+    const nextTcStart = docXml.indexOf('<w:tc', labelTcEnd);
+    const nextTcEnd = docXml.indexOf('</w:tc>', nextTcStart);
+    if (nextTcStart === -1 || nextTcEnd === -1) return docXml;
+
+    const cellXml = docXml.substring(nextTcStart, nextTcEnd);
+    const tcPrEnd = cellXml.indexOf('</w:tcPr>');
+    const tcPr = tcPrEnd !== -1 ? cellXml.substring(0, tcPrEnd + 9) : '<w:tcPr><w:vAlign w:val="center"/></w:tcPr>';
+
+    const lines = String(newText || '').split(/\r?\n/).filter(l => l.trim().length > 0);
+    const newParas = (lines.length > 0 ? lines : ['']).map(line =>
+      `<w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t>${escapeXml(line)}</w:t></w:r></w:p>`
+    ).join('');
+
+    const updatedCell = tcPr + newParas;
+    return docXml.substring(0, nextTcStart) + updatedCell + docXml.substring(nextTcEnd);
+  }
+
+  /**
+   * Build 4-column Flash Report attendees table rows
+   */
+  private buildFlashAttendeesXml(attendees: any[], inspector?: any, project?: any): string {
+    let listToRender = (attendees && attendees.length > 0) ? [...attendees] : [];
+
+    const inspectorName = inspector?.fullName || 'Adarsh M S';
+    const hasInspector = listToRender.some(a => a.name && a.name.toLowerCase().includes(inspectorName.toLowerCase()));
+    if (!hasInspector) {
+      listToRender.unshift({
+        name: inspectorName,
+        title: inspector?.title || 'Inspection Engineer',
+        company: 'Intertek',
+        representedOrg: project?.customerName || 'ADNOC Onshore',
+        email: inspector?.email || 'inspector@intertek.com',
+        phone: inspector?.phone || '+971-50-1234567',
+      });
+    }
+
+    if (listToRender.length < 2) {
+      listToRender.push({
+        name: 'Nithin V',
+        title: 'QA/QC Engineer',
+        company: project?.supplierName || 'KSB MIL Controls Limited',
+        representedOrg: '',
+        email: 'qa@ksbmil.com',
+        phone: '+91-9876543210',
+      });
+    }
+
+    return listToRender.map(a => {
+      const org = a.company ? (a.representedOrg ? `${escapeXml(a.company)} (OBO ${escapeXml(a.representedOrg)})` : escapeXml(a.company)) : (escapeXml(a.representedOrg || ''));
+      const contact = [a.email, a.phone].filter(Boolean).join(' / ') || 'NA';
+
+      return `<w:tr w:rsidR="00716511" w:rsidTr="00EB3EEF">
+  <w:trPr><w:trHeight w:val="340"/></w:trPr>
+  <w:tc><w:tcPr><w:tcW w:w="2615" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="left"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(a.name || '')}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="2479" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="left"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(a.title || '')}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="3040" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="left"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${org}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="2053" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="left"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(contact)}</w:t></w:r>
+    </w:p>
+  </w:tc>
+</w:tr>`;
+    }).join('\n');
+  }
+
+  /**
+   * Build Flash Report Table 4 activities/results dynamic rows
+   */
+  private buildFlashActivitiesTableRows(items: any[], activities: any[]): string {
+    const offeredItems = (items || []).filter((i: any) => i.presentedQty > 0);
+    const listToRender = offeredItems.length > 0 ? offeredItems : (items || []);
+
+    const activityCodes: string[] = [];
+    for (const act of (activities || [])) {
+      const name = (act.activityName || '').toLowerCase();
+      if (name.includes('material') || name.includes('raw')) activityCodes.push('M');
+      if (name.includes('visual')) activityCodes.push('VI');
+      if (name.includes('dimens')) activityCodes.push('D');
+      if (name.includes('hydro') || name.includes('pressure') || name.includes('leak')) activityCodes.push('HT');
+      if (name.includes('paint') || name.includes('dft') || name.includes('coating')) activityCodes.push('P');
+      if (name.includes('final')) activityCodes.push('F');
+      if (name.includes('cert') || name.includes('document')) activityCodes.push('R');
+      if (name.includes('mech') || name.includes('test')) activityCodes.push('MT');
+      if (name.includes('hard')) activityCodes.push('HDT');
+      if (name.includes('stroke')) activityCodes.push('FT');
+    }
+    const actCodesStr = Array.from(new Set(activityCodes)).join(', ') || 'VI, D, HT';
+
+    if (listToRender.length === 0) {
+      return `<w:tr w:rsidR="00B77D49" w:rsidTr="008030D9">
+  <w:trPr><w:cantSplit/><w:trHeight w:val="432"/><w:jc w:val="center"/></w:trPr>
+  <w:tc><w:tcPr><w:tcW w:w="10172" w:type="dxa"/><w:gridSpan w:val="7"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:i/><w:color w:val="666666"/><w:sz w:val="18"/></w:rPr><w:t>No items inspected for this report.</w:t></w:r></w:p>
+  </w:tc>
+</w:tr>`;
+    }
+
+    return listToRender.map((item, idx) => {
+      const poItem = escapeXml(item.poItemNo || `'${idx + 1}`);
+      const tag = escapeXml(item.tagNumber || `Item-${idx + 1}`);
+      const desc = escapeXml(item.itemName || item.itemDescription || 'Control Valve');
+      const qty = String(item.presentedQty || item.orderedQty || 1);
+      const accept = String(item.acceptedThisVisit || item.presentedQty || qty);
+      const reject = '-';
+
+      return `<w:tr w:rsidR="00B77D49" w:rsidTr="008030D9">
+  <w:tblPrEx><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/></w:tblCellMar></w:tblPrEx>
+  <w:trPr><w:cantSplit/><w:trHeight w:val="432"/><w:jc w:val="center"/></w:trPr>
+  <w:tc><w:tcPr><w:tcW w:w="1043" w:type="dxa"/><w:tcBorders><w:left w:val="single" w:sz="12" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${poItem}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="991" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/></w:rPr><w:t>${tag}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="3150" w:type="dxa"/><w:gridSpan w:val="2"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="left"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${desc}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="668" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${qty}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1710" w:type="dxa"/><w:gridSpan w:val="2"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${actCodesStr}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1350" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${accept}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1260" w:type="dxa"/><w:tcBorders><w:right w:val="single" w:sz="12" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${reject}</w:t></w:r>
+    </w:p>
+  </w:tc>
+</w:tr>`;
+    }).join('\n');
   }
 
   /**

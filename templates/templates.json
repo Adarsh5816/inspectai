@@ -34,5 +34,11 @@
     "type": "FR",
     "displayName": "KSB 22 Sept Final Inspection Report (FR)",
     "description": "Final inspection / factory acceptance report format (FR)"
+  },
+  {
+    "name": "NPCC-ADNOC-Flash-Report-Template.docx",
+    "type": "FR",
+    "displayName": "NPCC ADNOC Flash Report (FR)",
+    "description": "NPCC ADNOC Flash Report Format"
   }
 ]
