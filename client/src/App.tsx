@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import * as API from './api';
 import { DeploymentGuardian } from './DeploymentGuardian';
 import { AdminPage } from './AdminPage';
-import { saveDraft, loadDraft, clearDraft } from './draftStorage';
+import { saveDraft, loadDraft, clearDraft, saveOpenWindow, getOpenWindow, clearOpenWindow } from './draftStorage';
 import AutocompleteInput from './AutocompleteInput';
 
 // ============================================================
@@ -214,8 +214,9 @@ function StatusBadge({ status }: { status: string }) {
 function ProjectsPage({ currentUser }: { currentUser?: any }) {
   const [projects, setProjects] = useState<any[]>([]);
   const [showForm, setShowForm] = useState(() => {
+    const win = getOpenWindow('projects_list');
     const draft = loadDraft<any>('new_project');
-    return !!(draft?.data?.projectNumber || draft?.data?.projectName);
+    return win?.windowId === 'new_project' || !!(draft?.data?.projectNumber || draft?.data?.projectName);
   });
   const [form, setForm] = useState(() => {
     const draft = loadDraft<any>('new_project');
@@ -225,7 +226,17 @@ function ProjectsPage({ currentUser }: { currentUser?: any }) {
   const load = () => API.getProjects().then(r => setProjects(r.data)).catch(() => {});
   useEffect(() => { load(); }, []);
 
-  // Auto-save draft on change
+  // Auto-save draft and open window on change
+  useEffect(() => {
+    if (showForm) {
+      saveOpenWindow('projects_list', 'new_project', form);
+    } else {
+      if (getOpenWindow('projects_list')?.windowId === 'new_project') {
+        clearOpenWindow('projects_list');
+      }
+    }
+  }, [showForm, form]);
+
   useEffect(() => {
     if (form.projectNumber || form.projectName || form.customerName || form.supplierName || form.supplierAddress || form.poNumber) {
       saveDraft('new_project', form);
@@ -237,6 +248,7 @@ function ProjectsPage({ currentUser }: { currentUser?: any }) {
     try {
       await API.createProject(form);
       clearDraft('new_project');
+      clearOpenWindow('projects_list');
       setShowForm(false);
       setForm({ projectNumber: '', projectName: '', customerName: '', supplierName: '', supplierAddress: '', poNumber: '' });
       load();
@@ -280,6 +292,7 @@ function ProjectsPage({ currentUser }: { currentUser?: any }) {
                 type="button"
                 onClick={() => {
                   clearDraft('new_project');
+                  clearOpenWindow('projects_list');
                   setForm({ projectNumber: '', projectName: '', customerName: '', supplierName: '', supplierAddress: '', poNumber: '' });
                   setShowForm(false);
                 }}
@@ -303,6 +316,7 @@ function ProjectsPage({ currentUser }: { currentUser?: any }) {
               type="button"
               onClick={() => {
                 clearDraft('new_project');
+                clearOpenWindow('projects_list');
                 setForm({ projectNumber: '', projectName: '', customerName: '', supplierName: '', supplierAddress: '', poNumber: '' });
                 setShowForm(false);
               }}
@@ -360,21 +374,44 @@ function ProjectDetailPage({ currentUser }: { currentUser?: any }) {
   const [assigningMember, setAssigningMember] = useState(false);
 
   // Edit Project Details state
-  const [showEditProjectModal, setShowEditProjectModal] = useState(false);
-  const [editProjectForm, setEditProjectForm] = useState({
-    projectName: '',
-    customerName: '',
-    supplierName: '',
-    supplierAddress: '',
-    poNumber: '',
+  const [showEditProjectModal, setShowEditProjectModal] = useState(() => {
+    const win = getOpenWindow(`project_${id}`);
+    return win?.windowId === 'edit_project';
+  });
+  const [editProjectForm, setEditProjectForm] = useState(() => {
+    const draft = loadDraft<any>(`edit_project_${id}`);
+    return draft?.data || {
+      projectName: '',
+      customerName: '',
+      supplierName: '',
+      supplierAddress: '',
+      poNumber: '',
+    };
   });
   const [savingProject, setSavingProject] = useState(false);
+
+  useEffect(() => {
+    if (showEditProjectModal && id) {
+      saveDraft(`edit_project_${id}`, editProjectForm);
+      saveOpenWindow(`project_${id}`, 'edit_project', editProjectForm);
+    }
+  }, [editProjectForm, showEditProjectModal, id]);
+
+  const handleCloseEditProjectModal = () => {
+    if (id) {
+      clearOpenWindow(`project_${id}`);
+      clearDraft(`edit_project_${id}`);
+    }
+    setShowEditProjectModal(false);
+  };
 
   const handleSaveProject = async () => {
     if (!id) return;
     setSavingProject(true);
     try {
       await API.updateProject(id, editProjectForm);
+      clearDraft(`edit_project_${id}`);
+      clearOpenWindow(`project_${id}`);
       setShowEditProjectModal(false);
       load();
     } catch (err: any) {
@@ -700,7 +737,7 @@ function ProjectDetailPage({ currentUser }: { currentUser?: any }) {
               <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                 <span>✏️</span> Edit Project Details
               </h3>
-              <button onClick={() => setShowEditProjectModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+              <button onClick={handleCloseEditProjectModal} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
             </div>
             <p className="text-sm text-slate-600">
               Update customer, supplier, or location details. Previously entered records appear automatically in the dropdown.
@@ -753,7 +790,7 @@ function ProjectDetailPage({ currentUser }: { currentUser?: any }) {
             <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setShowEditProjectModal(false)}
+                onClick={handleCloseEditProjectModal}
                 className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50 font-medium"
               >
                 Cancel
@@ -977,28 +1014,78 @@ function InspectionWorkspacePage() {
   const [offerDocs, setOfferDocs] = useState<any[]>([]);
 
   // Location edit state
-  const [showEditLocationModal, setShowEditLocationModal] = useState(false);
-  const [editLocationValue, setEditLocationValue] = useState('');
+  const [showEditLocationModal, setShowEditLocationModal] = useState(() => {
+    const win = getOpenWindow(`workspace_${id}`);
+    return win?.windowId === 'edit_location';
+  });
+  const [editLocationValue, setEditLocationValue] = useState(() => {
+    const d = loadDraft<string>(`location_form_${id}`);
+    return d?.data || '';
+  });
   const [savingLocation, setSavingLocation] = useState(false);
 
+  useEffect(() => {
+    if (showEditLocationModal && id) {
+      saveDraft(`location_form_${id}`, editLocationValue);
+      saveOpenWindow(`workspace_${id}`, 'edit_location', editLocationValue);
+    }
+  }, [editLocationValue, showEditLocationModal, id]);
+
+  const handleCloseLocationModal = () => {
+    setShowEditLocationModal(false);
+    if (id) {
+      clearOpenWindow(`workspace_${id}`);
+    }
+  };
+
   // Full Details & Scope edit state
-  const [showEditDetailsModal, setShowEditDetailsModal] = useState(false);
-  const [detailsForm, setDetailsForm] = useState({
-    supplierName: '',
-    supplierAddress: '',
-    customerName: '',
-    customerAddress: '',
-    poNumber: '',
-    projectName: '',
-    location: '',
-    materialDescription: '',
-    itpNumber: '',
-    itpRevision: '',
-    reportNumber: '',
-    disposition: '',
-    summaryNarrative: '',
+  const [showEditDetailsModal, setShowEditDetailsModal] = useState(() => {
+    const win = getOpenWindow(`workspace_${id}`);
+    return win?.windowId === 'edit_details';
+  });
+  const [detailsForm, setDetailsForm] = useState(() => {
+    const existingDraft = loadDraft<any>(`details_form_${id}`);
+    return existingDraft?.data || {
+      supplierName: '',
+      supplierAddress: '',
+      customerName: '',
+      customerAddress: '',
+      poNumber: '',
+      projectName: '',
+      location: '',
+      materialDescription: '',
+      itpNumber: '',
+      itpRevision: '',
+      reportNumber: '',
+      disposition: '',
+      summaryNarrative: '',
+    };
   });
   const [savingDetails, setSavingDetails] = useState(false);
+
+  // Initialize detailsForm with inspection data if restored window had no custom draft
+  useEffect(() => {
+    if (inspection && showEditDetailsModal) {
+      const existingDraft = loadDraft<any>(`details_form_${id}`);
+      if (!existingDraft?.data || !Object.values(existingDraft.data).some(Boolean)) {
+        setDetailsForm({
+          supplierName: inspection.project?.supplierName || '',
+          supplierAddress: inspection.project?.supplierAddress || '',
+          customerName: inspection.project?.customerName || '',
+          customerAddress: inspection.project?.customerAddress || '',
+          poNumber: inspection.project?.poNumber || '',
+          projectName: inspection.project?.projectName || '',
+          location: inspection.location || '',
+          materialDescription: inspection.materialDescription || 'CONTROL VALVES AND ITS COMPONENTS',
+          itpNumber: inspection.itpNumber || '',
+          itpRevision: inspection.itpRevision || '',
+          reportNumber: inspection.reportNumber || '',
+          disposition: inspection.disposition || 'Accept',
+          summaryNarrative: inspection.summaryNarrative || '',
+        });
+      }
+    }
+  }, [inspection, showEditDetailsModal, id]);
 
   const openEditDetailsModal = () => {
     if (!inspection) return;
@@ -1023,12 +1110,23 @@ function InspectionWorkspacePage() {
       });
     }
     setShowEditDetailsModal(true);
+    if (id) {
+      saveOpenWindow(`workspace_${id}`, 'edit_details');
+    }
+  };
+
+  const handleCloseDetailsModal = () => {
+    setShowEditDetailsModal(false);
+    if (id) {
+      clearOpenWindow(`workspace_${id}`);
+    }
   };
 
   // Auto-save details form when user types in modal
   useEffect(() => {
     if (showEditDetailsModal && id) {
       saveDraft(`details_form_${id}`, detailsForm);
+      saveOpenWindow(`workspace_${id}`, 'edit_details', detailsForm);
     }
   }, [detailsForm, showEditDetailsModal, id]);
 
@@ -1059,6 +1157,7 @@ function InspectionWorkspacePage() {
       }
 
       clearDraft(`details_form_${id}`);
+      clearOpenWindow(`workspace_${id}`);
       setShowEditDetailsModal(false);
       load();
     } catch (err: any) {
@@ -1102,6 +1201,8 @@ function InspectionWorkspacePage() {
       clearDraft(`workspace_tab_${id}`);
       clearDraft(`checklist_${id}`);
       clearDraft(`details_form_${id}`);
+      clearDraft(`location_form_${id}`);
+      clearOpenWindow(`workspace_${id}`);
     }
     setDraftSavedAt(null);
     setHasRestoredDraft(false);
@@ -1122,6 +1223,8 @@ function InspectionWorkspacePage() {
     setSavingLocation(true);
     try {
       await API.updateInspection(id, { location: editLocationValue });
+      clearDraft(`location_form_${id}`);
+      clearOpenWindow(`workspace_${id}`);
       setShowEditLocationModal(false);
       load();
     } catch (err: any) {
@@ -1604,7 +1707,7 @@ function InspectionWorkspacePage() {
               <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                 <span>📍</span> Edit Inspection Location
               </h3>
-              <button onClick={() => setShowEditLocationModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+              <button onClick={handleCloseLocationModal} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
             </div>
             <p className="text-sm text-slate-600">
               Select a previously entered location from the auto dropdown or type a new one. Newly entered locations will automatically be saved for future searches.
@@ -1622,7 +1725,7 @@ function InspectionWorkspacePage() {
             <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setShowEditLocationModal(false)}
+                onClick={handleCloseLocationModal}
                 className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50 font-medium"
               >
                 Cancel
@@ -1648,7 +1751,13 @@ function InspectionWorkspacePage() {
               <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                 <span>✏️</span> Edit Inspection, Supplier &amp; Scope Details
               </h3>
-              <button onClick={() => setShowEditDetailsModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+              <button onClick={handleCloseDetailsModal} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+            </div>
+            <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs px-3.5 py-2 rounded-xl flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <strong>Zero-Data-Loss Active:</strong> Changes are backed up locally. This window automatically reopens across updates &amp; reloads.
+              </span>
             </div>
             <form onSubmit={handleSaveDetails} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1755,7 +1864,7 @@ function InspectionWorkspacePage() {
               <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowEditDetailsModal(false)}
+                  onClick={handleCloseDetailsModal}
                   className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50 font-medium"
                 >
                   Cancel
@@ -2671,8 +2780,9 @@ function MiniStat({ label, value }: { label: string; value: number }) {
 // Tab: Items / Offered Materials
 function ItemsTab({ inspection, onReload, onOpenRfiModal, onOpenOfferModal, onRecallRfi, recallingRfi }: any) {
   const [showForm, setShowForm] = useState(() => {
+    const win = getOpenWindow(`items_${inspection.id}`);
     const d = loadDraft<any>(`item_form_${inspection.id}`);
-    return !!(d?.data?.tagNumber || d?.data?.serialNumber);
+    return win?.windowId === 'add_item' || !!(d?.data?.tagNumber || d?.data?.serialNumber);
   });
   const [form, setForm] = useState(() => {
     const d = loadDraft<any>(`item_form_${inspection.id}`);
@@ -2680,14 +2790,39 @@ function ItemsTab({ inspection, onReload, onOpenRfiModal, onOpenOfferModal, onRe
   });
 
   useEffect(() => {
-    if (form.tagNumber || form.serialNumber || form.poItemNo) {
+    if (showForm) {
       saveDraft(`item_form_${inspection.id}`, form);
+      saveOpenWindow(`items_${inspection.id}`, 'add_item', form);
+    } else {
+      if (getOpenWindow(`items_${inspection.id}`)?.windowId === 'add_item') {
+        clearOpenWindow(`items_${inspection.id}`);
+      }
     }
-  }, [form, inspection.id]);
+  }, [form, showForm, inspection.id]);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [editingItem, setEditingItem] = useState<any>(null);
+  const [editingItem, setEditingItem] = useState<any>(() => {
+    const win = getOpenWindow(`items_${inspection.id}`);
+    if (win?.windowId === 'edit_item') {
+      const d = loadDraft<any>(`edit_item_${inspection.id}`);
+      return d?.data || win.data || null;
+    }
+    return null;
+  });
   const [savingItem, setSavingItem] = useState(false);
+
+  useEffect(() => {
+    if (editingItem) {
+      saveDraft(`edit_item_${inspection.id}`, editingItem);
+      saveOpenWindow(`items_${inspection.id}`, 'edit_item', editingItem);
+    }
+  }, [editingItem, inspection.id]);
+
+  const handleCloseEditItem = () => {
+    clearDraft(`edit_item_${inspection.id}`);
+    clearOpenWindow(`items_${inspection.id}`);
+    setEditingItem(null);
+  };
 
   const items = inspection.items || [];
 
@@ -2695,7 +2830,9 @@ function ItemsTab({ inspection, onReload, onOpenRfiModal, onOpenOfferModal, onRe
     e.preventDefault();
     await API.addItem({ ...form, presentedQty: 1, orderedQty: 1 });
     clearDraft(`item_form_${inspection.id}`);
-    setShowForm(false); onReload();
+    clearOpenWindow(`items_${inspection.id}`);
+    setShowForm(false);
+    onReload();
   };
 
   const toggleOffered = async (item: any) => {
@@ -2947,14 +3084,14 @@ function ItemsTab({ inspection, onReload, onOpenRfiModal, onOpenOfferModal, onRe
               <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                 <span>✏️</span> Edit Valve / Material
               </h3>
-              <button onClick={() => setEditingItem(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+              <button onClick={handleCloseEditItem} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
             </div>
             <form onSubmit={async (e) => {
               e.preventDefault();
               setSavingItem(true);
               try {
                 await API.updateItem(editingItem.id, editingItem);
-                setEditingItem(null);
+                handleCloseEditItem();
                 onReload();
               } catch (err: any) {
                 alert(err.response?.data?.error || 'Failed to update item');
@@ -2977,7 +3114,7 @@ function ItemsTab({ inspection, onReload, onOpenRfiModal, onOpenOfferModal, onRe
                 <Input label="Accepted To Date" type="number" value={String(editingItem.acceptedToDate ?? 1)} onChange={v => setEditingItem({ ...editingItem, acceptedToDate: parseInt(v) || 0 })} />
               </div>
               <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
-                <button type="button" onClick={() => setEditingItem(null)} className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50 font-medium">Cancel</button>
+                <button type="button" onClick={handleCloseEditItem} className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50 font-medium">Cancel</button>
                 <button type="submit" disabled={savingItem} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold shadow-sm transition disabled:opacity-50">
                   {savingItem ? 'Saving...' : 'Save Material'}
                 </button>
@@ -2992,12 +3129,50 @@ function ItemsTab({ inspection, onReload, onOpenRfiModal, onOpenOfferModal, onRe
 
 // Tab: Activities & Daily Checklist
 function ActivitiesTab({ inspection, onReload, onOpenRfiModal, onOpenItpModal, onOpenOfferModal }: any) {
-  const [showManualForm, setShowManualForm] = useState(false);
-  const [manualForm, setManualForm] = useState({ inspectionId: inspection.id, clauseNumber: '', activityName: '', acceptanceCriteria: '', interventionTPIA: 'W' });
+  const [showManualForm, setShowManualForm] = useState(() => {
+    const win = getOpenWindow(`activities_${inspection.id}`);
+    return win?.windowId === 'add_activity';
+  });
+  const [manualForm, setManualForm] = useState(() => {
+    const d = loadDraft<any>(`activity_form_${inspection.id}`);
+    return d?.data || { inspectionId: inspection.id, clauseNumber: '', activityName: '', acceptanceCriteria: '', interventionTPIA: 'W' };
+  });
+
+  useEffect(() => {
+    if (showManualForm) {
+      saveDraft(`activity_form_${inspection.id}`, manualForm);
+      saveOpenWindow(`activities_${inspection.id}`, 'add_activity', manualForm);
+    } else {
+      if (getOpenWindow(`activities_${inspection.id}`)?.windowId === 'add_activity') {
+        clearOpenWindow(`activities_${inspection.id}`);
+      }
+    }
+  }, [manualForm, showManualForm, inspection.id]);
+
   const [selectedDate, setSelectedDate] = useState(inspection.startDate ? new Date(inspection.startDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
   const [savingDaily, setSavingDaily] = useState(false);
-  const [editingActivity, setEditingActivity] = useState<any>(null);
+  const [editingActivity, setEditingActivity] = useState<any>(() => {
+    const win = getOpenWindow(`activities_${inspection.id}`);
+    if (win?.windowId === 'edit_activity') {
+      const d = loadDraft<any>(`edit_activity_${inspection.id}`);
+      return d?.data || win.data || null;
+    }
+    return null;
+  });
   const [savingActivity, setSavingActivity] = useState(false);
+
+  useEffect(() => {
+    if (editingActivity) {
+      saveDraft(`edit_activity_${inspection.id}`, editingActivity);
+      saveOpenWindow(`activities_${inspection.id}`, 'edit_activity', editingActivity);
+    }
+  }, [editingActivity, inspection.id]);
+
+  const handleCloseEditActivity = () => {
+    clearDraft(`edit_activity_${inspection.id}`);
+    clearOpenWindow(`activities_${inspection.id}`);
+    setEditingActivity(null);
+  };
   
   // Local state for daily checklist entries
   const [entries, setEntries] = useState<Record<string, { isDone: boolean; status: string; remarks: string; testMedium: string; testPressure: string; holdingTimeMin: string }>>({});
@@ -3247,7 +3422,15 @@ function ActivitiesTab({ inspection, onReload, onOpenRfiModal, onOpenItpModal, o
 
       {/* Manual Activity Form Modal */}
       {showManualForm && (
-        <form onSubmit={async (e) => { e.preventDefault(); await API.addActivity(manualForm); setShowManualForm(false); onReload(); }} className="bg-slate-50 p-4 rounded-xl border border-slate-300 space-y-3">
+        <form onSubmit={async (e) => {
+          e.preventDefault();
+          await API.addActivity(manualForm);
+          clearDraft(`activity_form_${inspection.id}`);
+          clearOpenWindow(`activities_${inspection.id}`);
+          setShowManualForm(false);
+          setManualForm({ inspectionId: inspection.id, clauseNumber: '', activityName: '', acceptanceCriteria: '', interventionTPIA: 'W' });
+          onReload();
+        }} className="bg-slate-50 p-4 rounded-xl border border-slate-300 space-y-3">
           <h4 className="font-semibold text-slate-800 text-sm">Add New Activity Manually</h4>
           <div className="grid grid-cols-2 gap-3">
             <Input label="ITP Clause" value={manualForm.clauseNumber} onChange={v => setManualForm({ ...manualForm, clauseNumber: v })} placeholder="7.1" required />
@@ -3262,7 +3445,17 @@ function ActivitiesTab({ inspection, onReload, onOpenRfiModal, onOpenItpModal, o
           </div>
           <div className="flex gap-2">
             <button type="submit" className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium">Add Activity</button>
-            <button type="button" onClick={() => setShowManualForm(false)} className="text-sm text-slate-500">Cancel</button>
+            <button
+              type="button"
+              onClick={() => {
+                clearDraft(`activity_form_${inspection.id}`);
+                clearOpenWindow(`activities_${inspection.id}`);
+                setShowManualForm(false);
+              }}
+              className="text-sm text-slate-500 hover:text-slate-700"
+            >
+              Cancel
+            </button>
           </div>
         </form>
       )}
@@ -3457,14 +3650,14 @@ function ActivitiesTab({ inspection, onReload, onOpenRfiModal, onOpenItpModal, o
               <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                 <span>✏️</span> Edit Inspection Activity
               </h3>
-              <button onClick={() => setEditingActivity(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+              <button onClick={handleCloseEditActivity} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
             </div>
             <form onSubmit={async (e) => {
               e.preventDefault();
               setSavingActivity(true);
               try {
                 await API.updateActivity(editingActivity.id, editingActivity);
-                setEditingActivity(null);
+                handleCloseEditActivity();
                 onReload();
               } catch (err: any) {
                 alert(err.response?.data?.error || 'Failed to update activity');
@@ -3532,7 +3725,7 @@ function ActivitiesTab({ inspection, onReload, onOpenRfiModal, onOpenItpModal, o
                 </div>
               </div>
               <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
-                <button type="button" onClick={() => setEditingActivity(null)} className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50 font-medium">Cancel</button>
+                <button type="button" onClick={handleCloseEditActivity} className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50 font-medium">Cancel</button>
                 <button type="submit" disabled={savingActivity} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold shadow-sm transition disabled:opacity-50">
                   {savingActivity ? 'Saving...' : 'Save Activity'}
                 </button>
@@ -3548,8 +3741,9 @@ function ActivitiesTab({ inspection, onReload, onOpenRfiModal, onOpenItpModal, o
 // Tab: Results
 function ResultsTab({ inspection, onReload }: any) {
   const [showForm, setShowForm] = useState(() => {
+    const win = getOpenWindow(`results_${inspection.id}`);
     const d = loadDraft<any>(`result_form_${inspection.id}`);
-    return !!(d?.data?.itemId || d?.data?.activityId);
+    return win?.windowId === 'add_result' || !!(d?.data?.itemId || d?.data?.activityId);
   });
   const [form, setForm] = useState(() => {
     const d = loadDraft<any>(`result_form_${inspection.id}`);
@@ -3560,16 +3754,23 @@ function ResultsTab({ inspection, onReload }: any) {
   });
 
   useEffect(() => {
-    if (form.itemId || form.activityId || form.remarks || form.testMedium || form.testPressure) {
+    if (showForm) {
       saveDraft(`result_form_${inspection.id}`, form);
+      saveOpenWindow(`results_${inspection.id}`, 'add_result', form);
+    } else {
+      if (getOpenWindow(`results_${inspection.id}`)?.windowId === 'add_result') {
+        clearOpenWindow(`results_${inspection.id}`);
+      }
     }
-  }, [form, inspection.id]);
+  }, [form, showForm, inspection.id]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     await API.addResult({ ...form, testPressure: form.testPressure ? parseFloat(form.testPressure) : null, holdingTimeMin: form.holdingTimeMin ? parseFloat(form.holdingTimeMin) : null, confirmedByUser: true });
     clearDraft(`result_form_${inspection.id}`);
-    setShowForm(false); onReload();
+    clearOpenWindow(`results_${inspection.id}`);
+    setShowForm(false);
+    onReload();
   };
 
   const handleDeleteResult = async (resultId: string) => {
@@ -3619,7 +3820,20 @@ function ResultsTab({ inspection, onReload }: any) {
             <Input label="Leakage" value={form.leakageObserved} onChange={v => setForm({ ...form, leakageObserved: v })} placeholder="None" />
             <Input label="Remarks" value={form.remarks} onChange={v => setForm({ ...form, remarks: v })} placeholder="Additional notes" />
           </div>
-          <div className="flex gap-2"><button type="submit" className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium">Confirm & Save Result</button><button type="button" onClick={() => setShowForm(false)} className="text-sm text-slate-500">Cancel</button></div>
+          <div className="flex gap-2">
+            <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium">Confirm & Save Result</button>
+            <button
+              type="button"
+              onClick={() => {
+                clearDraft(`result_form_${inspection.id}`);
+                clearOpenWindow(`results_${inspection.id}`);
+                setShowForm(false);
+              }}
+              className="text-sm text-slate-500 hover:text-slate-700"
+            >
+              Cancel
+            </button>
+          </div>
         </form>
       )}
       <table className="w-full text-sm">
@@ -3648,10 +3862,18 @@ function ResultsTab({ inspection, onReload }: any) {
 // Tab: 5.0 Equipment and Instrumentation Used
 function InstrumentsTab({ inspection, onReload }: any) {
   const [showForm, setShowForm] = useState(() => {
+    const win = getOpenWindow(`instruments_${inspection.id}`);
     const d = loadDraft<any>(`instrument_form_${inspection.id}`);
-    return !!(d?.data?.instrumentName || d?.data?.serialNumber);
+    return win?.windowId === 'add_instrument' || !!(d?.data?.instrumentName || d?.data?.serialNumber);
   });
-  const [editingInstrument, setEditingInstrument] = useState<any>(null);
+  const [editingInstrument, setEditingInstrument] = useState<any>(() => {
+    const win = getOpenWindow(`instruments_${inspection.id}`);
+    if (win?.windowId === 'edit_instrument') {
+      const d = loadDraft<any>(`edit_instrument_${inspection.id}`);
+      return d?.data || win.data || null;
+    }
+    return null;
+  });
   const [form, setForm] = useState(() => {
     const d = loadDraft<any>(`instrument_form_${inspection.id}`);
     return d?.data || {
@@ -3665,10 +3887,28 @@ function InstrumentsTab({ inspection, onReload }: any) {
   });
 
   useEffect(() => {
-    if (form.instrumentName || form.serialNumber || form.certificateNo) {
+    if (showForm) {
       saveDraft(`instrument_form_${inspection.id}`, form);
+      saveOpenWindow(`instruments_${inspection.id}`, 'add_instrument', form);
+    } else {
+      if (getOpenWindow(`instruments_${inspection.id}`)?.windowId === 'add_instrument') {
+        clearOpenWindow(`instruments_${inspection.id}`);
+      }
     }
-  }, [form, inspection.id]);
+  }, [form, showForm, inspection.id]);
+
+  useEffect(() => {
+    if (editingInstrument) {
+      saveDraft(`edit_instrument_${inspection.id}`, editingInstrument);
+      saveOpenWindow(`instruments_${inspection.id}`, 'edit_instrument', editingInstrument);
+    }
+  }, [editingInstrument, inspection.id]);
+
+  const handleCloseEditInstrument = () => {
+    clearDraft(`edit_instrument_${inspection.id}`);
+    clearOpenWindow(`instruments_${inspection.id}`);
+    setEditingInstrument(null);
+  };
 
   const [loadingAuto, setLoadingAuto] = useState(false);
 
@@ -3677,6 +3917,7 @@ function InstrumentsTab({ inspection, onReload }: any) {
     try {
       await API.addInstrument(form);
       clearDraft(`instrument_form_${inspection.id}`);
+      clearOpenWindow(`instruments_${inspection.id}`);
       setShowForm(false);
       setForm({
         inspectionId: inspection.id,
@@ -3784,7 +4025,15 @@ function InstrumentsTab({ inspection, onReload }: any) {
             <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium">
               Save Instrument
             </button>
-            <button type="button" onClick={() => setShowForm(false)} className="text-sm text-slate-500">
+            <button
+              type="button"
+              onClick={() => {
+                clearDraft(`instrument_form_${inspection.id}`);
+                clearOpenWindow(`instruments_${inspection.id}`);
+                setShowForm(false);
+              }}
+              className="text-sm text-slate-500 hover:text-slate-700"
+            >
               Cancel
             </button>
           </div>
@@ -3878,7 +4127,7 @@ function InstrumentsTab({ inspection, onReload }: any) {
               <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                 <span>✏️</span> Edit Equipment / Instrument
               </h3>
-              <button onClick={() => setEditingInstrument(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+              <button onClick={handleCloseEditInstrument} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
             </div>
             <form
               onSubmit={async (e) => {
@@ -3890,7 +4139,7 @@ function InstrumentsTab({ inspection, onReload }: any) {
                     certificateNo: editingInstrument.certificateNo,
                     expiryDate: editingInstrument.expiryDate || null,
                   });
-                  setEditingInstrument(null);
+                  handleCloseEditInstrument();
                   onReload();
                 } catch (err: any) {
                   alert(err.response?.data?.error || 'Failed to update instrument');
@@ -3924,7 +4173,7 @@ function InstrumentsTab({ inspection, onReload }: any) {
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setEditingInstrument(null)}
+                  onClick={handleCloseEditInstrument}
                   className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50 font-medium"
                 >
                   Cancel
@@ -3947,26 +4196,54 @@ function InstrumentsTab({ inspection, onReload }: any) {
 // Tab: Attendees
 function AttendeesTab({ inspection, onReload }: any) {
   const [showForm, setShowForm] = useState(() => {
+    const win = getOpenWindow(`attendees_${inspection.id}`);
     const d = loadDraft<any>(`attendee_form_${inspection.id}`);
-    return !!(d?.data?.name || d?.data?.company);
+    return win?.windowId === 'add_attendee' || !!(d?.data?.name || d?.data?.company);
   });
-  const [editingAttendee, setEditingAttendee] = useState<any>(null);
+  const [editingAttendee, setEditingAttendee] = useState<any>(() => {
+    const win = getOpenWindow(`attendees_${inspection.id}`);
+    if (win?.windowId === 'edit_attendee') {
+      const d = loadDraft<any>(`edit_attendee_${inspection.id}`);
+      return d?.data || win.data || null;
+    }
+    return null;
+  });
   const [form, setForm] = useState(() => {
     const d = loadDraft<any>(`attendee_form_${inspection.id}`);
     return d?.data || { inspectionId: inspection.id, name: '', company: '', representedOrg: '', title: '' };
   });
 
   useEffect(() => {
-    if (form.name || form.company || form.title) {
+    if (showForm) {
       saveDraft(`attendee_form_${inspection.id}`, form);
+      saveOpenWindow(`attendees_${inspection.id}`, 'add_attendee', form);
+    } else {
+      if (getOpenWindow(`attendees_${inspection.id}`)?.windowId === 'add_attendee') {
+        clearOpenWindow(`attendees_${inspection.id}`);
+      }
     }
-  }, [form, inspection.id]);
+  }, [form, showForm, inspection.id]);
+
+  useEffect(() => {
+    if (editingAttendee) {
+      saveDraft(`edit_attendee_${inspection.id}`, editingAttendee);
+      saveOpenWindow(`attendees_${inspection.id}`, 'edit_attendee', editingAttendee);
+    }
+  }, [editingAttendee, inspection.id]);
+
+  const handleCloseEditAttendee = () => {
+    clearDraft(`edit_attendee_${inspection.id}`);
+    clearOpenWindow(`attendees_${inspection.id}`);
+    setEditingAttendee(null);
+  };
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     await API.addAttendee(form);
     clearDraft(`attendee_form_${inspection.id}`);
-    setShowForm(false); onReload();
+    clearOpenWindow(`attendees_${inspection.id}`);
+    setShowForm(false);
+    onReload();
   };
 
   const handleDeleteAttendee = async (attendeeId: string, name: string) => {
@@ -3991,7 +4268,20 @@ function AttendeesTab({ inspection, onReload }: any) {
           <Input label="Company" value={form.company} onChange={v => setForm({ ...form, company: v })} placeholder="Intertek" required />
           <Input label="Represented Org" value={form.representedOrg} onChange={v => setForm({ ...form, representedOrg: v })} placeholder="ADNOC Onshore" required />
           <Input label="Title" value={form.title} onChange={v => setForm({ ...form, title: v })} placeholder="Inspection Engineer" required />
-          <div className="col-span-2 flex gap-2"><button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm">Add</button><button type="button" onClick={() => setShowForm(false)} className="text-sm text-slate-500">Cancel</button></div>
+          <div className="col-span-2 flex gap-2">
+            <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm">Add</button>
+            <button
+              type="button"
+              onClick={() => {
+                clearDraft(`attendee_form_${inspection.id}`);
+                clearOpenWindow(`attendees_${inspection.id}`);
+                setShowForm(false);
+              }}
+              className="text-sm text-slate-500 hover:text-slate-700"
+            >
+              Cancel
+            </button>
+          </div>
         </form>
       )}
       <table className="w-full text-sm">
@@ -4032,7 +4322,7 @@ function AttendeesTab({ inspection, onReload }: any) {
               <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                 <span>✏️</span> Edit Attendee
               </h3>
-              <button onClick={() => setEditingAttendee(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+              <button onClick={handleCloseEditAttendee} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
             </div>
             <form
               onSubmit={async (e) => {
@@ -4044,7 +4334,7 @@ function AttendeesTab({ inspection, onReload }: any) {
                     representedOrg: editingAttendee.representedOrg,
                     title: editingAttendee.title,
                   });
-                  setEditingAttendee(null);
+                  handleCloseEditAttendee();
                   onReload();
                 } catch (err: any) {
                   alert(err.response?.data?.error || 'Failed to update attendee');
@@ -4087,7 +4377,7 @@ function AttendeesTab({ inspection, onReload }: any) {
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setEditingAttendee(null)}
+                  onClick={handleCloseEditAttendee}
                   className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50 font-medium"
                 >
                   Cancel
@@ -4200,14 +4490,55 @@ function PhotosTab({ inspection, onReload }: any) {
 
 // Tab: Observations
 function ObservationsTab({ inspection, onReload }: any) {
-  const [showForm, setShowForm] = useState(false);
-  const [editingObs, setEditingObs] = useState<any>(null);
-  const [form, setForm] = useState({ inspectionId: inspection.id, obsType: 'POSITIVE', criticality: 'NON_CRITICAL', category: 'Documentation', comments: '' });
+  const [showForm, setShowForm] = useState(() => {
+    const win = getOpenWindow(`observations_${inspection.id}`);
+    const d = loadDraft<any>(`obs_form_${inspection.id}`);
+    return win?.windowId === 'add_obs' || !!(d?.data?.comments);
+  });
+  const [editingObs, setEditingObs] = useState<any>(() => {
+    const win = getOpenWindow(`observations_${inspection.id}`);
+    if (win?.windowId === 'edit_obs') {
+      const d = loadDraft<any>(`edit_obs_${inspection.id}`);
+      return d?.data || win.data || null;
+    }
+    return null;
+  });
+  const [form, setForm] = useState(() => {
+    const d = loadDraft<any>(`obs_form_${inspection.id}`);
+    return d?.data || { inspectionId: inspection.id, obsType: 'POSITIVE', criticality: 'NON_CRITICAL', category: 'Documentation', comments: '' };
+  });
+
+  useEffect(() => {
+    if (showForm) {
+      saveDraft(`obs_form_${inspection.id}`, form);
+      saveOpenWindow(`observations_${inspection.id}`, 'add_obs', form);
+    } else {
+      if (getOpenWindow(`observations_${inspection.id}`)?.windowId === 'add_obs') {
+        clearOpenWindow(`observations_${inspection.id}`);
+      }
+    }
+  }, [form, showForm, inspection.id]);
+
+  useEffect(() => {
+    if (editingObs) {
+      saveDraft(`edit_obs_${inspection.id}`, editingObs);
+      saveOpenWindow(`observations_${inspection.id}`, 'edit_obs', editingObs);
+    }
+  }, [editingObs, inspection.id]);
+
+  const handleCloseEditObs = () => {
+    clearDraft(`edit_obs_${inspection.id}`);
+    clearOpenWindow(`observations_${inspection.id}`);
+    setEditingObs(null);
+  };
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     await API.addObservation(form);
-    setShowForm(false); onReload();
+    clearDraft(`obs_form_${inspection.id}`);
+    clearOpenWindow(`observations_${inspection.id}`);
+    setShowForm(false);
+    onReload();
   };
 
   const handleDeleteObservation = async (obsId: string) => {
@@ -4247,7 +4578,20 @@ function ObservationsTab({ inspection, onReload }: any) {
           </div>
           <div><label className="block text-sm font-medium text-slate-700 mb-1">Comments</label>
             <textarea value={form.comments} onChange={e => setForm({ ...form, comments: e.target.value })} className="w-full px-3 py-2 border rounded-lg" rows={3} required /></div>
-          <div className="flex gap-2"><button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm">Add</button><button type="button" onClick={() => setShowForm(false)} className="text-sm text-slate-500">Cancel</button></div>
+          <div className="flex gap-2">
+            <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm">Add</button>
+            <button
+              type="button"
+              onClick={() => {
+                clearDraft(`obs_form_${inspection.id}`);
+                clearOpenWindow(`observations_${inspection.id}`);
+                setShowForm(false);
+              }}
+              className="text-sm text-slate-500 hover:text-slate-700"
+            >
+              Cancel
+            </button>
+          </div>
         </form>
       )}
       {inspection.observations?.map((o: any) => (
@@ -4287,7 +4631,7 @@ function ObservationsTab({ inspection, onReload }: any) {
               <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                 <span>✏️</span> Edit Quality Observation
               </h3>
-              <button onClick={() => setEditingObs(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+              <button onClick={handleCloseEditObs} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
             </div>
             <form
               onSubmit={async (e) => {
@@ -4299,7 +4643,7 @@ function ObservationsTab({ inspection, onReload }: any) {
                     category: editingObs.category,
                     comments: editingObs.comments,
                   });
-                  setEditingObs(null);
+                  handleCloseEditObs();
                   onReload();
                 } catch (err: any) {
                   alert(err.response?.data?.error || 'Failed to update observation');
@@ -4359,7 +4703,7 @@ function ObservationsTab({ inspection, onReload }: any) {
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setEditingObs(null)}
+                  onClick={handleCloseEditObs}
                   className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50 font-medium"
                 >
                   Cancel

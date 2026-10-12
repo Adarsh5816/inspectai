@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import * as API from './api';
-import { getAllDrafts } from './draftStorage';
+import { getAllDrafts, getAllOpenWindows, flushAllOpenDrafts } from './draftStorage';
 
-export const CLIENT_VERSION = 'v1.3.0';
+export const CLIENT_VERSION = 'v1.3.1';
 
 function getSessionId(): string {
   let sid = sessionStorage.getItem('inspectai_session_id');
@@ -20,43 +20,51 @@ export function DeploymentGuardian({ user }: { user: any }) {
   const [serverVersion, setServerVersion] = useState('');
   const [dismissed, setDismissed] = useState(false);
   const [draftCount, setDraftCount] = useState(0);
+  const [openWindowsCount, setOpenWindowsCount] = useState(0);
   const [lastSavedNotice, setLastSavedNotice] = useState<string | null>(null);
+  const [isApplyingUpdate, setIsApplyingUpdate] = useState(false);
   const sessionId = useRef(getSessionId()).current;
 
-  // Check draft count
-  const updateDraftCount = () => {
+  // Check draft count and active windows
+  const updateStatus = () => {
     const drafts = getAllDrafts();
+    const windows = getAllOpenWindows();
     setDraftCount(drafts.length);
+    setOpenWindowsCount(windows.length);
   };
 
   useEffect(() => {
-    updateDraftCount();
+    updateStatus();
     const handleDraftUpdate = () => {
-      updateDraftCount();
+      updateStatus();
       setLastSavedNotice(new Date().toLocaleTimeString());
-      setTimeout(() => setLastSavedNotice(null), 3000);
+      setTimeout(() => setLastSavedNotice(null), 3500);
     };
 
     window.addEventListener('inspectai_draft_updated', handleDraftUpdate);
+    window.addEventListener('inspectai_window_state_changed', handleDraftUpdate);
     window.addEventListener('storage', handleDraftUpdate);
     return () => {
       window.removeEventListener('inspectai_draft_updated', handleDraftUpdate);
+      window.removeEventListener('inspectai_window_state_changed', handleDraftUpdate);
       window.removeEventListener('storage', handleDraftUpdate);
     };
   }, []);
 
-  // Prevent accidental tab closing if unsaved changes exist
+  // Flush drafts and prevent accidental tab closing if unsaved changes exist
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (draftCount > 0) {
+      flushAllOpenDrafts();
+      const hasWork = draftCount > 0 || openWindowsCount > 0;
+      if (hasWork) {
         e.preventDefault();
-        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+        e.returnValue = 'You have active in-progress work. Your inputs have been backed up locally. Are you sure you want to close?';
         return e.returnValue;
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [draftCount]);
+  }, [draftCount, openWindowsCount]);
 
   // Heartbeat loop every 20 seconds
   useEffect(() => {
@@ -64,14 +72,15 @@ export function DeploymentGuardian({ user }: { user: any }) {
 
     const runHeartbeat = async () => {
       try {
+        const totalUnsaved = draftCount + openWindowsCount;
         const res = await API.sendHeartbeat({
           sessionId,
           userId: user?.id,
           userName: user?.fullName || 'User',
           userEmail: user?.email,
           currentPath: location.pathname,
-          hasUnsavedChanges: draftCount > 0,
-          unsavedFormsCount: draftCount,
+          hasUnsavedChanges: totalUnsaved > 0,
+          unsavedFormsCount: totalUnsaved,
           clientVersion: CLIENT_VERSION,
         });
 
@@ -92,75 +101,96 @@ export function DeploymentGuardian({ user }: { user: any }) {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [sessionId, user, location.pathname, draftCount]);
+  }, [sessionId, user, location.pathname, draftCount, openWindowsCount]);
+
+  const handleSaveAndRefresh = () => {
+    setIsApplyingUpdate(true);
+    flushAllOpenDrafts();
+    setTimeout(() => {
+      window.location.reload();
+    }, 250);
+  };
+
+  const hasUnsaved = draftCount > 0 || openWindowsCount > 0;
 
   if (!updateAvailable || dismissed) {
     if (lastSavedNotice) {
       return (
-        <div className="fixed bottom-4 right-4 z-50 bg-slate-900 text-white text-xs px-3 py-1.5 rounded-lg shadow-lg flex items-center gap-2 border border-slate-700 animate-fade-in">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          Draft auto-saved locally at {lastSavedNotice}
+        <div className="fixed bottom-4 right-4 z-50 bg-slate-900 text-white text-xs px-3.5 py-2 rounded-xl shadow-xl flex items-center gap-2.5 border border-slate-700 animate-fade-in backdrop-blur-md">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>Draft &amp; active windows auto-saved locally at <strong>{lastSavedNotice}</strong></span>
         </div>
       );
     }
     return null;
   }
 
-  const hasUnsaved = draftCount > 0;
-
   return (
-    <div className={`fixed top-0 left-0 right-0 z-50 px-4 py-3 shadow-lg border-b text-sm transition-all ${
+    <div className={`fixed top-0 left-0 right-0 z-50 px-4 py-3 shadow-xl border-b text-sm transition-all animate-slide-down ${
       hasUnsaved 
         ? 'bg-amber-500 text-amber-950 border-amber-600' 
         : 'bg-indigo-600 text-white border-indigo-700'
     }`}>
       <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 font-medium">
-          <span className="text-xl">{hasUnsaved ? '🛡️' : '🚀'}</span>
-          <span>
-            {hasUnsaved ? (
-              <>
-                <strong>New Deployment Detected ({serverVersion || 'Latest'}).</strong> You have <span className="underline font-bold">{draftCount} unsaved draft(s)</span> in progress. Your work is backed up locally. Save your changes before updating.
-              </>
-            ) : (
-              <>
-                <strong>New Deployment Live ({serverVersion || 'Latest'}).</strong> A new update is ready to be applied.
-              </>
-            )}
-          </span>
+        <div className="flex items-center gap-2.5 font-medium">
+          <span className="text-2xl">{hasUnsaved ? '🛡️' : '🚀'}</span>
+          <div>
+            <div className="font-bold flex items-center gap-2">
+              <span>{hasUnsaved ? 'New System Patch Detected' : 'New Version Ready'}</span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-black/15 font-mono">{serverVersion || 'Latest'}</span>
+            </div>
+            <div className="text-xs opacity-95">
+              {hasUnsaved ? (
+                <span>
+                  You have <strong className="underline">{draftCount} form draft(s)</strong> and <strong className="underline">{openWindowsCount} active window(s)</strong> in progress. They are preserved in local storage and will automatically reopen after applying this update.
+                </span>
+              ) : (
+                <span>An application update is available to apply.</span>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
           {hasUnsaved ? (
             <>
               <button
+                type="button"
                 onClick={() => setDismissed(true)}
-                className="px-3 py-1 bg-amber-200/80 hover:bg-amber-200 text-amber-950 font-semibold rounded-lg text-xs transition"
+                disabled={isApplyingUpdate}
+                className="px-3.5 py-1.5 bg-amber-200/90 hover:bg-amber-100 text-amber-950 font-semibold rounded-lg text-xs transition border border-amber-400"
               >
-                Postpone & Keep Working
+                Postpone &amp; Keep Working
               </button>
               <button
-                onClick={() => {
-                  if (confirm('Make sure your form changes are saved! Proceed to refresh?')) {
-                    window.location.reload();
-                  }
-                }}
-                className="px-3 py-1 bg-amber-950 hover:bg-black text-white font-semibold rounded-lg text-xs transition shadow-sm"
+                type="button"
+                onClick={handleSaveAndRefresh}
+                disabled={isApplyingUpdate}
+                className="px-4 py-1.5 bg-slate-950 hover:bg-black text-white font-bold rounded-lg text-xs transition shadow-md flex items-center gap-1.5"
               >
-                Refresh Now
+                {isApplyingUpdate ? (
+                  <span>Saving &amp; Reloading...</span>
+                ) : (
+                  <>
+                    <span>💾</span>
+                    <span>Auto-Save &amp; Update Now</span>
+                  </>
+                )}
               </button>
             </>
           ) : (
             <>
               <button
+                type="button"
                 onClick={() => setDismissed(true)}
-                className="px-3 py-1 bg-white/20 hover:bg-white/30 text-white font-medium rounded-lg text-xs transition"
+                className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white font-medium rounded-lg text-xs transition"
               >
                 Later
               </button>
               <button
+                type="button"
                 onClick={() => window.location.reload()}
-                className="px-3 py-1 bg-white text-indigo-700 hover:bg-indigo-50 font-bold rounded-lg text-xs transition shadow-sm"
+                className="px-4 py-1.5 bg-white text-indigo-700 hover:bg-indigo-50 font-bold rounded-lg text-xs transition shadow-md"
               >
                 Update Now
               </button>
