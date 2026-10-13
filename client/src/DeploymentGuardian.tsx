@@ -5,6 +5,20 @@ import { getAllDrafts, getAllOpenWindows, flushAllOpenDrafts } from './draftStor
 
 export const CLIENT_VERSION = 'v1.3.1';
 
+function isServerNewer(serverVer: string, clientVer: string): boolean {
+  if (!serverVer || !clientVer) return false;
+  if (serverVer === clientVer) return false;
+  const sParts = serverVer.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+  const cParts = clientVer.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(sParts.length, cParts.length); i++) {
+    const s = sParts[i] || 0;
+    const c = cParts[i] || 0;
+    if (s > c) return true;
+    if (s < c) return false;
+  }
+  return false;
+}
+
 function getSessionId(): string {
   let sid = sessionStorage.getItem('inspectai_session_id');
   if (!sid) {
@@ -85,9 +99,11 @@ export function DeploymentGuardian({ user }: { user: any }) {
         });
 
         if (isMounted && res.data) {
-          if (res.data.serverVersion && res.data.serverVersion !== CLIENT_VERSION) {
+          if (res.data.serverVersion && isServerNewer(res.data.serverVersion, CLIENT_VERSION)) {
             setUpdateAvailable(true);
             setServerVersion(res.data.serverVersion);
+          } else {
+            setUpdateAvailable(false);
           }
         }
       } catch {
@@ -107,7 +123,10 @@ export function DeploymentGuardian({ user }: { user: any }) {
     setIsApplyingUpdate(true);
     flushAllOpenDrafts();
     setTimeout(() => {
-      window.location.reload();
+      // Force clean reload busting browser HTML/script cache
+      const url = new URL(window.location.href);
+      url.searchParams.set('_v', Date.now().toString());
+      window.location.replace(url.toString());
     }, 250);
   };
 

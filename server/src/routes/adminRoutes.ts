@@ -46,8 +46,22 @@ setInterval(() => {
   }
 }, 15000);
 
-const CURRENT_SERVER_VERSION = 'v1.3.0';
-const CURRENT_DEPLOYED_AT = '2026-10-01T21:30:00Z';
+const CURRENT_SERVER_VERSION = 'v1.3.1';
+const CURRENT_DEPLOYED_AT = '2026-10-12T14:15:00Z';
+
+function isServerNewer(serverVer: string, clientVer: string): boolean {
+  if (!serverVer || !clientVer) return false;
+  if (serverVer === clientVer) return false;
+  const sParts = serverVer.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+  const cParts = clientVer.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(sParts.length, cParts.length); i++) {
+    const s = sParts[i] || 0;
+    const c = cParts[i] || 0;
+    if (s > c) return true;
+    if (s < c) return false;
+  }
+  return false;
+}
 
 const BUILT_IN_RELEASES: ReleaseNote[] = [
   {
@@ -227,7 +241,7 @@ router.post('/heartbeat', (req, res) => {
     ok: true,
     serverVersion: CURRENT_SERVER_VERSION,
     serverDeployedAt: CURRENT_DEPLOYED_AT,
-    isUpdateAvailable: clientVersion && clientVersion !== CURRENT_SERVER_VERSION
+    isUpdateAvailable: clientVersion ? isServerNewer(CURRENT_SERVER_VERSION, clientVersion) : false
   });
 });
 
