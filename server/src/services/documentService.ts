@@ -136,6 +136,21 @@ export class DocumentService {
           totalLength: rawText.length,
         };
       }
+
+      // If document text is sparse/scanned (< 100 characters) and Gemini API is available, invoke multimodal extraction
+      if (rawText.trim().length < 100 && process.env.GEMINI_API_KEY) {
+        try {
+          const { AIService } = await import('./aiService.js');
+          const aiService = new AIService();
+          const aiExtracted = await aiService.extractFromDocumentFile(absPath, documentType);
+          if (aiExtracted && Object.keys(aiExtracted).length > 0) {
+            extractedData = { ...extractedData, ...aiExtracted };
+            confidence = 0.95;
+          }
+        } catch (aiErr: any) {
+          console.warn('AI multimodal document extraction fallback notice:', aiErr?.message);
+        }
+      }
     } catch (err: any) {
       console.error('Document extraction error:', err.message);
       extractedData = { error: err.message, documentType };
@@ -164,11 +179,26 @@ export class DocumentService {
 
   public async extractDataFromFile(filePath: string, documentType: string): Promise<any> {
     const { rawText } = await this.extractTextFromFile(filePath);
-    if (documentType === 'RFI') return this.parseRFI(rawText);
-    if (documentType === 'ITP') return this.parseITP(rawText);
-    if (documentType === 'CALIBRATION_CERTIFICATE') return this.parseCalibration(rawText);
-    if (documentType === 'OFFER_LIST' || documentType === 'OFFER_LETTER') return this.parseOfferList(rawText);
-    return { rawText };
+    let parsed: any = {};
+    if (documentType === 'RFI') parsed = this.parseRFI(rawText);
+    else if (documentType === 'ITP') parsed = this.parseITP(rawText);
+    else if (documentType === 'CALIBRATION_CERTIFICATE') parsed = this.parseCalibration(rawText);
+    else if (documentType === 'OFFER_LIST' || documentType === 'OFFER_LETTER') parsed = this.parseOfferList(rawText);
+    else parsed = { rawText };
+
+    if (rawText.trim().length < 100 && process.env.GEMINI_API_KEY) {
+      try {
+        const { AIService } = await import('./aiService.js');
+        const aiService = new AIService();
+        const aiExtracted = await aiService.extractFromDocumentFile(filePath, documentType);
+        if (aiExtracted && Object.keys(aiExtracted).length > 0) {
+          parsed = { ...parsed, ...aiExtracted };
+        }
+      } catch (aiErr: any) {
+        console.warn('AI document extraction fallback notice:', aiErr?.message);
+      }
+    }
+    return parsed;
   }
 
   /**

@@ -43,3 +43,7 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Local scratch and reference materials
+scratch/
+reference-documents/
