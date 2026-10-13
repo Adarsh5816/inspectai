@@ -137,19 +137,29 @@ export class DocumentService {
         };
       }
 
-      // If document text is sparse/scanned (< 100 characters) and Gemini API is available, invoke multimodal extraction
-      if (rawText.trim().length < 100 && process.env.GEMINI_API_KEY) {
+      // If document text is sparse/scanned (< 100 characters) OR key parsed data is missing, invoke multimodal AI extraction
+      const isSparseText = rawText.trim().length < 100;
+      const isRfiMissingActivities = documentType === 'RFI' && (!extractedData.activities || extractedData.activities.length === 0);
+      const isItpMissingClauses = documentType === 'ITP' && (!extractedData.clauses || extractedData.clauses.length === 0);
+      const shouldRunAi = (isSparseText || isRfiMissingActivities || isItpMissingClauses) && Boolean(process.env.GEMINI_API_KEY);
+
+      if (shouldRunAi) {
         try {
           const { AIService } = await import('./aiService.js');
           const aiService = new AIService();
           const aiExtracted = await aiService.extractFromDocumentFile(absPath, documentType);
           if (aiExtracted && Object.keys(aiExtracted).length > 0) {
-            extractedData = { ...extractedData, ...aiExtracted };
+            extractedData = this.mergeAndNormalizeAiData(extractedData, aiExtracted, documentType);
             confidence = 0.95;
           }
         } catch (aiErr: any) {
           console.warn('AI multimodal document extraction fallback notice:', aiErr?.message);
         }
+      }
+
+      // Ensure all activities have standardized format
+      if (extractedData.activities && Array.isArray(extractedData.activities)) {
+        extractedData.activities = this.normalizeActivityList(extractedData.activities);
       }
     } catch (err: any) {
       console.error('Document extraction error:', err.message);
@@ -186,19 +196,118 @@ export class DocumentService {
     else if (documentType === 'OFFER_LIST' || documentType === 'OFFER_LETTER') parsed = this.parseOfferList(rawText);
     else parsed = { rawText };
 
-    if (rawText.trim().length < 100 && process.env.GEMINI_API_KEY) {
+    const isSparseText = rawText.trim().length < 100;
+    const isRfiMissingActivities = documentType === 'RFI' && (!parsed.activities || parsed.activities.length === 0);
+    const isItpMissingClauses = documentType === 'ITP' && (!parsed.clauses || parsed.clauses.length === 0);
+    const shouldRunAi = (isSparseText || isRfiMissingActivities || isItpMissingClauses) && Boolean(process.env.GEMINI_API_KEY);
+
+    if (shouldRunAi) {
       try {
         const { AIService } = await import('./aiService.js');
         const aiService = new AIService();
         const aiExtracted = await aiService.extractFromDocumentFile(filePath, documentType);
         if (aiExtracted && Object.keys(aiExtracted).length > 0) {
-          parsed = { ...parsed, ...aiExtracted };
+          parsed = this.mergeAndNormalizeAiData(parsed, aiExtracted, documentType);
         }
       } catch (aiErr: any) {
         console.warn('AI document extraction fallback notice:', aiErr?.message);
       }
     }
+
+    if (parsed.activities && Array.isArray(parsed.activities)) {
+      parsed.activities = this.normalizeActivityList(parsed.activities);
+    }
+
     return parsed;
+  }
+
+  /**
+   * Normalize an array of activities to standard InspectAI format
+   */
+  public normalizeActivityList(activities: any[]): any[] {
+    const seen = new Set<string>();
+    const result: any[] = [];
+
+    for (const a of activities) {
+      const clauseNumber = (a.clauseNumber || a.clause || a.itp_step_no || a.step || a.clause_no || '').toString().replace(',', '.').trim();
+      if (!clauseNumber || clauseNumber === '3.2' || seen.has(clauseNumber)) continue;
+      seen.add(clauseNumber);
+
+      result.push({
+        clauseNumber,
+        activityName: (a.activityName || a.activity || a.description || a.desc || a.name || `Clause ${clauseNumber}`).toString().trim(),
+        acceptanceCriteria: a.acceptanceCriteria || a.acceptance_criteria || 'Conform to approved ITP & project specifications',
+        interventionTPIA: a.interventionTPIA || a.interventionPoint || a.intervention || 'W',
+        isMandatoryInRFI: true,
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * Helper to merge and normalize AI extraction with heuristic extraction
+   */
+  public mergeAndNormalizeAiData(extractedData: any, aiExtracted: any, documentType: string): any {
+    const merged = { ...extractedData, ...aiExtracted };
+
+    // 1. Normalize activities
+    const rawActs = aiExtracted.activities || aiExtracted.activities_requested || aiExtracted.scopes || [];
+    if (Array.isArray(rawActs) && rawActs.length > 0) {
+      const normActs = this.normalizeActivityList(rawActs);
+      if (normActs.length > 0) {
+        if (!extractedData.activities || extractedData.activities.length === 0) {
+          merged.activities = normActs;
+        } else {
+          // Merge unique clauses
+          const existingMap = new Map<string, any>();
+          for (const a of extractedData.activities) {
+            const num = (a.clauseNumber || a.clause || '').replace(',', '.').trim();
+            if (num) existingMap.set(num, a);
+          }
+          for (const a of normActs) {
+            if (!existingMap.has(a.clauseNumber)) {
+              existingMap.set(a.clauseNumber, a);
+            }
+          }
+          merged.activities = Array.from(existingMap.values());
+        }
+      }
+    }
+
+    // 2. Normalize items if present
+    const rawItems = aiExtracted.items || [];
+    if (Array.isArray(rawItems) && rawItems.length > 0) {
+      const normItems = rawItems
+        .map((i: any, idx: number) => ({
+          poItemNo: (i.poItemNo || i.itemNo || i.item_no || i.itemNumber || `'${idx + 1}`).toString(),
+          tagNumber: (i.tagNumber || i.tagNo || i.tag_no || i.tag || '').toString().trim(),
+          serialNumber: (i.serialNumber || i.serialNo || i.serial_no || '').toString().trim(),
+          itemName: i.itemName || i.description || i.desc || i.item_name || 'Component',
+          orderedQty: Number(i.orderedQty || i.quantity || i.qty) || 1,
+          presentedQty: Number(i.presentedQty || i.quantity || i.qty) || 1,
+          acceptedThisVisit: Number(i.acceptedThisVisit || i.quantity || i.qty) || 1,
+          acceptedToDate: Number(i.acceptedToDate || i.quantity || i.qty) || 1,
+          itpStep: (i.itpStep || i.itp_step || '').toString(),
+        }))
+        .filter((i: any) => i.tagNumber && i.tagNumber !== '-' && i.tagNumber !== 'N/A');
+
+      if (normItems.length > 0 && (!extractedData.items || extractedData.items.length === 0)) {
+        merged.items = normItems;
+      }
+    }
+
+    // 3. Keep top-level metadata fields if parsed version is missing them
+    if (aiExtracted.projectName && !merged.projectName) merged.projectName = aiExtracted.projectName;
+    if (aiExtracted.projectNumber && !merged.projectNumber) merged.projectNumber = aiExtracted.projectNumber;
+    if (aiExtracted.poNumber && !merged.poNumber) merged.poNumber = aiExtracted.poNumber;
+    if (aiExtracted.vendor && !merged.supplierName) merged.supplierName = aiExtracted.vendor;
+    if (aiExtracted.location && !merged.inspectionLocation) merged.inspectionLocation = aiExtracted.location;
+    if (aiExtracted.itpNumber && !merged.itpReference) merged.itpReference = aiExtracted.itpNumber;
+    if (aiExtracted.itpRevision && !merged.itpRevision) merged.itpRevision = aiExtracted.itpRevision;
+    if (aiExtracted.rfiNumber && !merged.rfiNumber) merged.rfiNumber = aiExtracted.rfiNumber;
+
+    return merged;
   }
 
   /**

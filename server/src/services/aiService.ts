@@ -83,7 +83,7 @@ export class AIService {
 
   constructor(config?: AIServiceConfig) {
     this.apiKey = config?.apiKey || process.env.GEMINI_API_KEY || '';
-    this.model = config?.model || process.env.GEMINI_MODEL || 'gemini-flash-latest';
+    this.model = config?.model || process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
   }
 
   private isEnabled(): boolean {
@@ -98,7 +98,12 @@ export class AIService {
       throw new Error('GEMINI_API_KEY is not configured.');
     }
 
-    const candidateModels = [this.model, 'gemini-3.1-flash-lite', 'gemini-3.5-flash'];
+    const candidateModels = Array.from(new Set([
+      this.model,
+      'gemini-3.1-flash-lite',
+      'gemini-3.5-flash',
+      'gemini-flash-lite-latest'
+    ]));
     let lastError: Error | null = null;
 
     for (const modelToTry of candidateModels) {
@@ -191,10 +196,10 @@ Return a valid JSON object matching this schema:
   ],
   "activities": [
     {
-      "clause": "string",
-      "activityName": "string",
+      "clauseNumber": "string (ITP step or clause number, e.g. 2.16, 2.17, 19.5)",
+      "activityName": "string (e.g. Visual & Dimension inspection, Positive Material Identification (PMI))",
       "acceptanceCriteria": "string",
-      "interventionPoint": "string"
+      "interventionTPIA": "string (W, H, R, or RW)"
     }
   ],
   "instruments": [

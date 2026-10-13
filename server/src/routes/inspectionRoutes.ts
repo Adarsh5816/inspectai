@@ -469,22 +469,42 @@ router.post('/:id/import-rfi', async (req, res) => {
     }
 
     // 2. Add Activities (strictly as per RFI!)
-    if (extractedData.activities && Array.isArray(extractedData.activities) && extractedData.activities.length > 0) {
+    const rawActs = extractedData.activities || extractedData.activities_requested || [];
+    const normalizedActivities = Array.isArray(rawActs)
+      ? rawActs
+          .map((a: any) => ({
+            clauseNumber: (a.clauseNumber || a.clause || a.itp_step_no || a.step || a.clause_no || '').toString().replace(',', '.').trim(),
+            activityName: (a.activityName || a.activity || a.description || a.desc || a.name || '').toString().trim(),
+            acceptanceCriteria: a.acceptanceCriteria || a.acceptance_criteria || 'Conform to approved ITP & project specifications',
+            interventionTPIA: a.interventionTPIA || a.interventionPoint || a.intervention || 'W',
+            isMandatoryInRFI: true,
+          }))
+          .filter((a: any) => a.clauseNumber.length > 0 && a.clauseNumber !== '3.2')
+      : [];
+
+    if (normalizedActivities.length > 0) {
       // Remove non-RFI activities (e.g. if all ITP clauses were previously imported)
-      const rfiClauses = new Set(extractedData.activities.map((a: any) => (a.clauseNumber || '').replace(',', '.').trim()));
-      const unneededActs = (inspection.activities || []).filter(a => !rfiClauses.has((a.clauseNumber || '').replace(',', '.').trim()));
+      const rfiClauses = new Set(normalizedActivities.map(a => a.clauseNumber));
+      const currentDbActs = await prisma.inspectionActivity.findMany({ where: { inspectionId } });
+      const unneededActs = currentDbActs.filter(a => !rfiClauses.has((a.clauseNumber || '').replace(',', '.').trim()));
       if (unneededActs.length > 0) {
         const unneededIds = unneededActs.map(a => a.id);
         await prisma.inspectionResult.deleteMany({ where: { activityId: { in: unneededIds } } });
         await prisma.inspectionActivity.deleteMany({ where: { id: { in: unneededIds } } });
       }
 
-      for (const act of extractedData.activities) {
-        const clause = (act.clauseNumber || act.clause || '').replace(',', '.').trim();
-        const name = act.activityName || act.desc || act.name || '';
+      for (const act of normalizedActivities) {
+        const clause = act.clauseNumber;
+        const name = act.activityName || `Clause ${clause}`;
         if (!clause) continue;
 
-        const existing = (inspection.activities || []).find(a => (a.clauseNumber || '').replace(',', '.').trim() === clause);
+        const existing = await prisma.inspectionActivity.findFirst({
+          where: {
+            inspectionId,
+            clauseNumber: clause,
+          },
+        });
+
         if (!existing) {
           await prisma.inspectionActivity.create({
             data: {
@@ -494,6 +514,17 @@ router.post('/:id/import-rfi', async (req, res) => {
               acceptanceCriteria: act.acceptanceCriteria || 'Conform to approved ITP & project specifications',
               interventionTPIA: act.interventionTPIA || 'W',
               status: 'PENDING',
+              isMandatoryInRFI: true,
+            },
+          });
+          activitiesAdded++;
+        } else {
+          await prisma.inspectionActivity.update({
+            where: { id: existing.id },
+            data: {
+              activityName: name || existing.activityName,
+              acceptanceCriteria: act.acceptanceCriteria || existing.acceptanceCriteria,
+              interventionTPIA: act.interventionTPIA || existing.interventionTPIA || 'W',
               isMandatoryInRFI: true,
             },
           });
@@ -518,7 +549,7 @@ router.post('/:id/import-rfi', async (req, res) => {
               const match = clauses.find((c: any) => {
                 const num = (c.clauseNumber || '').replace(',', '.').trim();
                 const desc = (c.activityDescription || '').toLowerCase();
-                return num === cNorm || (cName.includes('visual') && (num === '19.9' || num === '19.5')) || (cName.includes('pmi') && (num === '19.6' || num === '19.61'));
+                return num === cNorm || (cName.includes('visual') && (num === '19.9' || num === '19.5' || desc.includes('visual'))) || (cName.includes('pmi') && (num === '19.6' || num === '19.61' || desc.includes('pmi')));
               });
               if (match) {
                 await prisma.inspectionActivity.update({
@@ -871,6 +902,44 @@ router.post('/:id/recall-rfi', async (req, res) => {
           },
         });
         recalledCount++;
+      }
+    }
+
+    // Also sync activities from RFI if present
+    const rawRecallActs = extractedData.activities || extractedData.activities_requested || [];
+    if (Array.isArray(rawRecallActs) && rawRecallActs.length > 0) {
+      for (const act of rawRecallActs) {
+        const clause = (act.clauseNumber || act.clause || act.itp_step_no || act.step || '').toString().replace(',', '.').trim();
+        const name = (act.activityName || act.activity || act.description || act.desc || act.name || `Clause ${clause}`).toString().trim();
+        if (!clause || clause === '3.2') continue;
+
+        const existing = await prisma.inspectionActivity.findFirst({
+          where: { inspectionId, clauseNumber: clause },
+        });
+
+        if (!existing) {
+          await prisma.inspectionActivity.create({
+            data: {
+              inspectionId,
+              clauseNumber: clause,
+              activityName: name,
+              acceptanceCriteria: act.acceptanceCriteria || 'Conform to approved ITP & project specifications',
+              interventionTPIA: act.interventionTPIA || act.interventionPoint || 'W',
+              status: 'PENDING',
+              isMandatoryInRFI: true,
+            },
+          });
+        } else {
+          await prisma.inspectionActivity.update({
+            where: { id: existing.id },
+            data: {
+              activityName: name || existing.activityName,
+              acceptanceCriteria: act.acceptanceCriteria || existing.acceptanceCriteria,
+              interventionTPIA: act.interventionTPIA || existing.interventionTPIA || 'W',
+              isMandatoryInRFI: true,
+            },
+          });
+        }
       }
     }
 
