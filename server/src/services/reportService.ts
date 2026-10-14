@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import fs from 'fs';
 import path from 'path';
+import { XMLValidator } from 'fast-xml-parser';
 import prisma from '../db/prisma';
 
 const TEMPLATES_DIR = process.env.TEMPLATES_DIR || path.resolve(__dirname, '../../../templates');
@@ -606,11 +607,21 @@ export class ReportService {
       const tblStart = docXml.indexOf('<w:tbl', inspDetIdx);
       if (tblStart !== -1) {
         const tcStart = docXml.indexOf('<w:tc', tblStart);
-        const tcPrEnd = docXml.indexOf('</w:tcPr>', tcStart) + 9;
-        const tcEnd = docXml.indexOf('</w:tc>', tcPrEnd);
-        if (tcPrEnd !== -1 && tcEnd !== -1 && tcEnd > tcPrEnd) {
-          const detailsXml = this.buildInspectionDetailsXml(inspection, project, attendedActivities, dateLong, dateStr, itpFullRef);
-          docXml = docXml.substring(0, tcPrEnd) + detailsXml + docXml.substring(tcEnd);
+        if (tcStart !== -1) {
+          const tcTagEnd = docXml.indexOf('>', tcStart);
+          let contentStart = tcTagEnd !== -1 ? tcTagEnd + 1 : tcStart + 5;
+          const tcPrIdx = docXml.indexOf('<w:tcPr', tcStart);
+          if (tcPrIdx !== -1 && tcPrIdx < contentStart + 20) {
+            const tcPrEnd = docXml.indexOf('</w:tcPr>', tcPrIdx);
+            if (tcPrEnd !== -1) {
+              contentStart = tcPrEnd + 9;
+            }
+          }
+          const tcEnd = this.findMatchingCellEnd(docXml, tcStart);
+          if (contentStart !== -1 && tcEnd !== -1 && tcEnd > contentStart) {
+            const detailsXml = this.buildInspectionDetailsXml(inspection, project, attendedActivities, dateLong, dateStr, itpFullRef);
+            docXml = docXml.substring(0, contentStart) + detailsXml + docXml.substring(tcEnd);
+          }
         }
       }
     }
@@ -681,6 +692,13 @@ export class ReportService {
           }
         }
       }
+    }
+
+    // Validate XML integrity to ensure generated document is not corrupted
+    const xmlValidation = XMLValidator.validate(docXml);
+    if (xmlValidation !== true) {
+      console.error('XML Validation Error in generated report:', xmlValidation.err);
+      throw new Error(`Generated document XML is invalid: ${xmlValidation.err.msg} at line ${xmlValidation.err.line}, col ${xmlValidation.err.col}`);
     }
 
     // Save modified document.xml
@@ -853,6 +871,31 @@ export class ReportService {
         depth--;
         if (depth === 0) {
           return match.index + match[0].length;
+        }
+      } else {
+        depth++;
+      }
+    }
+    return -1;
+  }
+
+  /**
+   * Find matching closing </w:tc> tag for a table cell starting at tcStart, taking nested tables/cells into account.
+   * Returns the index where </w:tc> begins.
+   */
+  private findMatchingCellEnd(docXml: string, tcStart: number): number {
+    let depth = 1;
+    let pos = tcStart + 5;
+    const tcRegex = /<(\/)?w:tc([\s>])/g;
+    tcRegex.lastIndex = pos;
+
+    let match;
+    while ((match = tcRegex.exec(docXml)) !== null) {
+      const isClose = match[1] === '/';
+      if (isClose) {
+        depth--;
+        if (depth === 0) {
+          return match.index;
         }
       } else {
         depth++;
