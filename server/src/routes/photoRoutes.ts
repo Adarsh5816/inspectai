@@ -12,35 +12,54 @@ if (!fs.existsSync(photosDir)) fs.mkdirSync(photosDir, { recursive: true });
 const upload = multer({
   storage: multer.diskStorage({
     destination: photosDir,
-    filename: (_, file, cb) => cb(null, `${Date.now()}-${file.originalname.replace(/\s+/g, '_')}`),
+    filename: (_, file, cb) => cb(null, `${Date.now()}-${Math.random().toString(36).substring(2, 7)}-${file.originalname.replace(/\s+/g, '_')}`),
   }),
   fileFilter: (_, file, cb) => {
-    const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    cb(null, allowed.includes(file.mimetype));
+    const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    const allowedExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff'];
+    cb(null, allowedMimes.includes(file.mimetype?.toLowerCase()) || allowedExts.includes(ext));
   },
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB per file
 });
 
-// Upload photo
-router.post('/upload', upload.single('file'), async (req, res) => {
+// Upload photo(s) - supports single or multiple files in one go
+router.post('/upload', upload.any(), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: 'No image file provided' });
+    const rawFiles = (req.files as Express.Multer.File[]) || (req.file ? [req.file] : []);
+    if (!rawFiles || rawFiles.length === 0) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
     const { inspectionId, category, caption, itemId, activityId, resultId } = req.body;
     if (!inspectionId) return res.status(400).json({ error: 'inspectionId is required' });
 
-    const photo = await prisma.photo.create({
-      data: {
-        inspectionId,
-        storageKey: req.file.path,
-        originalFilename: req.file.originalname,
-        category: category || 'Other',
-        caption: caption || req.file.originalname,
-        itemId: itemId || undefined,
-        activityId: activityId || undefined,
-        resultId: resultId || undefined,
-      },
-    });
-    res.json(photo);
+    const createdPhotos = [];
+    for (let i = 0; i < rawFiles.length; i++) {
+      const file = rawFiles[i];
+      let photoCaption = caption ? caption.trim() : file.originalname;
+      if (rawFiles.length > 1 && caption) {
+        photoCaption = `${caption} (${i + 1})`;
+      }
+
+      const photo = await prisma.photo.create({
+        data: {
+          inspectionId,
+          storageKey: file.path,
+          originalFilename: file.originalname,
+          category: category || 'Other',
+          caption: photoCaption,
+          itemId: itemId || undefined,
+          activityId: activityId || undefined,
+          resultId: resultId || undefined,
+        },
+      });
+      createdPhotos.push(photo);
+    }
+
+    if (createdPhotos.length === 1) {
+      return res.json({ ...createdPhotos[0], photos: createdPhotos, count: 1 });
+    }
+    res.json({ success: true, count: createdPhotos.length, photos: createdPhotos });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

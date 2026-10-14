@@ -3176,24 +3176,30 @@ function ActivitiesTab({ inspection, onReload, onOpenRfiModal, onOpenItpModal, o
   
   // Local state for daily checklist entries
   const [entries, setEntries] = useState<Record<string, { isDone: boolean; status: string; remarks: string; testMedium: string; testPressure: string; holdingTimeMin: string }>>({});
+  const [uploadingActivityId, setUploadingActivityId] = useState<string | null>(null);
 
   const handleUploadPhotoForActivity = async (actId: string, clause: string, name: string, e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files?.[0]) return;
-    const file = e.target.files[0];
+    if (!e.target.files?.length) return;
+    const files = Array.from(e.target.files);
+    setUploadingActivityId(actId);
     const fd = new FormData();
-    fd.append('file', file);
     fd.append('inspectionId', inspection.id);
     fd.append('activityId', actId);
-    fd.append('category', name);
+    fd.append('category', name || 'Inspection');
     fd.append('caption', `Clause ${clause} - ${name}`);
     if (inspection.items?.[0]?.id) fd.append('itemId', inspection.items[0].id);
+    for (const file of files) {
+      fd.append('files', file);
+    }
     try {
       await API.uploadPhoto(fd);
       onReload();
     } catch {
-      alert('Failed to upload photo for activity');
+      alert(`Failed to upload ${files.length > 1 ? `${files.length} photos` : 'photo'} for activity`);
+    } finally {
+      setUploadingActivityId(null);
+      e.target.value = '';
     }
-    e.target.value = '';
   };
 
   const handleDeleteActivity = async (actId: string, clause: string, name: string) => {
@@ -3610,11 +3616,12 @@ function ActivitiesTab({ inspection, onReload, onOpenRfiModal, onOpenItpModal, o
 
                   {/* Photo attachment for this specific activity */}
                   <div className="mt-2.5 pl-8 flex flex-wrap items-center gap-2">
-                    <label className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold px-2.5 py-1 rounded-md border border-indigo-200 cursor-pointer flex items-center gap-1 transition">
-                      <span>📷</span> Attach Photo
+                    <label className={`text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold px-2.5 py-1 rounded-md border border-indigo-200 cursor-pointer flex items-center gap-1 transition ${uploadingActivityId === act.id ? 'opacity-50 pointer-events-none' : ''}`}>
+                      <span>📷</span> {uploadingActivityId === act.id ? 'Uploading...' : 'Attach Photos'}
                       <input
                         type="file"
                         accept="image/*"
+                        multiple
                         onChange={e => handleUploadPhotoForActivity(act.id, act.clauseNumber, act.activityName, e)}
                         className="hidden"
                       />
@@ -4400,6 +4407,7 @@ function AttendeesTab({ inspection, onReload }: any) {
 // Tab: Photos
 function PhotosTab({ inspection, onReload }: any) {
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const categories = ['Name Plate', 'Tag Verification', 'Body', 'Bonnet', 'Actuator', 'Calibration', 'Leak Test', 'FE Test', 'Stroke Test', 'Dimension', 'Painting', 'Other'];
   const [category, setCategory] = useState('Other');
   const [caption, setCaption] = useState('');
@@ -4407,18 +4415,27 @@ function PhotosTab({ inspection, onReload }: any) {
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
+    const files = Array.from(e.target.files);
     setUploading(true);
-    for (const file of Array.from(e.target.files)) {
+    setUploadProgress(`Uploading ${files.length} photo${files.length > 1 ? 's' : ''}...`);
+    try {
       const fd = new FormData();
-      fd.append('file', file);
       fd.append('inspectionId', inspection.id);
       fd.append('category', category);
-      fd.append('caption', caption || file.name);
+      if (caption) fd.append('caption', caption);
       if (itemId) fd.append('itemId', itemId);
+      for (const file of files) {
+        fd.append('files', file);
+      }
       await API.uploadPhoto(fd);
+      onReload();
+    } catch {
+      alert(`Failed to upload ${files.length > 1 ? `${files.length} photos` : 'photo'}`);
+    } finally {
+      setUploading(false);
+      setUploadProgress(null);
+      e.target.value = '';
     }
-    setUploading(false); onReload();
-    e.target.value = '';
   };
 
   const handleDeletePhoto = async (photoId: string) => {
@@ -4449,14 +4466,17 @@ function PhotosTab({ inspection, onReload }: any) {
               {inspection.items?.map((i: any) => <option key={i.id} value={i.id}>{i.tagNumber}</option>)}
             </select>
           </div>
-          <Input label="Caption" value={caption} onChange={setCaption} placeholder="Describe the photo" />
+          <Input label="Caption" value={caption} onChange={setCaption} placeholder="Describe the photo (optional)" />
           <div className="flex items-end">
-            <label className={`bg-blue-600 text-white px-4 py-2 rounded-lg cursor-pointer font-medium text-sm ${uploading ? 'opacity-50' : 'hover:bg-blue-700'}`}>
-              {uploading ? 'Uploading...' : '📸 Upload Photos'}
+            <label className={`bg-blue-600 text-white px-4 py-2 rounded-lg cursor-pointer font-medium text-sm transition flex items-center gap-1.5 ${uploading ? 'opacity-50 pointer-events-none' : 'hover:bg-blue-700'}`}>
+              <span>📸</span> {uploading ? (uploadProgress || 'Uploading...') : 'Upload Photos (Multi)'}
               <input type="file" accept="image/*" multiple onChange={handleUpload} className="hidden" />
             </label>
           </div>
         </div>
+        <p className="text-xs text-slate-500">
+          💡 <strong>Multi-photo selection enabled:</strong> You can select multiple photos at once (use Ctrl/Cmd or Shift to select multiple images).
+        </p>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {inspection.photos?.map((p: any) => (
