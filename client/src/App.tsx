@@ -111,12 +111,12 @@ function Layout({ user, onLogout, children }: { user: any; onLogout: () => void;
     : '👷 Field Staff';
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 flex flex-col">
       <DeploymentGuardian user={user} />
-      <nav className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shadow-sm sticky top-0 z-40">
-        <div className="flex items-center gap-8">
-          <Link to="/" className="text-xl font-bold text-slate-800">INSPECT<span className="text-blue-600">AI</span></Link>
-          <div className="flex gap-1">
+      <nav className="bg-white border-b border-slate-200 px-4 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between shadow-sm sticky top-0 z-40">
+        <div className="flex items-center gap-4 sm:gap-8">
+          <Link to="/" className="text-xl font-black text-slate-800 tracking-tight">INSPECT<span className="text-blue-600">AI</span></Link>
+          <div className="hidden md:flex gap-1">
             {navItems.map(item => (
               <Link key={item.path} to={item.path}
                 className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path)) ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100'}`}>
@@ -125,17 +125,38 @@ function Layout({ user, onLogout, children }: { user: any; onLogout: () => void;
             ))}
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${roleBadge}`}>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <span className={`px-2 py-0.5 rounded-full text-[11px] sm:text-xs font-bold border ${roleBadge}`}>
               {roleLabel}
             </span>
-            <span className="text-sm font-semibold text-slate-700">{user?.fullName}</span>
+            <span className="text-xs sm:text-sm font-semibold text-slate-700 truncate max-w-[120px] sm:max-w-none">{user?.fullName}</span>
           </div>
-          <button onClick={onLogout} className="text-xs font-semibold px-2.5 py-1 text-red-600 hover:bg-red-50 rounded-lg transition">Logout</button>
+          <button onClick={onLogout} className="text-xs font-semibold px-2 py-1 text-red-600 hover:bg-red-50 rounded-lg transition">Logout</button>
         </div>
       </nav>
-      <main className="p-6 max-w-7xl mx-auto">{children}</main>
+
+      {/* Main Content Area */}
+      <main className="flex-1 p-3 sm:p-6 pb-20 md:pb-8 max-w-7xl w-full mx-auto">{children}</main>
+
+      {/* Mobile Bottom Navigation Bar */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-2 py-1 shadow-lg flex justify-around items-center">
+        {navItems.map(item => {
+          const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path));
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={`flex flex-col items-center justify-center py-1.5 px-2 rounded-lg text-[10px] font-semibold transition-all ${
+                isActive ? 'text-blue-600 font-bold scale-105' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <span className="text-lg leading-none mb-0.5">{item.icon}</span>
+              <span className="truncate max-w-[65px]">{item.label.split(' ')[0]}</span>
+            </Link>
+          );
+        })}
+      </nav>
     </div>
   );
 }
@@ -1167,6 +1188,24 @@ function InspectionWorkspacePage() {
     }
   };
 
+  const [autofillingSummary, setAutofillingSummary] = useState(false);
+  const handleAutofillSummary = async () => {
+    if (!id || !inspection) return;
+    setAutofillingSummary(true);
+    try {
+      const res = await API.autofillSummary(id);
+      if (res.data?.summaryNarrative) {
+        setDetailsForm((prev: any) => ({ ...prev, summaryNarrative: res.data.summaryNarrative }));
+        setInspection((prev: any) => ({ ...prev, summaryNarrative: res.data.summaryNarrative }));
+        saveDraft(`details_form_${id}`, { ...detailsForm, summaryNarrative: res.data.summaryNarrative });
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to autofill summary narrative');
+    } finally {
+      setAutofillingSummary(false);
+    }
+  };
+
   const handleSaveTempWork = () => {
     if (!id || !inspection) return;
     setSavingTempWork(true);
@@ -1374,10 +1413,10 @@ function InspectionWorkspacePage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate(-1)} className="text-slate-400 hover:text-slate-600">← Back</button>
-          <h1 className="text-2xl font-bold text-slate-800">{inspection.reportNumber}</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+          <button onClick={() => navigate(-1)} className="text-slate-400 hover:text-slate-600 font-medium text-sm">← Back</button>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 break-all">{inspection.reportNumber}</h1>
           <StatusBadge status={inspection.status} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -1570,7 +1609,7 @@ function InspectionWorkspacePage() {
         {activeTab === 'overview' && <OverviewTab inspection={inspection} onValidate={async () => {
           const r = await API.validateInspection(id!);
           setValidation(r.data);
-        }} validation={validation} onOpenRfiModal={loadRfiDocuments} onOpenItpModal={loadItpDocuments} onOpenOfferModal={loadOfferDocuments} onRecallRfi={handleRecallRfi} recallingRfi={recallingRfi} onOpenEditDetailsModal={openEditDetailsModal} />}
+        }} validation={validation} onOpenRfiModal={loadRfiDocuments} onOpenItpModal={loadItpDocuments} onOpenOfferModal={loadOfferDocuments} onRecallRfi={handleRecallRfi} recallingRfi={recallingRfi} onOpenEditDetailsModal={openEditDetailsModal} onAutofillSummary={handleAutofillSummary} autofillingSummary={autofillingSummary} />}
         {activeTab === 'items' && <ItemsTab inspection={inspection} onReload={load} onOpenRfiModal={loadRfiDocuments} onOpenOfferModal={loadOfferDocuments} onRecallRfi={handleRecallRfi} recallingRfi={recallingRfi} />}
         {activeTab === 'activities' && <ActivitiesTab inspection={inspection} onReload={load} onOpenRfiModal={loadRfiDocuments} onOpenItpModal={loadItpDocuments} onOpenOfferModal={loadOfferDocuments} />}
         {activeTab === 'results' && <ResultsTab inspection={inspection} onReload={load} />}
@@ -1851,12 +1890,23 @@ function InspectionWorkspacePage() {
                   </select>
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Inspection Summary Narrative (Page 1)</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-slate-700">Inspection Summary Narrative (Page 1 &amp; Flash Report)</label>
+                    <button
+                      type="button"
+                      onClick={handleAutofillSummary}
+                      disabled={autofillingSummary}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md transition shadow-xs disabled:opacity-50"
+                      title="Synthesize engineering narrative from approved ITP, materials, vendor, and location"
+                    >
+                      <span>⚡</span> {autofillingSummary ? 'Synthesizing...' : 'Autofill from ITP & Items'}
+                    </button>
+                  </div>
                   <textarea
                     value={detailsForm.summaryNarrative}
                     onChange={e => setDetailsForm({ ...detailsForm, summaryNarrative: e.target.value })}
-                    rows={3}
-                    placeholder="Leave blank to auto-synthesize from attended ITP clauses, or provide custom summary."
+                    rows={4}
+                    placeholder="Leave blank to auto-synthesize from attended ITP clauses and offered items, or click Autofill."
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
                   />
                 </div>
@@ -2641,7 +2691,7 @@ function OfferListModal({ inspection, offerDocs, isOpen, onClose, onReload }: { 
 }
 
 // Tab: Overview
-function OverviewTab({ inspection, onValidate, validation, onOpenRfiModal, onOpenItpModal, onOpenOfferModal, onRecallRfi, recallingRfi, onOpenEditDetailsModal }: any) {
+function OverviewTab({ inspection, onValidate, validation, onOpenRfiModal, onOpenItpModal, onOpenOfferModal, onRecallRfi, recallingRfi, onOpenEditDetailsModal, onAutofillSummary, autofillingSummary }: any) {
   const totalAct = inspection.activities?.length || 0;
   const doneAct = inspection.activities?.filter((a: any) => a.status === 'ACCEPTABLE' || a.status === 'NOT_ACCEPTABLE').length || 0;
   const pct = totalAct > 0 ? Math.round((doneAct / totalAct) * 100) : 0;
@@ -2743,6 +2793,46 @@ function OverviewTab({ inspection, onValidate, validation, onOpenRfiModal, onOpe
               <span className="text-slate-400 italic">None linked</span>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Inspection Summary Narrative Card */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+              <span>📝</span> Inspection Summary Narrative (Report Page 1 &amp; Flash Report)
+            </h4>
+            <p className="text-xs text-slate-500">Auto-synthesized engineering narrative from approved ITP, accepted items, supplier and location.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {onAutofillSummary && (
+              <button
+                type="button"
+                onClick={onAutofillSummary}
+                disabled={autofillingSummary}
+                className="text-xs font-semibold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-lg shadow-xs transition flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <span>⚡</span> {autofillingSummary ? 'Autofilling...' : 'Autofill Summary from ITP & Items'}
+              </button>
+            )}
+            {onOpenEditDetailsModal && (
+              <button
+                type="button"
+                onClick={onOpenEditDetailsModal}
+                className="text-xs font-semibold text-slate-700 hover:text-slate-900 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-xs hover:bg-slate-50 transition flex items-center gap-1"
+              >
+                <span>✏️</span> Edit Narrative
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg text-xs leading-relaxed text-slate-700 whitespace-pre-wrap font-sans">
+          {inspection.summaryNarrative || (
+            <span className="text-slate-400 italic">
+              No custom narrative set yet. It will automatically synthesize during report generation, or click &quot;⚡ Autofill Summary from ITP &amp; Items&quot; above to preview and edit now.
+            </span>
+          )}
         </div>
       </div>
 
@@ -4467,15 +4557,19 @@ function PhotosTab({ inspection, onReload }: any) {
             </select>
           </div>
           <Input label="Caption" value={caption} onChange={setCaption} placeholder="Describe the photo (optional)" />
-          <div className="flex items-end">
-            <label className={`bg-blue-600 text-white px-4 py-2 rounded-lg cursor-pointer font-medium text-sm transition flex items-center gap-1.5 ${uploading ? 'opacity-50 pointer-events-none' : 'hover:bg-blue-700'}`}>
-              <span>📸</span> {uploading ? (uploadProgress || 'Uploading...') : 'Upload Photos (Multi)'}
+          <div className="flex items-end gap-2 col-span-2 md:col-span-1">
+            <label className={`flex-1 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg cursor-pointer font-medium text-xs sm:text-sm transition flex items-center justify-center gap-1 shadow-sm ${uploading ? 'opacity-50 pointer-events-none' : ''}`} title="Take a photo directly with device camera">
+              <span>📷</span> <span>Camera</span>
+              <input type="file" accept="image/*" capture="environment" onChange={handleUpload} className="hidden" />
+            </label>
+            <label className={`flex-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg cursor-pointer font-medium text-xs sm:text-sm transition flex items-center justify-center gap-1 shadow-sm ${uploading ? 'opacity-50 pointer-events-none' : ''}`} title="Upload photos from phone or computer gallery">
+              <span>🖼️</span> <span>{uploading ? (uploadProgress || 'Uploading...') : 'Gallery'}</span>
               <input type="file" accept="image/*" multiple onChange={handleUpload} className="hidden" />
             </label>
           </div>
         </div>
         <p className="text-xs text-slate-500">
-          💡 <strong>Multi-photo selection enabled:</strong> You can select multiple photos at once (use Ctrl/Cmd or Shift to select multiple images).
+          💡 <strong>Mobile Field Ready:</strong> Use <strong>Camera</strong> to snap parts or test gauges live on-site, or <strong>Gallery</strong> to select multiple existing photos.
         </p>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

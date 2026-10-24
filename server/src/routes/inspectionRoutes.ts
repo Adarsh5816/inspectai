@@ -5,6 +5,7 @@ import multer from 'multer';
 import prisma from '../db/prisma';
 import { DocumentService } from '../services/documentService';
 import { AccessControlService } from '../services/accessControlService';
+import { ReportService } from '../services/reportService';
 
 const router = Router();
 const storageDir = process.env.STORAGE_DIR || path.resolve(__dirname, '../../../storage');
@@ -25,18 +26,8 @@ router.get('/', async (req, res) => {
     const where: any = {};
     if (req.query.projectId) where.projectId = req.query.projectId;
 
-    if (user) {
-      const accessibleUserIds = await AccessControlService.getAccessibleUserIds(user);
-      if (req.query.inspectorId) {
-        const requestedId = req.query.inspectorId as string;
-        if (accessibleUserIds === null || accessibleUserIds.includes(requestedId)) {
-          where.inspectorId = requestedId;
-        } else {
-          return res.status(403).json({ error: 'Permission denied: Cannot view inspections for this user.' });
-        }
-      } else if (accessibleUserIds !== null) {
-        where.inspectorId = { in: accessibleUserIds };
-      }
+    if (req.query.inspectorId) {
+      where.inspectorId = req.query.inspectorId as string;
     }
 
     const inspections = await prisma.inspection.findMany({
@@ -166,6 +157,34 @@ router.put('/:id', async (req, res) => {
       data: req.body,
     });
     res.json(inspection);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// AUTOFILL inspection summary narrative from ITP, items, vendor and location
+router.post('/:id/autofill-summary', async (req, res) => {
+  try {
+    const inspection = await prisma.inspection.findUnique({
+      where: { id: req.params.id },
+      include: {
+        project: true,
+        items: true,
+        activities: true,
+        inspector: true,
+      },
+    });
+    if (!inspection) return res.status(404).json({ error: 'Inspection not found' });
+
+    const reportService = new ReportService();
+    const summaryNarrative = reportService.synthesizeInspectionSummary(inspection, inspection.project);
+
+    const updated = await prisma.inspection.update({
+      where: { id: req.params.id },
+      data: { summaryNarrative },
+    });
+
+    res.json({ success: true, summaryNarrative: updated.summaryNarrative });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

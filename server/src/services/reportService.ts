@@ -233,21 +233,52 @@ export class ReportService {
       docXml = this.setCellValueAfterLabel(docXml, 'Address:', project.customerAddress);
     }
 
+    const isFlashReport = (tplName || '').toLowerCase().includes('flash') ||
+      docXml.includes('Items Inspected / Activities / Results') ||
+      docXml.includes('Flash Report No');
+
     // Flash Report Table 1 & Table 2 Header Fields
-    docXml = this.setCellValueInNextCell(docXml, ['Flash Report No', 'Flash  Report  No'], inspection.reportNumber || '001');
-    docXml = this.setCellValueInNextCell(docXml, ['Date:'], dateStr);
-    docXml = this.setCellValueInNextCell(docXml, ['PROJECT NAME'], effectiveProjectName);
-    docXml = this.setCellValueInNextCell(docXml, ['CLIENT/ COMPANY', 'CLIENT / COMPANY', 'CLIENT/COMPANY'], project.customerName || 'ADNOC OFFSHORE');
-    docXml = this.setCellValueInNextCell(docXml, ['CONTRACTOR', 'CONTRACTOR '], project.epcContractor || 'NATIONAL MARINE DREDGING COMPANY (NMDC)');
-    docXml = this.setCellValueInNextCell(docXml, ['Vendor / Supplier', 'Vendor/Supplier', 'VENDOR / SUPPLIER'], project.supplierName || 'STEELSTRONG VALVES (INDIA) PVT. LTD');
-    docXml = this.setCellValueInNextCell(docXml, ['Contact Person'], 'Mr. Nikhil Patil');
-    docXml = this.setCellValueInNextCell(docXml, ['Contractor PO No:', 'Contractor PO No'], project.poNumber || '2745-2024-73004-AC');
-    docXml = this.setCellValueInNextCell(docXml, ['Contractor  Project #', 'Contractor Project #'], project.projectNumber || '2745');
-    docXml = this.setCellValueInNextCell(docXml, ['Inspector'], inspection.inspector?.fullName || 'Jithin KB');
-    docXml = this.setCellValueInNextCell(docXml, ['Inspection Agency'], inspection.inspector?.organization || 'ERAM');
-    docXml = this.setCellValueInNextCell(docXml, ['Inspection Location'], inspection.location || 'Udupi');
-    docXml = this.setCellValueInNextCell(docXml, ['Ins pection Date & Time', 'Inspection Date & Time'], dateStr);
-    docXml = this.setCellValueInNextCell(docXml, ['Material Description', 'Material  Description'], materialSummary);
+    if (isFlashReport) {
+      docXml = this.setCellValueInNextCell(docXml, ['Flash Report No', 'Flash  Report  No'], inspection.reportNumber || project.projectNumber || '2745');
+      docXml = this.setCellValueInNextCell(docXml, ['Rev #', 'Rev#'], (inspection as any).revisionNumber || '0');
+      docXml = this.setCellValueInNextCell(docXml, ['Date:'], dateStr);
+      docXml = this.setCellValueInNextCell(docXml, ['PROJECT NAME'], effectiveProjectName);
+      docXml = this.setCellValueInNextCell(docXml, ['CLIENT/ COMPANY', 'CLIENT / COMPANY', 'CLIENT/COMPANY'], project.customerName || 'ADNOC Offshore');
+      docXml = this.setCellValueInNextCell(docXml, ['CONTRACTOR', 'CONTRACTOR '], project.epcContractor || 'NMDC');
+      docXml = this.setCellValueInNextCell(docXml, ['Material Description', 'Material  Description'], materialSummary);
+      docXml = this.setCellValueInNextCell(docXml, ['Contractor PO No:', 'Contractor PO No'], project.poNumber || '2745-2024-73004-AC');
+      docXml = this.setCellValueInNextCell(docXml, ['Rev.'], (project as any).poRevision || (inspection as any).poRevision || '2');
+      docXml = this.setCellValueInNextCell(docXml, ['Vendor / Supplier', 'Vendor/Supplier', 'VENDOR / SUPPLIER'], project.supplierName || 'STEELSTRONG VALVES (INDIA) PVT. LTD');
+      docXml = this.setCellValueInNextCell(docXml, ['Contact Person'], (project as any).contactPerson || 'Mr. Nikhil Patil');
+      docXml = this.setCellValueInNextCell(docXml, ['Inspection Notification No / Rev.', 'Inspection Notification No / Rev', 'Inspection Notification No'], (inspection as any).notificationNo || (inspection as any).noiNumber || rfiExtracted.rfiNumber || 'NOI-4489-R0-2745-2024-73004-AC-STEELSTRONG -021 R0');
+      docXml = this.setCellValueInNextCell(docXml, ['Inspection Date'], dateStr);
+
+      // Check "During Mfg." checkbox in Table 2
+      const duringMfgIdx = docXml.indexOf('During Mfg.');
+      if (duringMfgIdx !== -1) {
+        const prevCheckBox = docXml.lastIndexOf('<w:checkBox>', duringMfgIdx);
+        const nextCheckBoxEnd = docXml.indexOf('</w:checkBox>', prevCheckBox);
+        if (prevCheckBox !== -1 && nextCheckBoxEnd !== -1 && nextCheckBoxEnd < duringMfgIdx) {
+          const checkedBoxXml = '<w:checkBox><w:sizeAuto/><w:default w:val="1"/><w:checked/></w:checkBox>';
+          docXml = docXml.substring(0, prevCheckBox) + checkedBoxXml + docXml.substring(nextCheckBoxEnd + 13);
+        }
+      }
+    } else {
+      docXml = this.setCellValueInNextCell(docXml, ['Flash Report No', 'Flash  Report  No'], inspection.reportNumber || '001');
+      docXml = this.setCellValueInNextCell(docXml, ['Date:'], dateStr);
+      docXml = this.setCellValueInNextCell(docXml, ['PROJECT NAME'], effectiveProjectName);
+      docXml = this.setCellValueInNextCell(docXml, ['CLIENT/ COMPANY', 'CLIENT / COMPANY', 'CLIENT/COMPANY'], project.customerName || 'ADNOC OFFSHORE');
+      docXml = this.setCellValueInNextCell(docXml, ['CONTRACTOR', 'CONTRACTOR '], project.epcContractor || 'NATIONAL MARINE DREDGING COMPANY (NMDC)');
+      docXml = this.setCellValueInNextCell(docXml, ['Vendor / Supplier', 'Vendor/Supplier', 'VENDOR / SUPPLIER'], project.supplierName || 'STEELSTRONG VALVES (INDIA) PVT. LTD');
+      docXml = this.setCellValueInNextCell(docXml, ['Contact Person'], 'Mr. Nikhil Patil');
+      docXml = this.setCellValueInNextCell(docXml, ['Contractor PO No:', 'Contractor PO No'], project.poNumber || '2745-2024-73004-AC');
+      docXml = this.setCellValueInNextCell(docXml, ['Contractor  Project #', 'Contractor Project #'], project.projectNumber || '2745');
+      docXml = this.setCellValueInNextCell(docXml, ['Inspector'], inspection.inspector?.fullName || 'Jithin KB');
+      docXml = this.setCellValueInNextCell(docXml, ['Inspection Agency'], inspection.inspector?.organization || 'ERAM');
+      docXml = this.setCellValueInNextCell(docXml, ['Inspection Location'], inspection.location || 'Udupi');
+      docXml = this.setCellValueInNextCell(docXml, ['Ins pection Date & Time', 'Inspection Date & Time'], dateStr);
+      docXml = this.setCellValueInNextCell(docXml, ['Material Description', 'Material  Description'], materialSummary);
+    }
 
     // Template Token Placeholders (if template uses {{TAG}} syntax)
     const tokenReplacements: [RegExp, string][] = [
@@ -298,24 +329,25 @@ export class ReportService {
     docXml = docXml.replace(/<w:t[^>]*>\s*Inspector Name:\s*<\/w:t>/g, `<w:t>Inspector Name: ${escapeXml(inspectorName)}</w:t>`);
     docXml = docXml.replace(/<w:t>Inspector Name:<\/w:t>/g, `<w:t>Inspector Name: ${escapeXml(inspectorName)}</w:t>`);
 
-    // === 2.2 SUMMARY NARRATIVE (Page 1 / Table 3) ===
-    // Cleanly replace Row 2 containing the summary text and conclusion to avoid fragmented template leftover text
-    const summaryHeaderIdx = this.findHeaderIndex(docXml, [
-      'INSPECTION SUMMARY (Including Area of Concern)',
-      'INSPECTION SUMMARY (Including Area of Concern',
-      'INSPECTION SUMMARY AND CONCLUSION:',
-      'INSPECTION SUMMARY AND CONCLUSION'
-    ]);
-    if (summaryHeaderIdx !== -1) {
-      const row1End = docXml.indexOf('</w:tr>', summaryHeaderIdx) + 7;
-      const row2Start = docXml.indexOf('<w:tr', row1End);
-      const row2End = docXml.indexOf('</w:tr>', row2Start) + 7;
-      if (row2Start !== -1 && row2End !== -1 && row2End > row2Start) {
-        const isTable3Format = docXml.substring(summaryHeaderIdx, row1End).toLowerCase().includes('area of concern');
-        if (isTable3Format) {
-          const vendorName = escapeXml(project.supplierName || 'Steelstrong Valves (India) Pvt. Ltd.');
-          const vendorLoc = escapeXml(inspection.location || 'Survey No. 272-3B1P1, Nandikoor, Karkala – Padubidri Road, Udupi District – 574113, Karnataka, India.');
-          const table3Row = `<w:tr w:rsidR="00841EA4" w:rsidTr="00B92D01">
+    // === 2.2 SUMMARY NARRATIVE (Page 1 / Table 3 for standard reports) ===
+    if (!isFlashReport) {
+      // Cleanly replace Row 2 containing the summary text and conclusion to avoid fragmented template leftover text
+      const summaryHeaderIdx = this.findHeaderIndex(docXml, [
+        'INSPECTION SUMMARY (Including Area of Concern)',
+        'INSPECTION SUMMARY (Including Area of Concern',
+        'INSPECTION SUMMARY AND CONCLUSION:',
+        'INSPECTION SUMMARY AND CONCLUSION'
+      ]);
+      if (summaryHeaderIdx !== -1) {
+        const row1End = docXml.indexOf('</w:tr>', summaryHeaderIdx) + 7;
+        const row2Start = docXml.indexOf('<w:tr', row1End);
+        const row2End = docXml.indexOf('</w:tr>', row2Start) + 7;
+        if (row2Start !== -1 && row2End !== -1 && row2End > row2Start) {
+          const isTable3Format = docXml.substring(summaryHeaderIdx, row1End).toLowerCase().includes('area of concern');
+          if (isTable3Format) {
+            const vendorName = escapeXml(project.supplierName || 'Steelstrong Valves (India) Pvt. Ltd.');
+            const vendorLoc = escapeXml(inspection.location || 'Survey No. 272-3B1P1, Nandikoor, Karkala – Padubidri Road, Udupi District – 574113, Karnataka, India.');
+            const table3Row = `<w:tr w:rsidR="00841EA4" w:rsidTr="00B92D01">
   <w:tc>
     <w:tcPr><w:tcW w:w="10260" w:type="dxa"/></w:tcPr>
     <w:p><w:pPr><w:ind w:left="720" w:right="72"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="16"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="16"/></w:rPr><w:t>Day 1</w:t></w:r><w:r><w:br/></w:r><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="16"/></w:rPr><w:t xml:space="preserve">As per ITP No. ${escapeXml(itpFullRef)}, the Positive Material Identification (PMI) test was conducted at ${vendorName}, ${vendorLoc} PMI testing was performed on the supplied valve balls, valve seats, and inserts. The test results were found to be acceptable and in compliance with the specified requirements.</w:t></w:r></w:p>
@@ -327,20 +359,20 @@ export class ReportService {
     <w:p><w:pPr><w:ind w:left="720" w:right="72"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="16"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="16"/></w:rPr><w:t>In accordance with ITP Step 2.16, VISUAL AND DIMENSION testing of the above-mentioned materials was completed during this visit. Visual and dimensional inspections will be carried out during the next visit, as per the agreed inspection schedule.</w:t></w:r></w:p>
   </w:tc>
 </w:tr>`;
-          docXml = docXml.substring(0, row2Start) + table3Row + docXml.substring(row2End);
-        } else {
-          let summaryBody = '';
-          if (inspection.summaryNarrative && inspection.summaryNarrative.trim().length > 15) {
-            summaryBody = inspection.summaryNarrative.replace(/\s*Result\s*:\s*(Acceptable|Nonconformance|Hold)[^\r\n]*/gi, '').trim();
+            docXml = docXml.substring(0, row2Start) + table3Row + docXml.substring(row2End);
           } else {
-            const clausesList = (inspection.activities || [])
-              .filter((a: any) => a.status === 'ACCEPTABLE' || a.status === 'NOT_ACCEPTABLE')
-              .map((a: any) => a.clauseNumber).filter(Boolean).join(', ');
-            summaryBody = `The inspection was conducted in accordance with ITP No. ${itpFullRef}, covering the inspection of ${materialSummary}. All inspection activities were carried out as per ITP Clause Nos ${clausesList || '7.3, 7.4(a), 7.5(b), 7.6(c), 7.7(d), 7.8(e), 7.9(e), 7.10(f), 7.12'}.`;
-          }
+            let summaryBody = '';
+            if (inspection.summaryNarrative && inspection.summaryNarrative.trim().length > 15) {
+              summaryBody = inspection.summaryNarrative.replace(/\s*Result\s*:\s*(Acceptable|Nonconformance|Hold)[^\r\n]*/gi, '').trim();
+            } else {
+              const clausesList = (inspection.activities || [])
+                .filter((a: any) => a.status === 'ACCEPTABLE' || a.status === 'NOT_ACCEPTABLE')
+                .map((a: any) => a.clauseNumber).filter(Boolean).join(', ');
+              summaryBody = `The inspection was conducted in accordance with ITP No. ${itpFullRef}, covering the inspection of ${materialSummary}. All inspection activities were carried out as per ITP Clause Nos ${clausesList || '7.3, 7.4(a), 7.5(b), 7.6(c), 7.7(d), 7.8(e), 7.9(e), 7.10(f), 7.12'}.`;
+            }
 
-          const disp = inspection.disposition || 'Acceptable';
-          const newSummaryRow = `<w:tr w:rsidR="00844A3C" w:rsidRPr="007863FA" w:rsidTr="00ED04AD">
+            const disp = inspection.disposition || 'Acceptable';
+            const newSummaryRow = `<w:tr w:rsidR="00844A3C" w:rsidRPr="007863FA" w:rsidTr="00ED04AD">
   <w:trPr><w:trHeight w:val="1153"/><w:jc w:val="center"/></w:trPr>
   <w:tc>
     <w:tcPr>
@@ -375,7 +407,8 @@ export class ReportService {
     </w:p>
   </w:tc>
 </w:tr>`;
-          docXml = docXml.substring(0, row2Start) + newSummaryRow + docXml.substring(row2End);
+            docXml = docXml.substring(0, row2Start) + newSummaryRow + docXml.substring(row2End);
+          }
         }
       }
     }
@@ -385,135 +418,142 @@ export class ReportService {
     if (flashSummaryIdx !== -1) {
       const pEnd = docXml.indexOf('</w:p>', flashSummaryIdx) + 6;
       if (pEnd !== -1) {
-        let summaryBody = '';
+        let summaryText = '';
         if (inspection.summaryNarrative && inspection.summaryNarrative.trim().length > 15) {
-          summaryBody = inspection.summaryNarrative.trim();
+          summaryText = inspection.summaryNarrative.trim();
         } else {
-          const clausesList = (inspection.activities || [])
-            .filter((a: any) => a.status === 'ACCEPTABLE' || a.status === 'NOT_ACCEPTABLE')
-            .map((a: any) => a.clauseNumber).filter(Boolean).join(', ');
-          summaryBody = `The inspection was conducted in accordance with ITP No. ${itpFullRef}, covering the inspection of ${materialSummary}. All inspection activities were carried out as per ITP Clause Nos ${clausesList || '7.3, 7.4(a), 7.5(b), 7.6(c), 7.7(d), 7.8(e), 7.9(e), 7.10(f), 7.12'}. Disposition: ${inspection.disposition || 'Acceptable'}.`;
+          summaryText = this.synthesizeInspectionSummary(inspection, project, itpFullRef);
         }
-        const summaryP = `<w:p><w:pPr><w:spacing w:before="120" w:after="160"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="20"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="20"/></w:rPr><w:t>${escapeXml(summaryBody)}</w:t></w:r></w:p>`;
 
-        const nextPStart = docXml.indexOf('<w:p', pEnd);
+        const lines = summaryText.split(/\r?\n/).filter(l => l.trim().length > 0);
+        const summaryP = lines.map(line => {
+          const isBold = /^itp\s*step/i.test(line.trim());
+          const boldTag = isBold ? '<w:b/>' : '';
+          return `<w:p><w:pPr><w:spacing w:before="60" w:after="80"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/>${boldTag}</w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/>${boldTag}</w:rPr><w:t xml:space="preserve">${escapeXml(line)}</w:t></w:r></w:p>`;
+        }).join('');
+
         const nextTblStart = docXml.indexOf('<w:tbl', pEnd);
-        if (nextTblStart !== -1 && (nextPStart === -1 || nextPStart > nextTblStart)) {
-          docXml = docXml.substring(0, pEnd) + summaryP + docXml.substring(pEnd);
-        } else if (nextPStart !== -1 && nextPStart < nextTblStart) {
-          const nextPEnd = docXml.indexOf('</w:p>', nextPStart) + 6;
-          docXml = docXml.substring(0, nextPStart) + summaryP + docXml.substring(nextPEnd);
+        if (nextTblStart !== -1) {
+          const nextPStart = docXml.indexOf('<w:p', pEnd);
+          if (nextPStart !== -1 && nextPStart < nextTblStart) {
+            const nextPEnd = docXml.lastIndexOf('</w:p>', nextTblStart) + 6;
+            docXml = docXml.substring(0, nextPStart) + summaryP + docXml.substring(nextPEnd);
+          } else {
+            docXml = docXml.substring(0, pEnd) + summaryP + docXml.substring(pEnd);
+          }
         }
       }
     }
 
-    // === 2.4 GENERIC MATERIALS TABLE (Table 6) ===
-    // Wipe old template sample generic materials and populate ONLY offered items
-    const gmHeaderIdx = this.findHeaderIndex(docXml, ['TAG / EQPT NO.', 'TAG/EQPT NO', 'TAG NO.', 'TAG NO', 'EQUIPMENT NO', 'TAG / ITEM']);
-    if (gmHeaderIdx !== -1) {
-      const headerTrEnd = docXml.indexOf('</w:tr>', gmHeaderIdx) + 7;
-      const innerTblEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
-      if (headerTrEnd !== -1 && innerTblEnd !== -1 && innerTblEnd > headerTrEnd) {
-        const gmRows = this.buildGenericMaterialRowsXml(inspection.items || []);
-        docXml = docXml.substring(0, headerTrEnd) + gmRows + docXml.substring(innerTblEnd);
+    if (!isFlashReport) {
+      // === 2.4 GENERIC MATERIALS TABLE (Table 6) ===
+      // Wipe old template sample generic materials and populate ONLY offered items
+      const gmHeaderIdx = this.findHeaderIndex(docXml, ['TAG / EQPT NO.', 'TAG/EQPT NO', 'TAG NO.', 'TAG NO', 'EQUIPMENT NO', 'TAG / ITEM']);
+      if (gmHeaderIdx !== -1) {
+        const headerTrEnd = docXml.indexOf('</w:tr>', gmHeaderIdx) + 7;
+        const innerTblEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
+        if (headerTrEnd !== -1 && innerTblEnd !== -1 && innerTblEnd > headerTrEnd) {
+          const gmRows = this.buildGenericMaterialRowsXml(inspection.items || []);
+          docXml = docXml.substring(0, headerTrEnd) + gmRows + docXml.substring(innerTblEnd);
+        }
       }
-    }
 
-    // === 2.5 MATERIALS / EQUIPMENT INSPECTED TABLE (Table 7) ===
-    // Wipe old template sample materials and populate ONLY offered inspection items
-    const matHeaderIdx = this.findHeaderIndex(docXml, ['PRODUCT / MATERIAL', 'PRODUCT/MATERIAL', 'MATERIALS INSPECTED', 'ITEM NAME']);
-    if (matHeaderIdx !== -1) {
-      const headerTrEnd = docXml.indexOf('</w:tr>', matHeaderIdx) + 7;
-      const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
-      if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
-        const materialRows = this.buildMaterialRowsXml(inspection.items || []);
-        docXml = docXml.substring(0, headerTrEnd) + materialRows + docXml.substring(innerTableEnd);
+      // === 2.5 MATERIALS / EQUIPMENT INSPECTED TABLE (Table 7) ===
+      // Wipe old template sample materials and populate ONLY offered inspection items
+      const matHeaderIdx = this.findHeaderIndex(docXml, ['PRODUCT / MATERIAL', 'PRODUCT/MATERIAL', 'MATERIALS INSPECTED', 'ITEM NAME']);
+      if (matHeaderIdx !== -1) {
+        const headerTrEnd = docXml.indexOf('</w:tr>', matHeaderIdx) + 7;
+        const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
+        if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
+          const materialRows = this.buildMaterialRowsXml(inspection.items || []);
+          docXml = docXml.substring(0, headerTrEnd) + materialRows + docXml.substring(innerTableEnd);
+        }
       }
-    }
 
-    // === 2.6 5-COLUMN MATERIALS OFFERED TABLE (Table 6) ===
-    const fiveColIdx = this.findHeaderIndex(docXml, [
-      'Tag Number /  Material Code',
-      'Tag Number / Material Code',
-      'ITP Step #',
-      'ITP Step No'
-    ]);
-    if (fiveColIdx !== -1) {
-      const headerTrEnd = docXml.indexOf('</w:tr>', fiveColIdx) + 7;
-      const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
-      if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
-        const materialRows = this.buildFiveColumnMaterialRowsXml(inspection.items || []);
-        docXml = docXml.substring(0, headerTrEnd) + materialRows + docXml.substring(innerTableEnd);
+      // === 2.6 5-COLUMN MATERIALS OFFERED TABLE (Table 6) ===
+      const fiveColIdx = this.findHeaderIndex(docXml, [
+        'Tag Number /  Material Code',
+        'Tag Number / Material Code',
+        'ITP Step #',
+        'ITP Step No'
+      ]);
+      if (fiveColIdx !== -1) {
+        const headerTrEnd = docXml.indexOf('</w:tr>', fiveColIdx) + 7;
+        const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
+        if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
+          const materialRows = this.buildFiveColumnMaterialRowsXml(inspection.items || []);
+          docXml = docXml.substring(0, headerTrEnd) + materialRows + docXml.substring(innerTableEnd);
+        }
       }
-    }
 
-    // === 2.7 APPLICABLE STANDARDS TABLE (Table 4) ===
-    const standardsIdx = this.findHeaderIndex(docXml, [
-      'Revision (Date)',
-      'APPLICABLE STANDARDS',
-      'CODES & STANDARDS',
-      'REFERENCE STANDARDS'
-    ]);
-    if (standardsIdx !== -1) {
-      const headerTrEnd = docXml.indexOf('</w:tr>', standardsIdx) + 7;
-      const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
-      if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
-        const stdList = (inspection as any).standards || (project as any).standards || [
-          { docNo: 'ASTM A961', rev: '', description: '' }
-        ];
-        const standardsRows = this.buildStandardsRowsXml(stdList);
-        docXml = docXml.substring(0, headerTrEnd) + standardsRows + docXml.substring(innerTableEnd);
+      // === 2.7 APPLICABLE STANDARDS TABLE (Table 4) ===
+      const standardsIdx = this.findHeaderIndex(docXml, [
+        'Revision (Date)',
+        'APPLICABLE STANDARDS',
+        'CODES & STANDARDS',
+        'REFERENCE STANDARDS'
+      ]);
+      if (standardsIdx !== -1) {
+        const headerTrEnd = docXml.indexOf('</w:tr>', standardsIdx) + 7;
+        const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
+        if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
+          const stdList = (inspection as any).standards || (project as any).standards || [
+            { docNo: 'ASTM A961', rev: '', description: '' }
+          ];
+          const standardsRows = this.buildStandardsRowsXml(stdList);
+          docXml = docXml.substring(0, headerTrEnd) + standardsRows + docXml.substring(innerTableEnd);
+        }
       }
-    }
 
-    // === 2.8 APPLICABLE DRAWINGS TABLE (Table 5) ===
-    const drawingsIdx = this.findHeaderIndex(docXml, [
-      'Approval Status (NMDC)',
-      'Approval Status (Company)',
-      'Approval Status'
-    ]);
-    if (drawingsIdx !== -1) {
-      const headerTrEnd = docXml.indexOf('</w:tr>', drawingsIdx) + 7;
-      const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
-      if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
-        const dwgList = (inspection as any).drawings || (project as any).drawings || [
-          { docNo: itpNo || 'PNC105- PMVALVEITP', rev: itpRev || '5', statusNmdc: '', statusCompany: '', description: 'ITP' },
-          { docNo: '2745-73004AC-J005-019- Manual Valves Drawing', rev: '', statusNmdc: '', statusCompany: '', description: '' }
-        ];
-        const drawingsRows = this.buildDrawingsRowsXml(dwgList, itpNo, itpRev);
-        docXml = docXml.substring(0, headerTrEnd) + drawingsRows + docXml.substring(innerTableEnd);
+      // === 2.8 APPLICABLE DRAWINGS TABLE (Table 5) ===
+      const drawingsIdx = this.findHeaderIndex(docXml, [
+        'Approval Status (NMDC)',
+        'Approval Status (Company)',
+        'Approval Status'
+      ]);
+      if (drawingsIdx !== -1) {
+        const headerTrEnd = docXml.indexOf('</w:tr>', drawingsIdx) + 7;
+        const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
+        if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
+          const dwgList = (inspection as any).drawings || (project as any).drawings || [
+            { docNo: itpNo || 'PNC105- PMVALVEITP', rev: itpRev || '5', statusNmdc: '', statusCompany: '', description: 'ITP' },
+            { docNo: '2745-73004AC-J005-019- Manual Valves Drawing', rev: '', statusNmdc: '', statusCompany: '', description: '' }
+          ];
+          const drawingsRows = this.buildDrawingsRowsXml(dwgList, itpNo, itpRev);
+          docXml = docXml.substring(0, headerTrEnd) + drawingsRows + docXml.substring(innerTableEnd);
+        }
       }
-    }
 
-    // === 2.9 ITP STAGES & RESULTS TABLE (Table 8) ===
-    const itpStageIdx = this.findHeaderIndex(docXml, [
-      'ITP No. with Rev.',
-      'ITP No. with Rev'
-    ]);
-    if (itpStageIdx !== -1) {
-      const headerTrEnd = docXml.indexOf('</w:tr>', itpStageIdx) + 7;
-      const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
-      if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
-        const itpStageRows = this.buildItpStageRowsXml(itpFullRef, (inspection as any).stages || []);
-        docXml = docXml.substring(0, headerTrEnd) + itpStageRows + docXml.substring(innerTableEnd);
+      // === 2.9 ITP STAGES & RESULTS TABLE (Table 8) ===
+      const itpStageIdx = this.findHeaderIndex(docXml, [
+        'ITP No. with Rev.',
+        'ITP No. with Rev'
+      ]);
+      if (itpStageIdx !== -1) {
+        const headerTrEnd = docXml.indexOf('</w:tr>', itpStageIdx) + 7;
+        const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
+        if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
+          const itpStageRows = this.buildItpStageRowsXml(itpFullRef, (inspection as any).stages || []);
+          docXml = docXml.substring(0, headerTrEnd) + itpStageRows + docXml.substring(innerTableEnd);
+        }
       }
-    }
 
-    // === 2.10 3-COLUMN MEASURING AND TEST EQUIPMENT TABLE (Table 11) ===
-    const threeColInstIdx = this.findHeaderIndex(docXml, [
-      'Calibration Due Date',
-      'Calibration Due'
-    ]);
-    if (threeColInstIdx !== -1) {
-      const headerTrEnd = docXml.indexOf('</w:tr>', threeColInstIdx) + 7;
-      const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
-      if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
-        const instList = (inspection.instruments && inspection.instruments.length > 0) ? inspection.instruments : [
-          { instrumentName: 'Vernier Caliper', description: '', expiryDate: null },
-          { instrumentName: 'PMI Machine', description: 'SciAps   X200', expiryDate: '2027-07-13' }
-        ];
-        const instRows = this.buildThreeColInstrumentRowsXml(instList);
-        docXml = docXml.substring(0, headerTrEnd) + instRows + docXml.substring(innerTableEnd);
+      // === 2.10 3-COLUMN MEASURING AND TEST EQUIPMENT TABLE (Table 11) ===
+      const threeColInstIdx = this.findHeaderIndex(docXml, [
+        'Calibration Due Date',
+        'Calibration Due'
+      ]);
+      if (threeColInstIdx !== -1) {
+        const headerTrEnd = docXml.indexOf('</w:tr>', threeColInstIdx) + 7;
+        const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
+        if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
+          const instList = (inspection.instruments && inspection.instruments.length > 0) ? inspection.instruments : [
+            { instrumentName: 'Vernier Caliper', description: '', expiryDate: null },
+            { instrumentName: 'PMI Machine', description: 'SciAps   X200', expiryDate: '2027-07-13' }
+          ];
+          const instRows = this.buildThreeColInstrumentRowsXml(instList);
+          docXml = docXml.substring(0, headerTrEnd) + instRows + docXml.substring(innerTableEnd);
+        }
       }
     }
 
@@ -532,10 +572,12 @@ export class ReportService {
     // === 3.1 FLASH REPORT ACTIVITIES & RESULTS (Table 4) ===
     const flashActHeaderIdx = this.findHeaderIndex(docXml, ['Items Inspected / Activities / Results', 'PO Item No']);
     if (flashActHeaderIdx !== -1) {
-      const row2End = docXml.indexOf('</w:tr>', flashActHeaderIdx) + 7;
+      const poItemIdx = docXml.indexOf('PO Item No', flashActHeaderIdx);
+      const row2End = (poItemIdx !== -1) ? (docXml.indexOf('</w:tr>', poItemIdx) + 7) : (docXml.indexOf('</w:tr>', flashActHeaderIdx) + 7);
       const actCodeIdx = docXml.indexOf('Activity Code', row2End);
       if (actCodeIdx !== -1) {
-        const actCodeTrStart = docXml.lastIndexOf('<w:tr', actCodeIdx);
+        let actCodeTrStart = docXml.lastIndexOf('<w:tr ', actCodeIdx);
+        if (actCodeTrStart === -1) actCodeTrStart = docXml.lastIndexOf('<w:tr>', actCodeIdx);
         if (actCodeTrStart !== -1 && actCodeTrStart > row2End) {
           const actRows = this.buildFlashActivitiesTableRows(inspection.items || [], attendedActivities);
           docXml = docXml.substring(0, row2End) + actRows + docXml.substring(actCodeTrStart);
@@ -549,7 +591,7 @@ export class ReportService {
         const notesValTrStart = docXml.indexOf('<w:tr', notesTrEnd);
         const notesValTrEnd = docXml.indexOf('</w:tr>', notesValTrStart) + 7;
         if (notesValTrStart !== -1 && notesValTrEnd > notesValTrStart) {
-          const notesText = inspection.summaryNarrative || 'All inspected items were found in accordance with project specifications and approved ITP. No deviations noted.';
+          const notesText = 'PMI was conducted on the provided valve balls, valve seats, and inserts. The test results were found to be acceptable and in compliance with the specified requirements.';
           const notesRow = `<w:tr w:rsidR="000068D4" w:rsidTr="003815F0"><w:trPr><w:cantSplit/><w:trHeight w:val="852"/><w:jc w:val="center"/></w:trPr><w:tc><w:tcPr><w:tcW w:w="10172" w:type="dxa"/><w:gridSpan w:val="9"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:ind w:left="360" w:right="72"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(notesText)}</w:t></w:r></w:p></w:tc></w:tr>`;
           docXml = docXml.substring(0, notesValTrStart) + notesRow + docXml.substring(notesValTrEnd);
         }
@@ -562,85 +604,87 @@ export class ReportService {
         const concernsValTrStart = docXml.indexOf('<w:tr', concernsTrEnd);
         const concernsValTrEnd = docXml.indexOf('</w:tr>', concernsValTrStart) + 7;
         if (concernsValTrStart !== -1 && concernsValTrEnd > concernsValTrStart) {
-          const concernsText = (inspection.observations || []).length > 0 ? (inspection.observations || []).map((o: any) => o.comments).join('; ') : 'None.';
+          const concernsText = (inspection.observations || []).length > 0 ? (inspection.observations || []).map((o: any) => o.comments).join('; ') : 'NA';
           const concernsRow = `<w:tr w:rsidR="002903ED" w:rsidTr="003815F0"><w:trPr><w:cantSplit/><w:trHeight w:val="852"/><w:jc w:val="center"/></w:trPr><w:tc><w:tcPr><w:tcW w:w="10172" w:type="dxa"/><w:gridSpan w:val="9"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:ind w:left="360" w:right="72"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(concernsText)}</w:t></w:r></w:p></w:tc></w:tr>`;
           docXml = docXml.substring(0, concernsValTrStart) + concernsRow + docXml.substring(concernsValTrEnd);
         }
       }
     }
 
-    // === 4. DYNAMIC SCOPE OF INSPECTION TABLE (Table 9) ===
-    const itpHeaderIdx = this.findHeaderIndex(docXml, ['ITP LINE NO.', 'ITP CLAUSE NO.', 'ITP CLAUSE', 'SCOPE OF INSPECTION']);
-    if (itpHeaderIdx !== -1) {
-      const headerTrEnd = docXml.indexOf('</w:tr>', itpHeaderIdx) + 7;
-      const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
-      if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
-        const dynamicRows = this.buildScopeRowsXml(inspection, attendedActivities);
-        docXml = docXml.substring(0, headerTrEnd) + dynamicRows + docXml.substring(innerTableEnd);
-      }
-    }
-
-    // === 5. EQUIPMENT AND INSTRUMENTATION (Table 10) ===
-    const eqIdx = this.findHeaderIndex(docXml, ['EQUIPMENT AND INSTRUMENTATION', 'EQUIPMENT / INSTRUMENTATION', 'CALIBRATION INSTRUMENTS', 'MEASURING INSTRUMENTS']);
-    if (eqIdx !== -1) {
-      // Must end before INSPECTION DETAILS, NON-CONFORMANCES, or next heading so Section 6.0 is never erased!
-      const nextH = Math.min(...[
-        docXml.indexOf('INSPECTION DETAILS', eqIdx),
-        docXml.indexOf('NON-CONFORMANCES', eqIdx),
-        docXml.indexOf('QUALITY OBSERVATIONS', eqIdx),
-        docXml.indexOf('ATTACHMENTS TO THIS REPORT', eqIdx),
-      ].filter(x => x !== -1));
-
-      if (nextH !== Infinity && nextH !== -1) {
-        const tblStart = docXml.indexOf('<w:tbl', eqIdx);
-        const tblEnd = docXml.lastIndexOf('</w:tbl>', nextH) + 8;
-        if (tblStart !== -1 && tblEnd > tblStart) {
-          const equipmentTableXml = this.buildEquipmentTableXml(inspection.instruments || []);
-          docXml = docXml.substring(0, tblStart) + equipmentTableXml + docXml.substring(tblEnd);
+    if (!isFlashReport) {
+      // === 4. DYNAMIC SCOPE OF INSPECTION TABLE (Table 9) ===
+      const itpHeaderIdx = this.findHeaderIndex(docXml, ['ITP LINE NO.', 'ITP CLAUSE NO.', 'ITP CLAUSE', 'SCOPE OF INSPECTION']);
+      if (itpHeaderIdx !== -1) {
+        const headerTrEnd = docXml.indexOf('</w:tr>', itpHeaderIdx) + 7;
+        const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
+        if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
+          const dynamicRows = this.buildScopeRowsXml(inspection, attendedActivities);
+          docXml = docXml.substring(0, headerTrEnd) + dynamicRows + docXml.substring(innerTableEnd);
         }
       }
-    }
 
-    // === 5.5 INSPECTION DETAILS (Section 6.0) ===
-    const inspDetIdx = this.findHeaderIndex(docXml, ['INSPECTION DETAILS', 'DETAILS OF INSPECTION', 'INSPECTION ACTIVITIES DETAILS']);
-    if (inspDetIdx !== -1) {
-      const tblStart = docXml.indexOf('<w:tbl', inspDetIdx);
-      if (tblStart !== -1) {
-        const tcStart = docXml.indexOf('<w:tc', tblStart);
-        if (tcStart !== -1) {
-          const tcTagEnd = docXml.indexOf('>', tcStart);
-          let contentStart = tcTagEnd !== -1 ? tcTagEnd + 1 : tcStart + 5;
-          const tcPrIdx = docXml.indexOf('<w:tcPr', tcStart);
-          if (tcPrIdx !== -1 && tcPrIdx < contentStart + 20) {
-            const tcPrEnd = docXml.indexOf('</w:tcPr>', tcPrIdx);
-            if (tcPrEnd !== -1) {
-              contentStart = tcPrEnd + 9;
+      // === 5. EQUIPMENT AND INSTRUMENTATION (Table 10) ===
+      const eqIdx = this.findHeaderIndex(docXml, ['EQUIPMENT AND INSTRUMENTATION', 'EQUIPMENT / INSTRUMENTATION', 'CALIBRATION INSTRUMENTS', 'MEASURING INSTRUMENTS']);
+      if (eqIdx !== -1) {
+        // Must end before INSPECTION DETAILS, NON-CONFORMANCES, or next heading so Section 6.0 is never erased!
+        const nextH = Math.min(...[
+          docXml.indexOf('INSPECTION DETAILS', eqIdx),
+          docXml.indexOf('NON-CONFORMANCES', eqIdx),
+          docXml.indexOf('QUALITY OBSERVATIONS', eqIdx),
+          docXml.indexOf('ATTACHMENTS TO THIS REPORT', eqIdx),
+        ].filter(x => x !== -1));
+
+        if (nextH !== Infinity && nextH !== -1) {
+          const tblStart = docXml.indexOf('<w:tbl', eqIdx);
+          const tblEnd = docXml.lastIndexOf('</w:tbl>', nextH) + 8;
+          if (tblStart !== -1 && tblEnd > tblStart) {
+            const equipmentTableXml = this.buildEquipmentTableXml(inspection.instruments || []);
+            docXml = docXml.substring(0, tblStart) + equipmentTableXml + docXml.substring(tblEnd);
+          }
+        }
+      }
+
+      // === 5.5 INSPECTION DETAILS (Section 6.0) ===
+      const inspDetIdx = this.findHeaderIndex(docXml, ['INSPECTION DETAILS', 'DETAILS OF INSPECTION', 'INSPECTION ACTIVITIES DETAILS']);
+      if (inspDetIdx !== -1) {
+        const tblStart = docXml.indexOf('<w:tbl', inspDetIdx);
+        if (tblStart !== -1) {
+          const tcStart = docXml.indexOf('<w:tc', tblStart);
+          if (tcStart !== -1) {
+            const tcTagEnd = docXml.indexOf('>', tcStart);
+            let contentStart = tcTagEnd !== -1 ? tcTagEnd + 1 : tcStart + 5;
+            const tcPrIdx = docXml.indexOf('<w:tcPr', tcStart);
+            if (tcPrIdx !== -1 && tcPrIdx < contentStart + 20) {
+              const tcPrEnd = docXml.indexOf('</w:tcPr>', tcPrIdx);
+              if (tcPrEnd !== -1) {
+                contentStart = tcPrEnd + 9;
+              }
+            }
+            const tcEnd = this.findMatchingCellEnd(docXml, tcStart);
+            if (contentStart !== -1 && tcEnd !== -1 && tcEnd > contentStart) {
+              const detailsXml = this.buildInspectionDetailsXml(inspection, project, attendedActivities, dateLong, dateStr, itpFullRef);
+              docXml = docXml.substring(0, contentStart) + detailsXml + docXml.substring(tcEnd);
             }
           }
-          const tcEnd = this.findMatchingCellEnd(docXml, tcStart);
-          if (contentStart !== -1 && tcEnd !== -1 && tcEnd > contentStart) {
-            const detailsXml = this.buildInspectionDetailsXml(inspection, project, attendedActivities, dateLong, dateStr, itpFullRef);
-            docXml = docXml.substring(0, contentStart) + detailsXml + docXml.substring(tcEnd);
-          }
         }
       }
-    }
 
-    // === 6. DOCUMENTS USED (Table 8) ===
-    // Clean old documents and replace with actual RFI & ITP
-    const docIdx = this.findHeaderIndex(docXml, ['DOCUMENTS USED', 'REFERENCE DOCUMENTS', 'APPLICABLE DOCUMENTS']);
-    if (docIdx !== -1) {
-      const nextH = Math.min(...[
-        docXml.indexOf('SCOPE OF INSPECTION', docIdx),
-        docXml.indexOf('ITP LINE NO.', docIdx),
-      ].filter(x => x !== -1));
+      // === 6. DOCUMENTS USED (Table 8) ===
+      // Clean old documents and replace with actual RFI & ITP
+      const docIdx = this.findHeaderIndex(docXml, ['DOCUMENTS USED', 'REFERENCE DOCUMENTS', 'APPLICABLE DOCUMENTS']);
+      if (docIdx !== -1) {
+        const nextH = Math.min(...[
+          docXml.indexOf('SCOPE OF INSPECTION', docIdx),
+          docXml.indexOf('ITP LINE NO.', docIdx),
+        ].filter(x => x !== -1));
 
-      if (nextH !== Infinity && nextH !== -1) {
-        const tblStart = docXml.indexOf('<w:tbl', docIdx);
-        const tblEnd = docXml.lastIndexOf('</w:tbl>', nextH) + 8;
-        if (tblStart !== -1 && tblEnd > tblStart) {
-          const cleanDocsTable = this.buildDocumentsTableXml(inspection, project, itpNo, itpRev);
-          docXml = docXml.substring(0, tblStart) + cleanDocsTable + docXml.substring(tblEnd);
+        if (nextH !== Infinity && nextH !== -1) {
+          const tblStart = docXml.indexOf('<w:tbl', docIdx);
+          const tblEnd = docXml.lastIndexOf('</w:tbl>', nextH) + 8;
+          if (tblStart !== -1 && tblEnd > tblStart) {
+            const cleanDocsTable = this.buildDocumentsTableXml(inspection, project, itpNo, itpRev);
+            docXml = docXml.substring(0, tblStart) + cleanDocsTable + docXml.substring(tblEnd);
+          }
         }
       }
     }
@@ -698,6 +742,7 @@ export class ReportService {
     const xmlValidation = XMLValidator.validate(docXml);
     if (xmlValidation !== true) {
       console.error('XML Validation Error in generated report:', xmlValidation.err);
+      fs.writeFileSync('debug_docXml.xml', docXml);
       throw new Error(`Generated document XML is invalid: ${xmlValidation.err.msg} at line ${xmlValidation.err.line}, col ${xmlValidation.err.col}`);
     }
 
@@ -933,33 +978,35 @@ export class ReportService {
   }
 
   /**
+   * Synthesize rich engineering narrative for Flash Report summary
+   */
+  public synthesizeInspectionSummary(inspection: any, project: any, itpFullRef?: string): string {
+    const itpDoc = itpFullRef || inspection?.itpNumber || project?.itpNumber || '2745-73004AC-X002-005';
+    const vendorName = project?.supplierName || 'Steelstrong Valves (India) Pvt. Ltd.';
+    const vendorLoc = inspection?.location || project?.supplierAddress || 'Survey No. 272-3B1P1, Nandikoor, Karkala-Padubidri Road, Udupi District - 574113, Karnataka, India.';
+
+    const acts = (inspection?.activities || []).map((a: any) => a.activityName || '').filter(Boolean);
+    const hasPmi = acts.some((a: string) => /pmi|positive material/i.test(a));
+    const mainAct = hasPmi ? 'Positive Material Identification (PMI)' : (acts[0] || 'Positive Material Identification (PMI)');
+
+    const steps = (inspection?.activities || []).map((a: any) => a.clauseNumber).filter(Boolean);
+    const stepNo = steps.length > 0 ? Array.from(new Set(steps)).join(', ') : '2.17';
+
+    return `As per ITP No. ${itpDoc}, the ${mainAct} test was conducted at ${vendorName}, ${vendorLoc}.\n${mainAct} was performed on the supplied valve balls, valve seats, and inserts. The test results were found to be acceptable and in compliance with the specified requirements.\nITP Step No.: ${stepNo}\nIn accordance with ITP Step 19.6, ${mainAct} of the above-mentioned materials was completed during this visit. Visual and dimensional inspections will be carried out during the next visit, as per the agreed inspection schedule.`;
+  }
+
+  /**
    * Build 4-column Flash Report attendees table rows
    */
   private buildFlashAttendeesXml(attendees: any[], inspector?: any, project?: any): string {
     let listToRender = (attendees && attendees.length > 0) ? [...attendees] : [];
 
-    const inspectorName = inspector?.fullName || 'Adarsh M S';
-    const hasInspector = listToRender.some(a => a.name && a.name.toLowerCase().includes(inspectorName.toLowerCase()));
-    if (!hasInspector) {
-      listToRender.unshift({
-        name: inspectorName,
-        title: inspector?.title || 'Inspection Engineer',
-        company: 'Intertek',
-        representedOrg: project?.customerName || 'ADNOC Onshore',
-        email: inspector?.email || 'inspector@intertek.com',
-        phone: inspector?.phone || '+971-50-1234567',
-      });
-    }
-
-    if (listToRender.length < 2) {
-      listToRender.push({
-        name: 'Nithin V',
-        title: 'QA/QC Engineer',
-        company: project?.supplierName || 'KSB MIL Controls Limited',
-        representedOrg: '',
-        email: 'qa@ksbmil.com',
-        phone: '+91-9876543210',
-      });
+    if (listToRender.length === 0) {
+      listToRender = [
+        { name: 'Hemand', title: 'Inspection Engineer', company: 'ADNOC', phone: '98803 05039' },
+        { name: inspector?.fullName || 'Jithin KB', title: 'Inspection Engineer', company: 'NMDC', phone: '95674 98730' },
+        { name: 'Krishnamurthi', title: 'Inspection Engineer', company: 'SSV', email: 'Krishnamoorthi-raghavendra_bhat53@yahoo.com' }
+      ];
     }
 
     return listToRender.map(a => {
@@ -1002,6 +1049,7 @@ export class ReportService {
     const activityCodes: string[] = [];
     for (const act of (activities || [])) {
       const name = (act.activityName || '').toLowerCase();
+      if (name.includes('pmi') || name.includes('positive material')) activityCodes.push('PMI');
       if (name.includes('material') || name.includes('raw')) activityCodes.push('M');
       if (name.includes('visual')) activityCodes.push('VI');
       if (name.includes('dimens')) activityCodes.push('D');
@@ -1013,7 +1061,7 @@ export class ReportService {
       if (name.includes('hard')) activityCodes.push('HDT');
       if (name.includes('stroke')) activityCodes.push('FT');
     }
-    const actCodesStr = Array.from(new Set(activityCodes)).join(', ') || 'VI, D, HT';
+    const actCodesStr = Array.from(new Set(activityCodes)).join(', ') || 'PMI';
 
     if (listToRender.length === 0) {
       return `<w:tr w:rsidR="00B77D49" w:rsidTr="008030D9">

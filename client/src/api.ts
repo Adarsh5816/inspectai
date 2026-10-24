@@ -58,6 +58,8 @@ export const importRFI = (inspectionId: string, documentId: string) =>
   api.post(`/inspections/${inspectionId}/import-rfi`, { documentId });
 export const importITP = (inspectionId: string, documentId: string) =>
   api.post(`/inspections/${inspectionId}/import-itp`, { documentId });
+export const autofillSummary = (inspectionId: string) =>
+  api.post(`/inspections/${inspectionId}/autofill-summary`);
 export const recallRFI = (inspectionId: string, options?: { documentId?: string; clearFirst?: boolean }) =>
   api.post(`/inspections/${inspectionId}/recall-rfi`, options || {});
 export const saveDailyChecklist = (inspectionId: string, entries: any[]) =>
