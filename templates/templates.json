@@ -40,5 +40,17 @@
     "type": "FR",
     "displayName": "NPCC ADNOC Flash Report (FR)",
     "description": "NPCC ADNOC Flash Report Format"
+  },
+  {
+    "name": "FR_Report_001 (2).docx",
+    "type": "FR",
+    "displayName": "FR Report 001 (Flash Report)",
+    "description": "Flash Report Format with Item Visit Details"
+  },
+  {
+    "name": "FR_Report_001.docx",
+    "type": "FR",
+    "displayName": "FR Report 001 Standard (Flash Report)",
+    "description": "Flash Report Format with Item Visit Details"
   }
 ]

@@ -491,14 +491,27 @@ router.post('/:id/import-rfi', async (req, res) => {
     const rawActs = extractedData.activities || extractedData.activities_requested || [];
     const normalizedActivities = Array.isArray(rawActs)
       ? rawActs
-          .map((a: any, idx: number) => ({
-            clauseNumber: (a.clauseNumber || a.clause || a.itp_step_no || a.step || a.clause_no || `Scope-${idx + 1}`).toString().replace(',', '.').trim(),
-            activityName: (a.activityName || a.activity || a.description || a.desc || a.name || '').toString().trim(),
-            acceptanceCriteria: a.acceptanceCriteria || a.acceptance_criteria || 'Conform to approved ITP & project specifications',
-            interventionTPIA: a.interventionTPIA || a.interventionPoint || a.intervention || 'W',
-            isMandatoryInRFI: true,
-          }))
-          .filter((a: any) => a.activityName.length > 2 && a.clauseNumber !== '3.2')
+          .map((a: any, idx: number) => {
+            const rawClause = (a.clauseNumber || a.clause || a.itp_step_no || a.step || a.clause_no || `Scope-${idx + 1}`).toString().replace(',', '.').trim();
+            let rawName = (a.activityName || a.activity || a.description || a.desc || a.name || '').toString().trim();
+            // Clean up rawName: remove trailing tabs, numbers, and dates
+            rawName = rawName.split('\t')[0].trim();
+            rawName = rawName.replace(/^P\.O\.\s*item\(s\):?\s*/i, '').trim();
+            return {
+              clauseNumber: rawClause,
+              activityName: rawName,
+              acceptanceCriteria: a.acceptanceCriteria || a.acceptance_criteria || 'Conform to approved ITP & project specifications',
+              interventionTPIA: a.interventionTPIA || a.interventionPoint || a.intervention || 'W',
+              isMandatoryInRFI: true,
+            };
+          })
+          .filter((a: any) => {
+            if (a.activityName.length < 3) return false;
+            if (a.clauseNumber === '3.2') return false;
+            if (/^\d{2}\.\d{4}$/.test(a.clauseNumber)) return false; // filters out dates like 02.2026
+            if (a.activityName.toLowerCase().startsWith('p.o. item')) return false;
+            return true;
+          })
       : [];
 
     if (normalizedActivities.length > 0) {
@@ -587,13 +600,32 @@ router.post('/:id/import-rfi', async (req, res) => {
       }
     }
 
+    // Determine effective report number and inspection start date
+    const shouldUpdateReportNum = extractedData.rfiNumber && (!inspection.reportNumber || inspection.reportNumber === '001' || inspection.reportNumber.startsWith('IR-001') || inspection.reportNumber.startsWith('001'));
+    let newStartDate = inspection.startDate;
+    const rawDate = extractedData.inspectionDates || extractedData.inspectionDate;
+    if (rawDate) {
+      const match = rawDate.match(/(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/);
+      if (match) {
+        const d = parseInt(match[1], 10);
+        const m = parseInt(match[2], 10) - 1;
+        const y = parseInt(match[3], 10) < 100 ? 2000 + parseInt(match[3], 10) : parseInt(match[3], 10);
+        const parsed = new Date(y, m, d);
+        if (!isNaN(parsed.getTime())) {
+          newStartDate = parsed;
+        }
+      }
+    }
+
     // Link RFI document and update Inspection metadata
     await prisma.inspection.update({
       where: { id: inspectionId },
       data: {
         rfiDocumentId: document.id,
         location: extractedData.inspectionLocation || inspection.location,
+        ...(shouldUpdateReportNum && { reportNumber: extractedData.rfiNumber }),
         ...(extractedData.rfiNumber && { notificationNo: extractedData.rfiNumber }),
+        ...(newStartDate && { startDate: newStartDate }),
         ...(extractedData.inspectionDates && { inspectionDates: extractedData.inspectionDates }),
         ...(extractedData.itpReference && { itpNumber: extractedData.itpReference }),
         ...(extractedData.itpRevision && { itpRevision: extractedData.itpRevision }),
@@ -735,6 +767,60 @@ router.post('/:id/import-itp', async (req, res) => {
         if (found) return found;
       }
 
+      // Dynamic Balancing
+      if (actName.includes('balanc')) {
+        found = clauses.find((c: any) => {
+          const desc = (c.activityDescription || c.activityName || '').toLowerCase();
+          return desc.includes('balanc');
+        });
+        if (found) return found;
+      }
+
+      // Overspeed test
+      if (actName.includes('overspeed') || actName.includes('over speed')) {
+        found = clauses.find((c: any) => {
+          const desc = (c.activityDescription || c.activityName || '').toLowerCase();
+          return desc.includes('overspeed') || desc.includes('over speed');
+        });
+        if (found) return found;
+      }
+
+      // Hydrostatic / Pressure test
+      if (actName.includes('hydro') || actName.includes('pressure test')) {
+        found = clauses.find((c: any) => {
+          const desc = (c.activityDescription || c.activityName || '').toLowerCase();
+          return desc.includes('hydro') || desc.includes('pressure test');
+        });
+        if (found) return found;
+      }
+
+      // Painting / Coating / DFT
+      if (actName.includes('paint') || actName.includes('coating') || actName.includes('dft')) {
+        found = clauses.find((c: any) => {
+          const desc = (c.activityDescription || c.activityName || '').toLowerCase();
+          return desc.includes('paint') || desc.includes('coating') || desc.includes('dft');
+        });
+        if (found) return found;
+      }
+
+      // General word overlap match
+      const actWords = actName.split(/[\s,/-]+/).filter((w: string) => w.length > 3 && !['test', 'inspection', 'check', 'clause'].includes(w));
+      if (actWords.length > 0) {
+        let bestMatch: any = null;
+        let maxOverlap = 0;
+        for (const c of clauses) {
+          const cText = `${c.activityDescription || ''} ${c.activityName || ''}`.toLowerCase();
+          const overlap = actWords.filter((w: string) => cText.includes(w)).length;
+          if (overlap > maxOverlap) {
+            maxOverlap = overlap;
+            bestMatch = c;
+          }
+        }
+        if (maxOverlap >= 1 && bestMatch) {
+          return bestMatch;
+        }
+      }
+
       return null;
     };
 
@@ -750,7 +836,12 @@ router.post('/:id/import-itp', async (req, res) => {
         const match = findMatchingClause(act, itpClauses);
         if (match) {
           const matchClause = (match.clauseNumber || match.clause || '').toString().trim();
-          const shouldUpdateClause = (act.clauseNumber.startsWith('Scope-') || act.clauseNumber.startsWith('Act-')) && matchClause;
+          const shouldUpdateClause = matchClause && (
+            act.clauseNumber.startsWith('Scope-') ||
+            act.clauseNumber.startsWith('Act-') ||
+            act.clauseNumber === '001' ||
+            /^\d{2}\.\d{4}$/.test(act.clauseNumber)
+          );
           await prisma.inspectionActivity.update({
             where: { id: act.id },
             data: {

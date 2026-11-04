@@ -112,21 +112,41 @@ export class ReportService {
       if (fs.existsSync(path.resolve(tplName))) {
         tplPath = path.resolve(tplName);
       } else {
-        throw new Error(`Template not found: ${tplName}`);
+        const isFR = tplName.toLowerCase().includes('fr') || tplName.toLowerCase().includes('flash');
+        const fallback = isFR ? 'NPCC-ADNOC-Flash-Report-Template.docx' : 'master-template.docx';
+        console.warn(`Template not found: ${tplName}, falling back to ${fallback}`);
+        tplPath = path.join(TEMPLATES_DIR, fallback);
       }
     }
 
     const tplBuffer = fs.readFileSync(tplPath);
     const zip = await JSZip.loadAsync(tplBuffer);
 
-    // 3. Parse and modify document.xml
+    // 3. Parse Document AI extractions early
+    let rfiExtracted: any = {};
+    if (inspection.rfiDocument?.extractions?.[0]?.extractedData) {
+      try {
+        rfiExtracted = JSON.parse(inspection.rfiDocument.extractions[0].extractedData);
+      } catch {}
+    }
+
+    let itpExtracted: any = {};
+    if (inspection.itpDocument?.extractions?.[0]?.extractedData) {
+      try {
+        itpExtracted = JSON.parse(inspection.itpDocument.extractions[0].extractedData);
+      } catch {}
+    }
+
+    // Active inspection date: prefer explicit inspectionDates from Inspection/RFI over startDate fallback
+    const rawDates = (inspection as any).inspectionDates || rfiExtracted.inspectionDates || rfiExtracted.inspectionDate;
+    const activeDate = options?.reportDate ? new Date(options.reportDate) : new Date(inspection.startDate);
+    const dateFormatted = `${String(activeDate.getDate()).padStart(2, '0')}/${String(activeDate.getMonth() + 1).padStart(2, '0')}/${activeDate.getFullYear()}`;
+    const dateStr = rawDates ? String(rawDates).trim() : dateFormatted;
+    const dateLong = rawDates ? String(rawDates).trim() : activeDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
+    // 4. Parse and modify document.xml
     const docXmlPath = 'word/document.xml';
     let docXml = await zip.file(docXmlPath)!.async('string');
-
-    // Active inspection date
-    const activeDate = options?.reportDate ? new Date(options.reportDate) : new Date(inspection.startDate);
-    const dateStr = `${String(activeDate.getDate()).padStart(2, '0')}/${String(activeDate.getMonth() + 1).padStart(2, '0')}/${activeDate.getFullYear()}`;
-    const dateLong = activeDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
     const project = inspection.project!;
 
@@ -151,19 +171,6 @@ export class ReportService {
     }
 
     // === 2. DYNAMIC ITP & MATERIAL EXTRACTION ===
-    let rfiExtracted: any = {};
-    if (inspection.rfiDocument?.extractions?.[0]?.extractedData) {
-      try {
-        rfiExtracted = JSON.parse(inspection.rfiDocument.extractions[0].extractedData);
-      } catch {}
-    }
-
-    let itpExtracted: any = {};
-    if (inspection.itpDocument?.extractions?.[0]?.extractedData) {
-      try {
-        itpExtracted = JSON.parse(inspection.itpDocument.extractions[0].extractedData);
-      } catch {}
-    }
 
     const itpNo = inspection.itpNumber || itpExtracted.itpNumber || rfiExtracted.itpReference || (project as any).itpNumber || 'P30339B-30-99-52-4607';
     const itpRev = inspection.itpRevision || itpExtracted.revision || rfiExtracted.itpRevision || (project as any).itpRevision || 'C';
@@ -251,51 +258,78 @@ export class ReportService {
       (inspection as any).noiNumber ||
       rfiExtracted.notificationNo ||
       rfiExtracted.rfiNumber ||
-      inspection.reportNumber ||
-      'NOI-4489-R0-2745-2024-73004-AC-STEELSTRONG -021 R0';
+      (inspection.reportNumber && inspection.reportNumber !== '001' ? inspection.reportNumber : '') ||
+      '';
 
-    const effectiveInspectionDate = (inspection as any).inspectionDates ||
-      rfiExtracted.inspectionDates ||
-      dateStr;
+    const effectiveReportNo = (inspection.reportNumber && inspection.reportNumber !== '001')
+      ? inspection.reportNumber
+      : (effectiveNotificationNo || '001');
+
+    const effectiveInspectionDate = dateStr;
 
     const effectiveClientName = project.customerName ||
       rfiExtracted.clientName ||
       rfiExtracted.customerName ||
       itpExtracted.clientName ||
       itpExtracted.customerName ||
-      'ADNOC Offshore';
+      '';
 
     const effectiveContractor = project.epcContractor ||
       rfiExtracted.contractorName ||
       itpExtracted.contractorName ||
-      'NMDC';
+      '';
 
     const effectiveVendor = project.supplierName ||
       rfiExtracted.vendorName ||
       rfiExtracted.supplierName ||
       itpExtracted.supplier ||
       itpExtracted.supplierName ||
-      'STEELSTRONG VALVES (INDIA) PVT. LTD';
+      '';
 
     const effectiveContactPerson = (project as any).contactPerson ||
       rfiExtracted.contactPerson ||
-      'Mr. Nikhil Patil';
+      '';
 
     // Flash Report Table 1 & Table 2 Header Fields
     if (isFlashReport) {
-      docXml = this.setCellValueInNextCell(docXml, ['Flash Report No', 'Flash  Report  No'], inspection.reportNumber || project.projectNumber || '2745');
-      docXml = this.setCellValueInNextCell(docXml, ['Rev #', 'Rev#'], (inspection as any).revisionNumber || '0');
-      docXml = this.setCellValueInNextCell(docXml, ['Date:'], dateStr);
+      docXml = this.setCellValueInNextCell(docXml, ['Flash Report No', 'Flash  Report  No'], effectiveReportNo);
+      docXml = this.setCellValueInNextCell(docXml, ['Rev #', 'Rev#'], (inspection as any).revisionNumber || rfiExtracted.poRevision || '0');
+      docXml = this.setCellValueInNextCell(docXml, ['Date:'], effectiveInspectionDate);
       docXml = this.setCellValueInNextCell(docXml, ['PROJECT NAME'], effectiveProjectName);
       docXml = this.setCellValueInNextCell(docXml, ['CLIENT/ COMPANY', 'CLIENT / COMPANY', 'CLIENT/COMPANY'], effectiveClientName);
       docXml = this.setCellValueInNextCell(docXml, ['CONTRACTOR', 'CONTRACTOR '], effectiveContractor);
       docXml = this.setCellValueInNextCell(docXml, ['Material Description', 'Material  Description'], materialSummary);
-      docXml = this.setCellValueInNextCell(docXml, ['Contractor PO No:', 'Contractor PO No'], project.poNumber || '2745-2024-73004-AC');
-      docXml = this.setCellValueInNextCell(docXml, ['Rev.'], (project as any).poRevision || (inspection as any).poRevision || '2');
+      docXml = this.setCellValueInNextCell(docXml, ['Contractor PO No:', 'Contractor PO No'], project.poNumber || rfiExtracted.poNumber || '');
+      docXml = this.setCellValueInNextCell(docXml, ['Rev.'], (project as any).poRevision || (inspection as any).poRevision || rfiExtracted.poRevision || '0');
       docXml = this.setCellValueInNextCell(docXml, ['Vendor / Supplier', 'Vendor/Supplier', 'VENDOR / SUPPLIER'], effectiveVendor);
       docXml = this.setCellValueInNextCell(docXml, ['Contact Person'], effectiveContactPerson);
-      docXml = this.setCellValueInNextCell(docXml, ['Inspection Notification No / Rev.', 'Inspection Notification No / Rev', 'Inspection Notification No'], effectiveNotificationNo);
+      docXml = this.setCellValueInNextCell(docXml, [
+        'Inspection Notification No / Rev.',
+        'Inspection Notification No / Rev',
+        'Inspection Notification No',
+        'Inspection Notification No.',
+        'Notification No:',
+        'Notification No.:',
+        'RFI No:',
+        'RFI No.:',
+        'RFI Number:',
+      ], effectiveNotificationNo);
       docXml = this.setCellValueInNextCell(docXml, ['Inspection Date'], effectiveInspectionDate);
+
+      // Check if Table 2 embeds the Details of Item Visit table (e.g. format FR_Report_001)
+      const matIdx = this.findHeaderIndex(docXml, ['Material Description', 'Material  Description', 'Material Description:']);
+      if (matIdx !== -1) {
+        const matTrEnd = docXml.indexOf('</w:tr>', matIdx) + 7;
+        const nextTblEnd = docXml.indexOf('</w:tbl>', matTrEnd);
+        if (matTrEnd !== -1 && nextTblEnd !== -1 && nextTblEnd > matTrEnd) {
+          const rowsBetween = docXml.substring(matTrEnd, nextTblEnd);
+          const hasContractorPo = rowsBetween.includes('Contractor PO No') || rowsBetween.includes('Vendor / Supplier') || rowsBetween.includes('Stage of Inspection');
+          if (!hasContractorPo && rowsBetween.includes('<w:tr')) {
+            const itemRowsXml = this.buildTable2ItemRows(inspection.items || []);
+            docXml = docXml.substring(0, matTrEnd) + itemRowsXml + docXml.substring(nextTblEnd);
+          }
+        }
+      }
 
       // Check "During Mfg." checkbox in Table 2
       const duringMfgIdx = docXml.indexOf('During Mfg.');
@@ -389,18 +423,20 @@ export class ReportService {
         if (row2Start !== -1 && row2End !== -1 && row2End > row2Start) {
           const isTable3Format = docXml.substring(summaryHeaderIdx, row1End).toLowerCase().includes('area of concern');
           if (isTable3Format) {
-            const vendorName = escapeXml(project.supplierName || 'Steelstrong Valves (India) Pvt. Ltd.');
-            const vendorLoc = escapeXml(inspection.location || 'Survey No. 272-3B1P1, Nandikoor, Karkala – Padubidri Road, Udupi District – 574113, Karnataka, India.');
+            let summaryText = '';
+            if (inspection.summaryNarrative && inspection.summaryNarrative.trim().length > 15) {
+              summaryText = inspection.summaryNarrative;
+            } else {
+              summaryText = this.synthesizeInspectionSummary(inspection, project, itpFullRef);
+            }
+            const paras = summaryText.split(/\r?\n/).filter(p => p.trim().length > 0);
+            const pXml = paras.map(p =>
+              `<w:p><w:pPr><w:ind w:left="720" w:right="72"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="16"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="16"/></w:rPr><w:t>${escapeXml(p)}</w:t></w:r></w:p>`
+            ).join('');
             const table3Row = `<w:tr w:rsidR="00841EA4" w:rsidTr="00B92D01">
   <w:tc>
     <w:tcPr><w:tcW w:w="10260" w:type="dxa"/></w:tcPr>
-    <w:p><w:pPr><w:ind w:left="720" w:right="72"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="16"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="16"/></w:rPr><w:t>Day 1</w:t></w:r><w:r><w:br/></w:r><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="16"/></w:rPr><w:t xml:space="preserve">As per ITP No. ${escapeXml(itpFullRef)}, the Positive Material Identification (PMI) test was conducted at ${vendorName}, ${vendorLoc} PMI testing was performed on the supplied valve balls, valve seats, and inserts. The test results were found to be acceptable and in compliance with the specified requirements.</w:t></w:r></w:p>
-    <w:p><w:pPr><w:ind w:left="720" w:right="72"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="16"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="16"/></w:rPr><w:t>ITP Step No.: 2.17</w:t></w:r></w:p>
-    <w:p><w:pPr><w:ind w:left="720" w:right="72"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="16"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="16"/></w:rPr><w:t>In accordance with ITP Step 2.17, PMI testing of the above-mentioned materials was completed during this visit. Visual and dimensional inspections will be carried out during the next visit, as per the agreed inspection schedule.</w:t></w:r></w:p>
-    <w:p><w:pPr><w:ind w:left="720" w:right="72"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="16"/></w:rPr></w:pPr></w:p>
-    <w:p><w:pPr><w:ind w:left="720" w:right="72"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="16"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="16"/></w:rPr><w:t>Day 2</w:t></w:r><w:r><w:br/></w:r><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="16"/></w:rPr><w:t xml:space="preserve">As per ITP No. ${escapeXml(itpFullRef)}, VISUAL AND DIMENSION test was conducted at ${vendorName}, ${vendorLoc} VISUAL AND DIMENSION testing was performed on the supplied valve balls, valve seats, and inserts. The test results were found to be acceptable and in compliance with the specified requirements.</w:t></w:r></w:p>
-    <w:p><w:pPr><w:ind w:left="720" w:right="72"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="16"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="16"/></w:rPr><w:t>ITP Step No.: 2.16</w:t></w:r></w:p>
-    <w:p><w:pPr><w:ind w:left="720" w:right="72"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="16"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="16"/></w:rPr><w:t>In accordance with ITP Step 2.16, VISUAL AND DIMENSION testing of the above-mentioned materials was completed during this visit. Visual and dimensional inspections will be carried out during the next visit, as per the agreed inspection schedule.</w:t></w:r></w:p>
+    ${pXml}
   </w:tc>
 </w:tr>`;
             docXml = docXml.substring(0, row2Start) + table3Row + docXml.substring(row2End);
@@ -673,7 +709,12 @@ export class ReportService {
         const notesValTrStart = docXml.indexOf('<w:tr', notesTrEnd);
         const notesValTrEnd = docXml.indexOf('</w:tr>', notesValTrStart) + 7;
         if (notesValTrStart !== -1 && notesValTrEnd > notesValTrStart) {
-          const notesText = 'PMI was conducted on the provided valve balls, valve seats, and inserts. The test results were found to be acceptable and in compliance with the specified requirements.';
+          const acts = (attendedActivities || [])
+            .map((a: any) => (a.activityName || '').split('\t')[0].replace(/^P\.O\.\s*item\(s\):?\s*/i, '').trim())
+            .filter((n: string) => n.length > 2 && !n.toLowerCase().includes('p.o. item'));
+          const uniqueActs = Array.from(new Set(acts));
+          const actsStr = uniqueActs.length > 0 ? uniqueActs.join(', ') : 'Inspection and testing';
+          const notesText = `${actsStr} was conducted on the offered ${materialSummary}. The test results were found to be acceptable and in compliance with the specified requirements.`;
           const notesRow = `<w:tr w:rsidR="000068D4" w:rsidTr="003815F0"><w:trPr><w:cantSplit/><w:trHeight w:val="852"/><w:jc w:val="center"/></w:trPr><w:tc><w:tcPr><w:tcW w:w="10172" w:type="dxa"/><w:gridSpan w:val="9"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:ind w:left="360" w:right="72"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(notesText)}</w:t></w:r></w:p></w:tc></w:tr>`;
           docXml = docXml.substring(0, notesValTrStart) + notesRow + docXml.substring(notesValTrEnd);
         }
@@ -1063,18 +1104,27 @@ export class ReportService {
    * Synthesize rich engineering narrative for Flash Report summary
    */
   public synthesizeInspectionSummary(inspection: any, project: any, itpFullRef?: string): string {
-    const itpDoc = itpFullRef || inspection?.itpNumber || project?.itpNumber || '2745-73004AC-X002-005';
-    const vendorName = project?.supplierName || 'Steelstrong Valves (India) Pvt. Ltd.';
-    const vendorLoc = inspection?.location || project?.supplierAddress || 'Survey No. 272-3B1P1, Nandikoor, Karkala-Padubidri Road, Udupi District - 574113, Karnataka, India.';
+    const itpDoc = itpFullRef || inspection?.itpNumber || project?.itpNumber || 'approved ITP';
+    const vendorName = project?.supplierName || inspection?.project?.supplierName || 'the manufacturer';
+    const vendorLoc = inspection?.location || project?.supplierAddress || inspection?.project?.supplierAddress || '';
+    const locText = vendorLoc ? ` at ${vendorName}, ${vendorLoc}` : ` at ${vendorName}`;
 
-    const acts = (inspection?.activities || []).map((a: any) => a.activityName || '').filter(Boolean);
-    const hasPmi = acts.some((a: string) => /pmi|positive material/i.test(a));
-    const mainAct = hasPmi ? 'Positive Material Identification (PMI)' : (acts[0] || 'Positive Material Identification (PMI)');
+    const rawActs = (inspection?.activities || [])
+      .map((a: any) => (a.activityName || '').split('\t')[0].replace(/^P\.O\.\s*item\(s\):?\s*/i, '').trim())
+      .filter((n: string) => n.length > 2 && !n.toLowerCase().includes('p.o. item'));
+    const uniqueActs = Array.from(new Set(rawActs));
+    const actsStr = uniqueActs.length > 0 ? uniqueActs.join(', ') : 'Inspection and testing';
 
-    const steps = (inspection?.activities || []).map((a: any) => a.clauseNumber).filter(Boolean);
-    const stepNo = steps.length > 0 ? Array.from(new Set(steps)).join(', ') : '2.17';
+    const steps = (inspection?.activities || [])
+      .map((a: any) => (a.clauseNumber || '').replace(',', '.').trim())
+      .filter((c: string) => c && !c.includes('.2026') && !c.startsWith('Scope-') && !c.startsWith('Act-'));
+    const stepNo = Array.from(new Set(steps)).join(', ') || 'As per ITP';
 
-    return `As per ITP No. ${itpDoc}, the ${mainAct} test was conducted at ${vendorName}, ${vendorLoc}.\n${mainAct} was performed on the supplied valve balls, valve seats, and inserts. The test results were found to be acceptable and in compliance with the specified requirements.\nITP Step No.: ${stepNo}\nIn accordance with ITP Step 19.6, ${mainAct} of the above-mentioned materials was completed during this visit. Visual and dimensional inspections will be carried out during the next visit, as per the agreed inspection schedule.`;
+    const mat = inspection?.materialDescription || inspection?.items?.[0]?.itemName || 'materials';
+    const tags = (inspection?.items || []).map((i: any) => i.tagNumber).filter(Boolean).join(', ');
+    const itemDesc = tags ? `${mat} (Tag: ${tags})` : mat;
+
+    return `As per ITP No. ${itpDoc}, ${actsStr} was conducted${locText}.\n${actsStr} was performed on the supplied ${itemDesc}. The test and inspection results were found to be acceptable and in compliance with the specified requirements.\nITP Step/Clause No.: ${stepNo}\nIn accordance with approved ITP procedures, inspection of the above-mentioned items was completed during this visit. Further activities will be carried out during subsequent visits as per the agreed inspection schedule.`;
   }
 
   /**
@@ -1084,11 +1134,15 @@ export class ReportService {
     let listToRender = (attendees && attendees.length > 0) ? [...attendees] : [];
 
     if (listToRender.length === 0) {
-      listToRender = [
-        { name: 'Hemand', title: 'Inspection Engineer', company: 'ADNOC', phone: '98803 05039' },
-        { name: inspector?.fullName || 'Jithin KB', title: 'Inspection Engineer', company: 'NMDC', phone: '95674 98730' },
-        { name: 'Krishnamurthi', title: 'Inspection Engineer', company: 'SSV', email: 'Krishnamoorthi-raghavendra_bhat53@yahoo.com' }
-      ];
+      // If not provided in the app, render blank rows so report is completely blank
+      const blankRow = `<w:tr w:rsidR="00716511" w:rsidTr="00EB3EEF">
+  <w:trPr><w:trHeight w:val="340"/></w:trPr>
+  <w:tc><w:tcPr><w:tcW w:w="2615" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="2479" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="3040" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="2053" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
+</w:tr>`;
+      return Array(3).fill(blankRow).join('\n');
     }
 
     return listToRender.map(a => {
@@ -1122,28 +1176,104 @@ export class ReportService {
   }
 
   /**
+   * Build Details of Item Visit table rows in Table 2 for Flash Report formats
+   */
+  private buildTable2ItemRows(items: any[]): string {
+    const offeredItems = (items || []).filter((i: any) => i.presentedQty > 0 || i.presentedQty === undefined);
+    const listToRender = offeredItems.length > 0 ? offeredItems : (items || []);
+    if (listToRender.length === 0) {
+      return '';
+    }
+
+    return listToRender.map((item, idx) => {
+      const poItem = escapeXml(item.poItemNo || `'${idx + 1}`);
+      const tag = escapeXml(item.tagNumber || `Item-${idx + 1}`);
+      const desc = escapeXml(item.itemName || item.itemDescription || 'Material');
+      const ordered = String(item.orderedQty ?? 1);
+      const presented = String(item.presentedQty ?? item.orderedQty ?? 1);
+      const acceptedThisVisit = String(item.acceptedThisVisit ?? item.presentedQty ?? presented);
+      const acceptedToDate = String(item.acceptedToDate ?? item.acceptedThisVisit ?? acceptedThisVisit);
+
+      return `<w:tr w:rsidR="00737F9A" w:rsidTr="00BA3CA3">
+  <w:trPr><w:cantSplit/><w:trHeight w:val="450"/></w:trPr>
+  <w:tc><w:tcPr><w:tcW w:w="1145" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="2" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t>${poItem}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1701" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="2" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="2" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="2" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="2" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/></w:rPr><w:t>${tag}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="2835" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="2" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="2" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/></w:rPr><w:t>${desc}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1441" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="2" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="2" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t>${ordered}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1275" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="2" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="2" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${presented}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1134" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="2" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="2" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${acceptedThisVisit}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1269" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="2" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${acceptedToDate}</w:t></w:r>
+    </w:p>
+  </w:tc>
+</w:tr>`;
+    }).join('\n');
+  }
+
+  /**
    * Build Flash Report Table 4 activities/results dynamic rows
    */
   private buildFlashActivitiesTableRows(items: any[], activities: any[]): string {
     const offeredItems = (items || []).filter((i: any) => i.presentedQty > 0);
     const listToRender = offeredItems.length > 0 ? offeredItems : (items || []);
 
-    const activityCodes: string[] = [];
+    const actEntries: string[] = [];
     for (const act of (activities || [])) {
-      const name = (act.activityName || '').toLowerCase();
-      if (name.includes('pmi') || name.includes('positive material')) activityCodes.push('PMI');
-      if (name.includes('material') || name.includes('raw')) activityCodes.push('M');
-      if (name.includes('visual')) activityCodes.push('VI');
-      if (name.includes('dimens')) activityCodes.push('D');
-      if (name.includes('hydro') || name.includes('pressure') || name.includes('leak')) activityCodes.push('HT');
-      if (name.includes('paint') || name.includes('dft') || name.includes('coating')) activityCodes.push('P');
-      if (name.includes('final')) activityCodes.push('F');
-      if (name.includes('cert') || name.includes('document')) activityCodes.push('R');
-      if (name.includes('mech') || name.includes('test')) activityCodes.push('MT');
-      if (name.includes('hard')) activityCodes.push('HDT');
-      if (name.includes('stroke')) activityCodes.push('FT');
+      const clause = (act.clauseNumber || '').replace(',', '.').trim();
+      const rawName = (act.activityName || '')
+        .split('\t')[0]
+        .replace(/^P\.O\.\s*item\(s\):?\s*/i, '')
+        .trim();
+      if (!rawName || rawName.length < 3 || rawName.toLowerCase().includes('p.o. item')) continue;
+
+      let code = '';
+      const lower = rawName.toLowerCase();
+      if (/pmi|positive material/i.test(lower)) code = 'PMI';
+      else if (/visual/i.test(lower)) code = 'VI';
+      else if (/dimens/i.test(lower)) code = 'D';
+      else if (/hydro|pressure|leak/i.test(lower)) code = 'HT';
+      else if (/paint|dft|coating/i.test(lower)) code = 'P';
+      else if (/final/i.test(lower)) code = 'F';
+      else if (/cert|document/i.test(lower)) code = 'R';
+      else if (/magnet|residual/i.test(lower)) code = 'MP';
+      else if (/balanc/i.test(lower)) code = 'Balancing';
+      else if (/over\s*speed/i.test(lower)) code = 'Overspeed';
+      else if (/hard/i.test(lower)) code = 'HDT';
+      else if (/ultra/i.test(lower)) code = 'UT';
+      else if (/penetr/i.test(lower)) code = 'PT';
+
+      if (clause && !clause.includes('.2026') && !clause.startsWith('Scope-') && !clause.startsWith('Act-')) {
+        actEntries.push(code ? `${clause} (${code})` : `${clause} (${rawName.substring(0, 20)})`);
+      } else {
+        actEntries.push(code || rawName.substring(0, 25));
+      }
     }
-    const actCodesStr = Array.from(new Set(activityCodes)).join(', ') || 'PMI';
+    const actCodesStr = Array.from(new Set(actEntries)).join(', ') || 'Inspection as per ITP';
 
     if (listToRender.length === 0) {
       return `<w:tr w:rsidR="00B77D49" w:rsidTr="008030D9">
@@ -1807,13 +1937,17 @@ ${rowsXml}
    * Build Attendees table rows
    */
   private buildAttendeesXml(attendees: any[]): string {
-    const defaultAttendees = [
-      { name: 'Karthik C', company: 'Intertek', title: 'Inspection Engineer', representedOrg: 'ADNOC Onshore' },
-      { name: 'Nithin V', company: 'KSB MIL', title: 'Quality Assurance', representedOrg: '' },
-    ];
-    const listToRender = (attendees && attendees.length > 0) ? attendees : defaultAttendees;
+    if (!attendees || attendees.length === 0) {
+      const blankRow = `<w:tr w:rsidR="00737F9A">
+  <w:trPr><w:cantSplit/><w:trHeight w:val="320"/></w:trPr>
+  <w:tc><w:tcPr><w:tcW w:w="3119" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="3898" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="3783" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
+</w:tr>`;
+      return Array(2).fill(blankRow).join('\n');
+    }
 
-    return listToRender.map(a => {
+    return attendees.map(a => {
       const orgInfo = a.representedOrg && a.representedOrg.trim() ? ` (OBO ${escapeXml(a.representedOrg.trim())})` : '';
       const compText = `${escapeXml(a.company || '')}${orgInfo}`;
 
