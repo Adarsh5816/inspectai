@@ -491,14 +491,14 @@ router.post('/:id/import-rfi', async (req, res) => {
     const rawActs = extractedData.activities || extractedData.activities_requested || [];
     const normalizedActivities = Array.isArray(rawActs)
       ? rawActs
-          .map((a: any) => ({
-            clauseNumber: (a.clauseNumber || a.clause || a.itp_step_no || a.step || a.clause_no || '').toString().replace(',', '.').trim(),
+          .map((a: any, idx: number) => ({
+            clauseNumber: (a.clauseNumber || a.clause || a.itp_step_no || a.step || a.clause_no || `Scope-${idx + 1}`).toString().replace(',', '.').trim(),
             activityName: (a.activityName || a.activity || a.description || a.desc || a.name || '').toString().trim(),
             acceptanceCriteria: a.acceptanceCriteria || a.acceptance_criteria || 'Conform to approved ITP & project specifications',
             interventionTPIA: a.interventionTPIA || a.interventionPoint || a.intervention || 'W',
             isMandatoryInRFI: true,
           }))
-          .filter((a: any) => a.clauseNumber.length > 0 && a.clauseNumber !== '3.2')
+          .filter((a: any) => a.activityName.length > 2 && a.clauseNumber !== '3.2')
       : [];
 
     if (normalizedActivities.length > 0) {
@@ -708,6 +708,33 @@ router.post('/:id/import-itp', async (req, res) => {
         if (found) return found;
       }
 
+      // Residual magnetism check
+      if (actName.includes('magnetism') || actName.includes('residual')) {
+        found = clauses.find((c: any) => {
+          const desc = (c.activityDescription || c.activityName || '').toLowerCase();
+          return desc.includes('magnetism') || desc.includes('residual');
+        });
+        if (found) return found;
+      }
+
+      // Ferrite check
+      if (actName.includes('ferrite')) {
+        found = clauses.find((c: any) => {
+          const desc = (c.activityDescription || c.activityName || '').toLowerCase();
+          return desc.includes('ferrite');
+        });
+        if (found) return found;
+      }
+
+      // Hardness test
+      if (actName.includes('hardness')) {
+        found = clauses.find((c: any) => {
+          const desc = (c.activityDescription || c.activityName || '').toLowerCase();
+          return desc.includes('hardness');
+        });
+        if (found) return found;
+      }
+
       return null;
     };
 
@@ -722,9 +749,12 @@ router.post('/:id/import-itp', async (req, res) => {
       for (const act of inspection.activities) {
         const match = findMatchingClause(act, itpClauses);
         if (match) {
+          const matchClause = (match.clauseNumber || match.clause || '').toString().trim();
+          const shouldUpdateClause = (act.clauseNumber.startsWith('Scope-') || act.clauseNumber.startsWith('Act-')) && matchClause;
           await prisma.inspectionActivity.update({
             where: { id: act.id },
             data: {
+              ...(shouldUpdateClause && { clauseNumber: matchClause }),
               acceptanceCriteria: match.acceptanceCriteria || match.referenceDocument || act.acceptanceCriteria,
               interventionTPIA: match.interventionTPIA || act.interventionTPIA || 'W',
             },

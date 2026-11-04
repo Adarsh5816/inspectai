@@ -239,16 +239,30 @@ export class DocumentService {
    */
   public normalizeActivityList(activities: any[]): any[] {
     const seen = new Set<string>();
+    const seenNames = new Set<string>();
     const result: any[] = [];
 
     for (const a of activities) {
-      const clauseNumber = (a.clauseNumber || a.clause || a.itp_step_no || a.step || a.clause_no || '').toString().replace(',', '.').trim();
-      if (!clauseNumber || clauseNumber === '3.2' || seen.has(clauseNumber)) continue;
+      let clauseNumber = (a.clauseNumber || a.clause || a.itp_step_no || a.step || a.clause_no || '').toString().replace(',', '.').trim();
+      const activityName = (a.activityName || a.activity || a.description || a.desc || a.name || (clauseNumber ? `Clause ${clauseNumber}` : '')).toString().trim();
+      
+      if (!activityName || activityName.length < 3) continue;
+      if (clauseNumber === '3.2' || (clauseNumber.startsWith('3.2') && !clauseNumber.includes('('))) continue;
+
+      // If clauseNumber is missing, auto-assign sequential scope number
+      if (!clauseNumber) {
+        clauseNumber = `Scope-${result.length + 1}`;
+      }
+
+      // Deduplicate by clause or exact activity name
+      const nameKey = activityName.toLowerCase();
+      if (seen.has(clauseNumber) || seenNames.has(nameKey)) continue;
       seen.add(clauseNumber);
+      seenNames.add(nameKey);
 
       result.push({
         clauseNumber,
-        activityName: (a.activityName || a.activity || a.description || a.desc || a.name || `Clause ${clauseNumber}`).toString().trim(),
+        activityName,
         acceptanceCriteria: a.acceptanceCriteria || a.acceptance_criteria || 'Conform to approved ITP & project specifications',
         interventionTPIA: a.interventionTPIA || a.interventionPoint || a.intervention || 'W',
         isMandatoryInRFI: true,
@@ -272,18 +286,22 @@ export class DocumentService {
         if (!extractedData.activities || extractedData.activities.length === 0) {
           merged.activities = normActs;
         } else {
-          // Merge unique clauses
-          const existingMap = new Map<string, any>();
+          // Merge unique clauses and unique activity names so specific checks (e.g. Residual magnetism) are preserved
+          const existingClauses = new Set<string>();
+          const existingNames = new Set<string>();
           for (const a of extractedData.activities) {
             const num = (a.clauseNumber || a.clause || '').replace(',', '.').trim();
-            if (num) existingMap.set(num, a);
+            if (num) existingClauses.add(num);
+            if (a.activityName) existingNames.add(a.activityName.toLowerCase());
           }
           for (const a of normActs) {
-            if (!existingMap.has(a.clauseNumber)) {
-              existingMap.set(a.clauseNumber, a);
+            if (!existingClauses.has(a.clauseNumber) && !existingNames.has(a.activityName.toLowerCase())) {
+              extractedData.activities.push(a);
+              existingClauses.add(a.clauseNumber);
+              existingNames.add(a.activityName.toLowerCase());
             }
           }
-          merged.activities = Array.from(existingMap.values());
+          merged.activities = extractedData.activities;
         }
       }
     }
@@ -555,6 +573,38 @@ export class DocumentService {
         }
       }
     }
+
+    // Format C: Scope of Inspection block (catches bullets, dashes, unnumbered lines, and specific tests like "Residual magnetism check")
+    const scopeMatch = cleanText.match(/(?:Scope\s*of\s*Inspection|Inspection\s*Activities|Activities\s*to\s*be\s*witnessed|Stage\s*of\s*Inspection)[\s\S]*?(?=\b(?:Attachments|Attendees|Signatures|Place\s*of\s*Witness|Witness|Review|Hold|Inspection\s*Notification|Note:|Remarks:|$))/i);
+    if (scopeMatch) {
+      const scopeLines = scopeMatch[0]
+        .split(/\r?\n/)
+        .map(l => l.trim())
+        .filter(l => l.length > 3);
+
+      for (const line of scopeLines) {
+        if (/^(?:Scope\s*of\s*Inspection|Inspection\s*Activities|Activities\s*to\s*be\s*witnessed|Stage\s*of\s*Inspection)/i.test(line)) continue;
+        if (/^(?:Contractor|Vendor|Manufacturer|Place of|Date|PO No|Job No|Project|Client|Notification|RFI)/i.test(line)) continue;
+        if (/^(?:Please find|We request|Kindly|This is to|Dear Sir)/i.test(line)) continue;
+
+        const cleanName = line.replace(/^[\s\-•*▪►\d+.)([\]]+/, '').replace(/\s+[WHR]\s*$/i, '').trim();
+        if (cleanName.length < 4 || cleanName.toLowerCase().includes('confidential') || cleanName.toLowerCase().includes('page ')) continue;
+
+        const clauseMatch = line.match(/^(\d{1,2}(?:\.\d{1,2})?(?:\s*\([a-z0-9]+\))?|[a-z]\))/i);
+        const clause = clauseMatch ? clauseMatch[1].replace(/\s+/g, '') : `Scope-${activities.length + 1}`;
+
+        if (!activities.some(a => a.activityName.toLowerCase() === cleanName.toLowerCase() || (clauseMatch && a.clauseNumber === clause))) {
+          activities.push({
+            clauseNumber: clause,
+            activityName: cleanName,
+            acceptanceCriteria: 'Conform to approved ITP & project specifications',
+            interventionTPIA: 'W',
+            isMandatoryInRFI: true,
+          });
+        }
+      }
+    }
+
     if (activities.length > 0) result.activities = activities;
 
     // 11. Items extraction supporting multiple RFI styles:

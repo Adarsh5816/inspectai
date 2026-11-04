@@ -184,8 +184,8 @@ Extract all structured data into a valid JSON object matching this schema:
   "materialDescription": "string",
   "activities": [
     {
-      "clauseNumber": "string (Exact clause or step number e.g. 4.1(a), 4.1(b), 4.2(a), 19.5, 19.6)",
-      "activityName": "string (Clean activity name e.g. Assembled Valve - Body mount Leakage test)",
+      "clauseNumber": "string (Exact clause or step number e.g. 4.1(a), 19.5, or sequential 1, 2, 3 if not numbered in RFI)",
+      "activityName": "string (Full descriptive name of each activity requested under Scope of Inspection, e.g. 'Positive Material Identification on casing, pipe material including welds', 'Residual magnetism check', etc.)",
       "acceptanceCriteria": "string",
       "interventionTPIA": "string (H, W, R, M)"
     }
@@ -199,6 +199,11 @@ Extract all structured data into a valid JSON object matching this schema:
     }
   ]
 }
+
+CRITICAL INSTRUCTIONS FOR ACTIVITIES:
+- Extract EVERY SINGLE activity listed under "Scope of Inspection", "Inspection Activities", or "Stage of Inspection".
+- If multiple activities are mentioned (for example, "Positive Material Identification on casing, pipe material including welds" AND "Residual magnetism check"), extract EACH as a separate object in the activities array!
+- If an activity does not have a formal ITP clause number in the RFI, do NOT omit it. Provide sequential numbering (1, 2, 3...) or bullet identifiers.
 
 DOCUMENT TEXT:
 ${cleanSample}`
