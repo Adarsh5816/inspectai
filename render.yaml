@@ -13,7 +13,7 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: DATABASE_URL
-        value: file:/app/storage/dev.db
+        sync: false
       - key: STORAGE_DIR
         value: /app/storage
       - key: TEMPLATES_DIR

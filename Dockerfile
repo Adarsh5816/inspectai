@@ -6,16 +6,13 @@ RUN npm ci
 COPY client/ ./
 RUN npm run build
 
-# Stage 2: Build Backend Server & Pre-seed Database
+# Stage 2: Build Backend Server
 FROM node:20 AS server-builder
 WORKDIR /app/server
 COPY server/package*.json ./
 RUN npm ci
 COPY server/ ./
-ENV DATABASE_URL="file:/app/server/prisma/dev.db"
 RUN npx prisma generate
-RUN npx prisma db push --accept-data-loss
-RUN npx tsx src/db/seed.ts
 RUN npm run build
 
 # Stage 3: Production Runner
@@ -24,7 +21,6 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=4000
-ENV DATABASE_URL="file:/app/storage/dev.db"
 ENV STORAGE_DIR="/app/storage"
 ENV TEMPLATES_DIR="/app/templates"
 
@@ -43,9 +39,6 @@ COPY --from=client-builder /app/client/dist ./client/dist
 # Copy templates and initial storage folders
 COPY templates/ ./templates/
 RUN mkdir -p /app/storage/documents /app/storage/photos /app/storage/reports
-
-# Pre-populate SQLite database with migrated and seeded dev.db
-COPY --from=server-builder /app/server/prisma/dev.db /app/storage/dev.db
 
 EXPOSE 4000
 
