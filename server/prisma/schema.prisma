@@ -48,6 +48,7 @@ model Project {
   supplierAddress String?
   subSupplierName String?         // e.g. "Specialised Coating Services"
   poNumber        String          // e.g. "04108-PM-INST-008"
+  contactPerson   String?         // e.g. "Mr. Nikhil Patil"
   createdById     String
   createdBy       User            @relation("ProjectCreator", fields: [createdById], references: [id])
   assignedMembers ProjectMember[] @relation("ProjectMembers")
@@ -140,6 +141,10 @@ model Inspection {
   itpNumber         String?      // e.g. "CV-L2-4441 QAP R3/SO"
   itpRevision       String?      // e.g. "Rev C", "1", "R3/SO"
   materialDescription String?    // e.g. "CONTROL VALVES (BUHASA)"
+  notificationNo    String?      // e.g. "RFI-P30350-P-AiP5-12-IC15-003-069" or "NOI-4489-..."
+  inspectionDates   String?      // e.g. "25th , 26th , 28th & 29th Sep'26"
+  applicableStandards String?    // Serialized JSON of applicable standards from ITP
+  applicableDrawings  String?    // Serialized JSON of applicable drawings from ITP
   reportFormatType  String?      @default("IR") // "IR" (Inspection Report) or "FR" (Final Report)
   selectedTemplate  String?      // e.g. "master-template.docx"
   createdAt         DateTime     @default(now())

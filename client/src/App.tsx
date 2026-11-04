@@ -4503,6 +4503,30 @@ function PhotosTab({ inspection, onReload }: any) {
   const [caption, setCaption] = useState('');
   const [itemId, setItemId] = useState('');
 
+  // Multi-select & Batch management state
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState<string[]>([]);
+  const [batchCategory, setBatchCategory] = useState('');
+  const [batchItemId, setBatchItemId] = useState('');
+  const [batchProcessing, setBatchProcessing] = useState(false);
+
+  const photos = inspection.photos || [];
+  const allSelected = photos.length > 0 && selectedPhotoIds.length === photos.length;
+
+  const toggleSelectPhoto = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setSelectedPhotoIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (allSelected) {
+      setSelectedPhotoIds([]);
+    } else {
+      setSelectedPhotoIds(photos.map((p: any) => p.id));
+    }
+  };
+
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
     const files = Array.from(e.target.files);
@@ -4528,30 +4552,170 @@ function PhotosTab({ inspection, onReload }: any) {
     }
   };
 
-  const handleDeletePhoto = async (photoId: string) => {
+  const handleDeletePhoto = async (photoId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     if (!confirm('Are you sure you want to delete this photo?')) return;
     try {
       await API.deletePhoto(photoId);
+      setSelectedPhotoIds(prev => prev.filter(id => id !== photoId));
       onReload();
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to delete photo');
     }
   };
 
+  const handleBatchDelete = async () => {
+    if (selectedPhotoIds.length === 0) return;
+    if (!confirm(`Are you sure you want to delete ${selectedPhotoIds.length} selected photo(s)? This action cannot be undone.`)) return;
+    setBatchProcessing(true);
+    try {
+      await API.deletePhotosBatch(selectedPhotoIds);
+      setSelectedPhotoIds([]);
+      onReload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to delete selected photos');
+    } finally {
+      setBatchProcessing(false);
+    }
+  };
+
+  const handleBatchApplyCategory = async () => {
+    if (selectedPhotoIds.length === 0 || !batchCategory) return;
+    setBatchProcessing(true);
+    try {
+      await API.updatePhotosBatch({ photoIds: selectedPhotoIds, category: batchCategory });
+      onReload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to update category for selected photos');
+    } finally {
+      setBatchProcessing(false);
+    }
+  };
+
+  const handleBatchApplyItem = async () => {
+    if (selectedPhotoIds.length === 0) return;
+    setBatchProcessing(true);
+    try {
+      await API.updatePhotosBatch({ photoIds: selectedPhotoIds, itemId: batchItemId });
+      onReload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to assign item for selected photos');
+    } finally {
+      setBatchProcessing(false);
+    }
+  };
+
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="font-semibold text-slate-800">Inspection Photos</h3>
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+        <div>
+          <h3 className="font-semibold text-slate-800 text-lg flex items-center gap-2">
+            <span>Inspection Photos</span>
+            <span className="text-xs font-semibold bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-full border border-slate-200">
+              {photos.length} total
+            </span>
+          </h3>
+          <p className="text-xs text-slate-500 mt-0.5">Select multiple photos to batch delete, re-categorize, or link to items</p>
+        </div>
+        {photos.length > 0 && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSelectAll}
+              className="text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-700 transition flex items-center gap-1.5 shadow-sm"
+            >
+              <span>{allSelected ? '☒ Deselect All' : '☑ Select All'}</span>
+            </button>
+            {selectedPhotoIds.length > 0 && (
+              <button
+                onClick={() => setSelectedPhotoIds([])}
+                className="text-xs text-slate-500 hover:text-slate-800 underline"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
       </div>
-      <div className="bg-slate-50 p-4 rounded-lg mb-4 space-y-3">
+
+      {/* Batch Action Toolbar when 1 or more photos selected */}
+      {selectedPhotoIds.length > 0 && (
+        <div className="bg-indigo-50 border-2 border-indigo-200 rounded-xl p-3 mb-4 shadow-sm animate-fadeIn">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="bg-indigo-600 text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-sm">
+                {selectedPhotoIds.length} Selected
+              </span>
+              <span className="text-xs font-medium text-indigo-900 hidden sm:inline">
+                Perform bulk actions on selected photos:
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Batch Category */}
+              <div className="flex items-center gap-1 bg-white border border-indigo-200 rounded-lg p-1 shadow-2xs">
+                <select
+                  value={batchCategory}
+                  onChange={e => setBatchCategory(e.target.value)}
+                  className="text-xs border-0 bg-transparent focus:ring-0 text-slate-700 font-medium py-0.5"
+                  disabled={batchProcessing}
+                >
+                  <option value="">Set Category...</option>
+                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <button
+                  onClick={handleBatchApplyCategory}
+                  disabled={!batchCategory || batchProcessing}
+                  className="text-xs bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white font-medium px-2 py-1 rounded transition"
+                >
+                  Apply
+                </button>
+              </div>
+
+              {/* Batch Item */}
+              <div className="flex items-center gap-1 bg-white border border-indigo-200 rounded-lg p-1 shadow-2xs">
+                <select
+                  value={batchItemId}
+                  onChange={e => setBatchItemId(e.target.value)}
+                  className="text-xs border-0 bg-transparent focus:ring-0 text-slate-700 font-medium py-0.5"
+                  disabled={batchProcessing}
+                >
+                  <option value="">Assign Item...</option>
+                  {inspection.items?.map((i: any) => <option key={i.id} value={i.id}>{i.tagNumber}</option>)}
+                </select>
+                <button
+                  onClick={handleBatchApplyItem}
+                  disabled={!batchItemId || batchProcessing}
+                  className="text-xs bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white font-medium px-2 py-1 rounded transition"
+                >
+                  Assign
+                </button>
+              </div>
+
+              {/* Batch Delete */}
+              <button
+                onClick={handleBatchDelete}
+                disabled={batchProcessing}
+                className="text-xs bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold px-3 py-1.5 rounded-lg transition flex items-center gap-1 shadow-sm"
+                title="Delete all selected photos"
+              >
+                <span>🗑️</span>
+                <span>{batchProcessing ? 'Deleting...' : `Delete (${selectedPhotoIds.length})`}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload Box */}
+      <div className="bg-slate-50 p-4 rounded-lg mb-4 space-y-3 border border-slate-200">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div><label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
-            <select value={category} onChange={e => setCategory(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm">
+            <select value={category} onChange={e => setCategory(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm bg-white">
               {categories.map(c => <option key={c}>{c}</option>)}
             </select>
           </div>
           <div><label className="block text-sm font-medium text-slate-700 mb-1">Item</label>
-            <select value={itemId} onChange={e => setItemId(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm">
+            <select value={itemId} onChange={e => setItemId(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm bg-white">
               <option value="">All items</option>
               {inspection.items?.map((i: any) => <option key={i.id} value={i.id}>{i.tagNumber}</option>)}
             </select>
@@ -4562,42 +4726,83 @@ function PhotosTab({ inspection, onReload }: any) {
               <span>📷</span> <span>Camera</span>
               <input type="file" accept="image/*" capture="environment" onChange={handleUpload} className="hidden" />
             </label>
-            <label className={`flex-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg cursor-pointer font-medium text-xs sm:text-sm transition flex items-center justify-center gap-1 shadow-sm ${uploading ? 'opacity-50 pointer-events-none' : ''}`} title="Upload photos from phone or computer gallery">
-              <span>🖼️</span> <span>{uploading ? (uploadProgress || 'Uploading...') : 'Gallery'}</span>
+            <label className={`flex-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg cursor-pointer font-medium text-xs sm:text-sm transition flex items-center justify-center gap-1 shadow-sm ${uploading ? 'opacity-50 pointer-events-none' : ''}`} title="Select multiple photos in one go from phone or PC">
+              <span>🖼️</span> <span>{uploading ? (uploadProgress || 'Uploading...') : 'Gallery (Multi)'}</span>
               <input type="file" accept="image/*" multiple onChange={handleUpload} className="hidden" />
             </label>
           </div>
         </div>
         <p className="text-xs text-slate-500">
-          💡 <strong>Mobile Field Ready:</strong> Use <strong>Camera</strong> to snap parts or test gauges live on-site, or <strong>Gallery</strong> to select multiple existing photos.
+          💡 <strong>Multi-Photo Selection:</strong> Hold Shift or tap multiple images in <strong>Gallery (Multi)</strong> to upload in one go. Click checkboxes on photos to batch delete or recategorize.
         </p>
       </div>
+
+      {/* Photos Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {inspection.photos?.map((p: any) => (
-          <div key={p.id} className="border border-slate-200 rounded-lg overflow-hidden relative group bg-white shadow-sm">
-            <img src={`/api/photos/file/${p.id}`} alt={p.caption} className="w-full h-40 object-cover" />
-            <button
-              onClick={() => handleDeletePhoto(p.id)}
-              className="absolute top-2 right-2 bg-red-600/90 hover:bg-red-700 text-white rounded-full w-7 h-7 flex items-center justify-center text-xs shadow transition opacity-90 group-hover:opacity-100"
-              title="Delete Photo"
+        {photos.map((p: any) => {
+          const isSelected = selectedPhotoIds.includes(p.id);
+          const assignedItem = inspection.items?.find((i: any) => i.id === p.itemId);
+
+          return (
+            <div
+              key={p.id}
+              onClick={() => toggleSelectPhoto(p.id)}
+              className={`border rounded-lg overflow-hidden relative group bg-white shadow-sm cursor-pointer transition-all duration-150 ${
+                isSelected ? 'ring-3 ring-blue-500 border-blue-500 shadow-md bg-blue-50/20' : 'border-slate-200 hover:border-slate-300'
+              }`}
             >
-              🗑️
-            </button>
-            <div className="p-2.5">
-              <p className="text-xs font-medium text-slate-800 truncate">{p.caption}</p>
-              <div className="flex justify-between items-center mt-1">
-                <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700 font-medium">{p.category}</span>
-                <button
-                  onClick={() => handleDeletePhoto(p.id)}
-                  className="text-xs text-red-500 hover:text-red-700 font-medium"
-                >
-                  Delete
-                </button>
+              {/* Select Checkbox Top-Left */}
+              <div
+                onClick={(e) => toggleSelectPhoto(p.id, e)}
+                className="absolute top-2 left-2 z-10"
+              >
+                <div className={`w-6 h-6 rounded-md flex items-center justify-center transition border shadow-sm ${
+                  isSelected ? 'bg-blue-600 border-blue-700 text-white' : 'bg-white/90 hover:bg-white border-slate-400 text-transparent'
+                }`}>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+              </div>
+
+              {/* Single Delete Button Top-Right */}
+              <button
+                onClick={(e) => handleDeletePhoto(p.id, e)}
+                className="absolute top-2 right-2 z-10 bg-red-600/90 hover:bg-red-700 text-white rounded-full w-7 h-7 flex items-center justify-center text-xs shadow transition opacity-90 group-hover:opacity-100"
+                title="Delete Photo"
+              >
+                🗑️
+              </button>
+
+              <div className="w-full h-40 bg-slate-100 overflow-hidden">
+                <img src={`/api/photos/file/${p.id}`} alt={p.caption} className="w-full h-40 object-cover group-hover:scale-102 transition duration-200" />
+              </div>
+
+              <div className="p-2.5">
+                <p className="text-xs font-semibold text-slate-800 truncate" title={p.caption || 'No caption'}>
+                  {p.caption || 'Inspection Photo'}
+                </p>
+                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                  <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700 font-medium">
+                    {p.category}
+                  </span>
+                  {assignedItem && (
+                    <span className="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-700 font-medium border border-slate-200" title={`Tag: ${assignedItem.tagNumber}`}>
+                      {assignedItem.tagNumber}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
+      {photos.length === 0 && (
+        <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+          <p className="text-sm font-medium text-slate-600">No photos uploaded for this inspection yet.</p>
+          <p className="text-xs text-slate-400 mt-1">Click Camera to take a live photo or Gallery (Multi) to select multiple photos at once.</p>
+        </div>
+      )}
     </div>
   );
 }

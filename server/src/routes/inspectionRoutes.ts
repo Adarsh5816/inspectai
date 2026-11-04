@@ -593,6 +593,8 @@ router.post('/:id/import-rfi', async (req, res) => {
       data: {
         rfiDocumentId: document.id,
         location: extractedData.inspectionLocation || inspection.location,
+        ...(extractedData.rfiNumber && { notificationNo: extractedData.rfiNumber }),
+        ...(extractedData.inspectionDates && { inspectionDates: extractedData.inspectionDates }),
         ...(extractedData.itpReference && { itpNumber: extractedData.itpReference }),
         ...(extractedData.itpRevision && { itpRevision: extractedData.itpRevision }),
         ...(extractedData.materialDescription && { materialDescription: extractedData.materialDescription }),
@@ -600,7 +602,7 @@ router.post('/:id/import-rfi', async (req, res) => {
     });
 
     // Update parent Project details from RFI
-    if (extractedData.projectName || extractedData.projectNumber || extractedData.poNumber || extractedData.supplierName) {
+    if (extractedData.projectName || extractedData.projectNumber || extractedData.poNumber || extractedData.supplierName || extractedData.clientName || extractedData.customerName || extractedData.contractorName || extractedData.contactPerson) {
       try {
         await prisma.project.update({
           where: { id: inspection.projectId },
@@ -608,7 +610,10 @@ router.post('/:id/import-rfi', async (req, res) => {
             ...(extractedData.projectName && { projectName: extractedData.projectName }),
             ...(extractedData.projectNumber && { projectNumber: extractedData.projectNumber }),
             ...(extractedData.poNumber && { poNumber: extractedData.poNumber }),
-            ...(extractedData.supplierName && { supplierName: extractedData.supplierName }),
+            ...((extractedData.clientName || extractedData.customerName) && { customerName: extractedData.clientName || extractedData.customerName }),
+            ...((extractedData.contractorName || extractedData.epcContractor) && { epcContractor: extractedData.contractorName || extractedData.epcContractor }),
+            ...((extractedData.supplierName || extractedData.vendorName) && { supplierName: extractedData.supplierName || extractedData.vendorName }),
+            ...(extractedData.contactPerson && { contactPerson: extractedData.contactPerson }),
             ...(extractedData.inspectionLocation && { supplierAddress: extractedData.inspectionLocation }),
           },
         });
@@ -750,15 +755,31 @@ router.post('/:id/import-itp', async (req, res) => {
       }
     }
 
-    // Link ITP document and update itpNumber
+    // Link ITP document, update itpNumber, and store applicable standards/drawings
+    const stdsJson = extractedData.standards && extractedData.standards.length > 0 ? JSON.stringify(extractedData.standards) : undefined;
+    const dwgsJson = extractedData.drawings && extractedData.drawings.length > 0 ? JSON.stringify(extractedData.drawings) : undefined;
+
     await prisma.inspection.update({
       where: { id: inspectionId },
       data: {
         itpDocumentId: document.id,
         ...(extractedData.itpNumber && { itpNumber: extractedData.itpNumber }),
         ...(extractedData.revision && { itpRevision: extractedData.revision }),
+        ...(stdsJson && { applicableStandards: stdsJson }),
+        ...(dwgsJson && { applicableDrawings: dwgsJson }),
       },
     });
+
+    if (extractedData.clientName || extractedData.customerName || extractedData.contractorName || extractedData.supplier) {
+      await prisma.project.update({
+        where: { id: inspection.projectId },
+        data: {
+          ...((extractedData.clientName || extractedData.customerName) && { customerName: extractedData.clientName || extractedData.customerName }),
+          ...((extractedData.contractorName || extractedData.epcContractor) && { epcContractor: extractedData.contractorName || extractedData.epcContractor }),
+          ...((extractedData.supplier || extractedData.supplierName) && { supplierName: extractedData.supplier || extractedData.supplierName }),
+        },
+      }).catch(() => {});
+    }
 
     const updated = await prisma.inspection.findUnique({
       where: { id: inspectionId },

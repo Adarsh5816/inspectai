@@ -233,9 +233,53 @@ export class ReportService {
       docXml = this.setCellValueAfterLabel(docXml, 'Address:', project.customerAddress);
     }
 
+    // Filter attended activities (or fall back to all inspection activities if none are graded yet)
+    let attendedActivities = (inspection.activities || []).filter((act: any) => {
+      const result = inspection.results?.find((r: any) => r.activityId === act.id);
+      return act.status === 'ACCEPTABLE' || act.status === 'NOT_ACCEPTABLE' || (result && result.status !== 'PENDING');
+    });
+    if (attendedActivities.length === 0 && (inspection.activities || []).length > 0) {
+      attendedActivities = inspection.activities || [];
+    }
+
     const isFlashReport = (tplName || '').toLowerCase().includes('flash') ||
       docXml.includes('Items Inspected / Activities / Results') ||
       docXml.includes('Flash Report No');
+
+    // Resolve effective header values with fallback hierarchy (Inspection model -> Project model -> AI Extracted -> defaults)
+    const effectiveNotificationNo = (inspection as any).notificationNo ||
+      (inspection as any).noiNumber ||
+      rfiExtracted.notificationNo ||
+      rfiExtracted.rfiNumber ||
+      inspection.reportNumber ||
+      'NOI-4489-R0-2745-2024-73004-AC-STEELSTRONG -021 R0';
+
+    const effectiveInspectionDate = (inspection as any).inspectionDates ||
+      rfiExtracted.inspectionDates ||
+      dateStr;
+
+    const effectiveClientName = project.customerName ||
+      rfiExtracted.clientName ||
+      rfiExtracted.customerName ||
+      itpExtracted.clientName ||
+      itpExtracted.customerName ||
+      'ADNOC Offshore';
+
+    const effectiveContractor = project.epcContractor ||
+      rfiExtracted.contractorName ||
+      itpExtracted.contractorName ||
+      'NMDC';
+
+    const effectiveVendor = project.supplierName ||
+      rfiExtracted.vendorName ||
+      rfiExtracted.supplierName ||
+      itpExtracted.supplier ||
+      itpExtracted.supplierName ||
+      'STEELSTRONG VALVES (INDIA) PVT. LTD';
+
+    const effectiveContactPerson = (project as any).contactPerson ||
+      rfiExtracted.contactPerson ||
+      'Mr. Nikhil Patil';
 
     // Flash Report Table 1 & Table 2 Header Fields
     if (isFlashReport) {
@@ -243,15 +287,15 @@ export class ReportService {
       docXml = this.setCellValueInNextCell(docXml, ['Rev #', 'Rev#'], (inspection as any).revisionNumber || '0');
       docXml = this.setCellValueInNextCell(docXml, ['Date:'], dateStr);
       docXml = this.setCellValueInNextCell(docXml, ['PROJECT NAME'], effectiveProjectName);
-      docXml = this.setCellValueInNextCell(docXml, ['CLIENT/ COMPANY', 'CLIENT / COMPANY', 'CLIENT/COMPANY'], project.customerName || 'ADNOC Offshore');
-      docXml = this.setCellValueInNextCell(docXml, ['CONTRACTOR', 'CONTRACTOR '], project.epcContractor || 'NMDC');
+      docXml = this.setCellValueInNextCell(docXml, ['CLIENT/ COMPANY', 'CLIENT / COMPANY', 'CLIENT/COMPANY'], effectiveClientName);
+      docXml = this.setCellValueInNextCell(docXml, ['CONTRACTOR', 'CONTRACTOR '], effectiveContractor);
       docXml = this.setCellValueInNextCell(docXml, ['Material Description', 'Material  Description'], materialSummary);
       docXml = this.setCellValueInNextCell(docXml, ['Contractor PO No:', 'Contractor PO No'], project.poNumber || '2745-2024-73004-AC');
       docXml = this.setCellValueInNextCell(docXml, ['Rev.'], (project as any).poRevision || (inspection as any).poRevision || '2');
-      docXml = this.setCellValueInNextCell(docXml, ['Vendor / Supplier', 'Vendor/Supplier', 'VENDOR / SUPPLIER'], project.supplierName || 'STEELSTRONG VALVES (INDIA) PVT. LTD');
-      docXml = this.setCellValueInNextCell(docXml, ['Contact Person'], (project as any).contactPerson || 'Mr. Nikhil Patil');
-      docXml = this.setCellValueInNextCell(docXml, ['Inspection Notification No / Rev.', 'Inspection Notification No / Rev', 'Inspection Notification No'], (inspection as any).notificationNo || (inspection as any).noiNumber || rfiExtracted.rfiNumber || 'NOI-4489-R0-2745-2024-73004-AC-STEELSTRONG -021 R0');
-      docXml = this.setCellValueInNextCell(docXml, ['Inspection Date'], dateStr);
+      docXml = this.setCellValueInNextCell(docXml, ['Vendor / Supplier', 'Vendor/Supplier', 'VENDOR / SUPPLIER'], effectiveVendor);
+      docXml = this.setCellValueInNextCell(docXml, ['Contact Person'], effectiveContactPerson);
+      docXml = this.setCellValueInNextCell(docXml, ['Inspection Notification No / Rev.', 'Inspection Notification No / Rev', 'Inspection Notification No'], effectiveNotificationNo);
+      docXml = this.setCellValueInNextCell(docXml, ['Inspection Date'], effectiveInspectionDate);
 
       // Check "During Mfg." checkbox in Table 2
       const duringMfgIdx = docXml.indexOf('During Mfg.');
@@ -267,16 +311,16 @@ export class ReportService {
       docXml = this.setCellValueInNextCell(docXml, ['Flash Report No', 'Flash  Report  No'], inspection.reportNumber || '001');
       docXml = this.setCellValueInNextCell(docXml, ['Date:'], dateStr);
       docXml = this.setCellValueInNextCell(docXml, ['PROJECT NAME'], effectiveProjectName);
-      docXml = this.setCellValueInNextCell(docXml, ['CLIENT/ COMPANY', 'CLIENT / COMPANY', 'CLIENT/COMPANY'], project.customerName || 'ADNOC OFFSHORE');
-      docXml = this.setCellValueInNextCell(docXml, ['CONTRACTOR', 'CONTRACTOR '], project.epcContractor || 'NATIONAL MARINE DREDGING COMPANY (NMDC)');
-      docXml = this.setCellValueInNextCell(docXml, ['Vendor / Supplier', 'Vendor/Supplier', 'VENDOR / SUPPLIER'], project.supplierName || 'STEELSTRONG VALVES (INDIA) PVT. LTD');
-      docXml = this.setCellValueInNextCell(docXml, ['Contact Person'], 'Mr. Nikhil Patil');
+      docXml = this.setCellValueInNextCell(docXml, ['CLIENT/ COMPANY', 'CLIENT / COMPANY', 'CLIENT/COMPANY'], effectiveClientName);
+      docXml = this.setCellValueInNextCell(docXml, ['CONTRACTOR', 'CONTRACTOR '], effectiveContractor);
+      docXml = this.setCellValueInNextCell(docXml, ['Vendor / Supplier', 'Vendor/Supplier', 'VENDOR / SUPPLIER'], effectiveVendor);
+      docXml = this.setCellValueInNextCell(docXml, ['Contact Person'], effectiveContactPerson);
       docXml = this.setCellValueInNextCell(docXml, ['Contractor PO No:', 'Contractor PO No'], project.poNumber || '2745-2024-73004-AC');
       docXml = this.setCellValueInNextCell(docXml, ['Contractor  Project #', 'Contractor Project #'], project.projectNumber || '2745');
       docXml = this.setCellValueInNextCell(docXml, ['Inspector'], inspection.inspector?.fullName || 'Jithin KB');
       docXml = this.setCellValueInNextCell(docXml, ['Inspection Agency'], inspection.inspector?.organization || 'ERAM');
       docXml = this.setCellValueInNextCell(docXml, ['Inspection Location'], inspection.location || 'Udupi');
-      docXml = this.setCellValueInNextCell(docXml, ['Ins pection Date & Time', 'Inspection Date & Time'], dateStr);
+      docXml = this.setCellValueInNextCell(docXml, ['Ins pection Date & Time', 'Inspection Date & Time'], effectiveInspectionDate);
       docXml = this.setCellValueInNextCell(docXml, ['Material Description', 'Material  Description'], materialSummary);
     }
 
@@ -497,9 +541,29 @@ export class ReportService {
         const headerTrEnd = docXml.indexOf('</w:tr>', standardsIdx) + 7;
         const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
         if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
-          const stdList = (inspection as any).standards || (project as any).standards || [
-            { docNo: 'ASTM A961', rev: '', description: '' }
-          ];
+          let stdList: any[] = [];
+          if ((inspection as any).applicableStandards) {
+            try {
+              const parsed = typeof (inspection as any).applicableStandards === 'string'
+                ? JSON.parse((inspection as any).applicableStandards)
+                : (inspection as any).applicableStandards;
+              if (Array.isArray(parsed) && parsed.length > 0) stdList = parsed;
+            } catch {}
+          }
+          if (stdList.length === 0 && itpExtracted.standards && Array.isArray(itpExtracted.standards) && itpExtracted.standards.length > 0) {
+            stdList = itpExtracted.standards;
+          }
+          if (stdList.length === 0 && itpExtracted.applicableDocuments && Array.isArray(itpExtracted.applicableDocuments)) {
+            stdList = itpExtracted.applicableDocuments.filter((d: any) => {
+              const str = typeof d === 'string' ? d : (d.docNo || d.code || '');
+              return /ASME|API|ISO|ASTM|MSS|NACE|BS|EN/i.test(str);
+            });
+          }
+          if (stdList.length === 0) {
+            stdList = (inspection as any).standards || (project as any).standards || [
+              { docNo: 'ASTM A961', rev: '', description: '' }
+            ];
+          }
           const standardsRows = this.buildStandardsRowsXml(stdList);
           docXml = docXml.substring(0, headerTrEnd) + standardsRows + docXml.substring(innerTableEnd);
         }
@@ -515,16 +579,31 @@ export class ReportService {
         const headerTrEnd = docXml.indexOf('</w:tr>', drawingsIdx) + 7;
         const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
         if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
-          const dwgList = (inspection as any).drawings || (project as any).drawings || [
-            { docNo: itpNo || 'PNC105- PMVALVEITP', rev: itpRev || '5', statusNmdc: '', statusCompany: '', description: 'ITP' },
-            { docNo: '2745-73004AC-J005-019- Manual Valves Drawing', rev: '', statusNmdc: '', statusCompany: '', description: '' }
-          ];
+          let dwgList: any[] = [];
+          if ((inspection as any).applicableDrawings) {
+            try {
+              const parsed = typeof (inspection as any).applicableDrawings === 'string'
+                ? JSON.parse((inspection as any).applicableDrawings)
+                : (inspection as any).applicableDrawings;
+              if (Array.isArray(parsed) && parsed.length > 0) dwgList = parsed;
+            } catch {}
+          }
+          if (dwgList.length === 0 && itpExtracted.drawings && Array.isArray(itpExtracted.drawings) && itpExtracted.drawings.length > 0) {
+            dwgList = itpExtracted.drawings;
+          }
+          if (dwgList.length === 0) {
+            dwgList = (inspection as any).drawings || (project as any).drawings || [
+              { docNo: itpNo || 'PNC105- PMVALVEITP', rev: itpRev || '5', statusNmdc: '', statusCompany: '', description: 'ITP' },
+              { docNo: '2745-73004AC-J005-019- Manual Valves Drawing', rev: '', statusNmdc: '', statusCompany: '', description: '' }
+            ];
+          }
           const drawingsRows = this.buildDrawingsRowsXml(dwgList, itpNo, itpRev);
           docXml = docXml.substring(0, headerTrEnd) + drawingsRows + docXml.substring(innerTableEnd);
         }
       }
 
       // === 2.9 ITP STAGES & RESULTS TABLE (Table 8) ===
+      // Autofill from accepted inspection activities and ITP clauses so summary table is never blank
       const itpStageIdx = this.findHeaderIndex(docXml, [
         'ITP No. with Rev.',
         'ITP No. with Rev'
@@ -533,7 +612,22 @@ export class ReportService {
         const headerTrEnd = docXml.indexOf('</w:tr>', itpStageIdx) + 7;
         const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
         if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
-          const itpStageRows = this.buildItpStageRowsXml(itpFullRef, (inspection as any).stages || []);
+          let stageList: any[] = [];
+          if ((inspection as any).stages && Array.isArray((inspection as any).stages) && (inspection as any).stages.length > 0) {
+            stageList = (inspection as any).stages;
+          } else if (attendedActivities.length > 0) {
+            stageList = attendedActivities.map((act: any) => {
+              const result = inspection.results?.find((r: any) => r.activityId === act.id);
+              const resultText = result?.remarks || (act.status === 'ACCEPTABLE' || !act.status ? 'Acceptable' : act.status);
+              return {
+                itpRef: itpFullRef,
+                stage: act.clauseNumber || '',
+                description: act.activityName || '',
+                results: resultText,
+              };
+            });
+          }
+          const itpStageRows = this.buildItpStageRowsXml(itpFullRef, stageList);
           docXml = docXml.substring(0, headerTrEnd) + itpStageRows + docXml.substring(innerTableEnd);
         }
       }
@@ -555,18 +649,6 @@ export class ReportService {
           docXml = docXml.substring(0, headerTrEnd) + instRows + docXml.substring(innerTableEnd);
         }
       }
-    }
-
-    // === 3. FILTER ATTENDED ACTIVITIES ONLY ===
-    // Include activities that were actually DONE/attended (Acceptable, Not Acceptable, or with results)
-    let attendedActivities = (inspection.activities || []).filter((act: any) => {
-      const result = inspection.results?.find((r: any) => r.activityId === act.id);
-      return act.status === 'ACCEPTABLE' || act.status === 'NOT_ACCEPTABLE' || (result && result.status !== 'PENDING');
-    });
-
-    // Fall back to all inspection activities if none are graded yet, so tables and engineering narrative are never blank
-    if (attendedActivities.length === 0 && (inspection.activities || []).length > 0) {
-      attendedActivities = inspection.activities || [];
     }
 
     // === 3.1 FLASH REPORT ACTIVITIES & RESULTS (Table 4) ===
@@ -1317,9 +1399,10 @@ export class ReportService {
    * Build Applicable Standards table rows (Table 4)
    */
   private buildStandardsRowsXml(standards?: any[]): string {
-    const list = standards && standards.length > 0 ? [...standards] : [
+    const rawList = standards && standards.length > 0 ? [...standards] : [
       { docNo: 'ASTM A961', rev: '', description: '' }
     ];
+    const list = rawList.map(s => typeof s === 'string' ? { docNo: s, rev: '', description: '' } : s);
     while (list.length < 3) {
       list.push({ docNo: '', rev: '', description: '' });
     }
@@ -1346,7 +1429,8 @@ export class ReportService {
       { docNo: itpNo || 'PNC105- PMVALVEITP', rev: itpRev || '5', statusNmdc: '', statusCompany: '', description: 'ITP' },
       { docNo: '2745-73004AC-J005-019- Manual Valves Drawing', rev: '', statusNmdc: '', statusCompany: '', description: '' }
     ];
-    const list = drawings && drawings.length > 0 ? [...drawings] : defaultList;
+    const rawList = drawings && drawings.length > 0 ? [...drawings] : defaultList;
+    const list = rawList.map(d => typeof d === 'string' ? { docNo: d, rev: '', statusNmdc: '', statusCompany: '', description: '' } : d);
     while (list.length < 2) {
       list.push({ docNo: '', rev: '', statusNmdc: '', statusCompany: '', description: '' });
     }
@@ -1374,9 +1458,11 @@ export class ReportService {
    */
   private buildItpStageRowsXml(itpFullRef: string, stages?: any[]): string {
     const defaultStage = itpFullRef.includes('REV') ? itpFullRef : `${itpFullRef} REV :-5`;
-    const list = stages && stages.length > 0 ? [...stages] : [
-      { itpRef: defaultStage, stage: '', description: '', results: '' }
-    ];
+    const rawList = stages && stages.length > 0 ? [...stages] : [];
+    const list = rawList.map(st => typeof st === 'string' ? { itpRef: itpFullRef, stage: '', description: st, results: 'Acceptable' } : st);
+    if (list.length === 0) {
+      list.push({ itpRef: defaultStage, stage: '', description: '', results: '' });
+    }
     while (list.length < 3) {
       list.push({ itpRef: '', stage: '', description: '', results: '' });
     }

@@ -96,6 +96,10 @@ export const uploadPhoto = (formData: FormData) =>
 export const getPhotos = (inspectionId: string) =>
   api.get('/photos', { params: { inspectionId } });
 export const deletePhoto = (id: string) => api.delete(`/photos/${id}`);
+export const deletePhotosBatch = (photoIds: string[]) =>
+  api.post('/photos/delete-batch', { photoIds });
+export const updatePhotosBatch = (data: { photoIds: string[]; category?: string; itemId?: string }) =>
+  api.post('/photos/update-batch', data);
 
 // Attendees
 export const addAttendee = (data: any) => api.post('/inspections/attendees', data);

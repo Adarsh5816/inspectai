@@ -104,4 +104,59 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// Delete multiple photos in one go (Batch Delete)
+router.post('/delete-batch', async (req, res) => {
+  try {
+    const { photoIds } = req.body;
+    if (!photoIds || !Array.isArray(photoIds) || photoIds.length === 0) {
+      return res.status(400).json({ error: 'photoIds array is required' });
+    }
+
+    const photos = await prisma.photo.findMany({
+      where: { id: { in: photoIds } },
+    });
+
+    for (const p of photos) {
+      try {
+        if (p.storageKey && fs.existsSync(p.storageKey)) {
+          fs.unlinkSync(p.storageKey);
+        }
+      } catch (fileErr) {
+        console.warn('Could not delete photo file from disk:', fileErr);
+      }
+    }
+
+    const deleted = await prisma.photo.deleteMany({
+      where: { id: { in: photoIds } },
+    });
+
+    res.json({ success: true, count: deleted.count });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Batch update photo attributes (category, itemId)
+router.post('/update-batch', async (req, res) => {
+  try {
+    const { photoIds, category, itemId } = req.body;
+    if (!photoIds || !Array.isArray(photoIds) || photoIds.length === 0) {
+      return res.status(400).json({ error: 'photoIds array is required' });
+    }
+
+    const data: any = {};
+    if (category) data.category = category;
+    if (itemId !== undefined) data.itemId = itemId || null;
+
+    const updated = await prisma.photo.updateMany({
+      where: { id: { in: photoIds } },
+      data,
+    });
+
+    res.json({ success: true, count: updated.count });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
