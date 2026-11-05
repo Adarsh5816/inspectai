@@ -52,5 +52,17 @@
     "type": "FR",
     "displayName": "FR Report 001 Standard (Flash Report)",
     "description": "Flash Report Format with Item Visit Details"
+  },
+  {
+    "name": "P5-DBN-Vendor PO #- Vendor Name-IR-XXXX..docx",
+    "type": "IR",
+    "displayName": "Wood P5-DBN Inspection Report",
+    "description": "Wood Habshan DBN Project Inspection Report Format (20 tables)"
+  },
+  {
+    "name": "( UPDATED ) P5-DBN-Vendor PO #- Vendor Name-IR-XXXX. (1).docx",
+    "type": "IR",
+    "displayName": "Wood P5-DBN Inspection Report (Updated)",
+    "description": "Updated Wood Habshan DBN Project Inspection Report Format"
   }
 ]

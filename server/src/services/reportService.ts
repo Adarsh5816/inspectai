@@ -106,16 +106,24 @@ export class ReportService {
     if (!inspection) throw new Error('Inspection not found');
 
     // 2. Load DOCX template
-    const tplName = templateName || options?.templateName || 'master-template.docx';
+    const tplName = templateName || options?.templateName || (inspection as any).selectedTemplate || 'master-template.docx';
     let tplPath = path.join(TEMPLATES_DIR, tplName);
     if (!fs.existsSync(tplPath)) {
       if (fs.existsSync(path.resolve(tplName))) {
         tplPath = path.resolve(tplName);
       } else {
-        const isFR = tplName.toLowerCase().includes('fr') || tplName.toLowerCase().includes('flash');
-        const fallback = isFR ? 'NPCC-ADNOC-Flash-Report-Template.docx' : 'master-template.docx';
-        console.warn(`Template not found: ${tplName}, falling back to ${fallback}`);
-        tplPath = path.join(TEMPLATES_DIR, fallback);
+        // Try normalized filename lookup in TEMPLATES_DIR
+        const files = fs.existsSync(TEMPLATES_DIR) ? fs.readdirSync(TEMPLATES_DIR) : [];
+        const normTarget = tplName.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const found = files.find(f => f.toLowerCase().replace(/[^a-z0-9]/g, '') === normTarget);
+        if (found) {
+          tplPath = path.join(TEMPLATES_DIR, found);
+        } else {
+          const isFR = tplName.toLowerCase().includes('fr') || tplName.toLowerCase().includes('flash');
+          const fallback = isFR ? 'NPCC-ADNOC-Flash-Report-Template.docx' : 'master-template.docx';
+          console.warn(`Template not found: ${tplName}, falling back to ${fallback}`);
+          tplPath = path.join(TEMPLATES_DIR, fallback);
+        }
       }
     }
 
@@ -315,21 +323,6 @@ export class ReportService {
         'RFI Number:',
       ], effectiveNotificationNo);
       docXml = this.setCellValueInNextCell(docXml, ['Inspection Date'], effectiveInspectionDate);
-
-      // Check if Table 2 embeds the Details of Item Visit table (e.g. format FR_Report_001)
-      const matIdx = this.findHeaderIndex(docXml, ['Material Description', 'Material  Description', 'Material Description:']);
-      if (matIdx !== -1) {
-        const matTrEnd = docXml.indexOf('</w:tr>', matIdx) + 7;
-        const nextTblEnd = docXml.indexOf('</w:tbl>', matTrEnd);
-        if (matTrEnd !== -1 && nextTblEnd !== -1 && nextTblEnd > matTrEnd) {
-          const rowsBetween = docXml.substring(matTrEnd, nextTblEnd);
-          const hasContractorPo = rowsBetween.includes('Contractor PO No') || rowsBetween.includes('Vendor / Supplier') || rowsBetween.includes('Stage of Inspection');
-          if (!hasContractorPo && rowsBetween.includes('<w:tr')) {
-            const itemRowsXml = this.buildTable2ItemRows(inspection.items || []);
-            docXml = docXml.substring(0, matTrEnd) + itemRowsXml + docXml.substring(nextTblEnd);
-          }
-        }
-      }
 
       // Check "During Mfg." checkbox in Table 2
       const duringMfgIdx = docXml.indexOf('During Mfg.');
@@ -749,18 +742,10 @@ export class ReportService {
       // === 5. EQUIPMENT AND INSTRUMENTATION (Table 10) ===
       const eqIdx = this.findHeaderIndex(docXml, ['EQUIPMENT AND INSTRUMENTATION', 'EQUIPMENT / INSTRUMENTATION', 'CALIBRATION INSTRUMENTS', 'MEASURING INSTRUMENTS']);
       if (eqIdx !== -1) {
-        // Must end before INSPECTION DETAILS, NON-CONFORMANCES, or next heading so Section 6.0 is never erased!
-        const nextH = Math.min(...[
-          docXml.indexOf('INSPECTION DETAILS', eqIdx),
-          docXml.indexOf('NON-CONFORMANCES', eqIdx),
-          docXml.indexOf('QUALITY OBSERVATIONS', eqIdx),
-          docXml.indexOf('ATTACHMENTS TO THIS REPORT', eqIdx),
-        ].filter(x => x !== -1));
-
-        if (nextH !== Infinity && nextH !== -1) {
-          const tblStart = docXml.indexOf('<w:tbl', eqIdx);
-          const tblEnd = docXml.lastIndexOf('</w:tbl>', nextH) + 8;
-          if (tblStart !== -1 && tblEnd > tblStart) {
+        const tblStart = docXml.indexOf('<w:tbl', eqIdx);
+        if (tblStart !== -1) {
+          const tblEnd = this.findMatchingTableEnd(docXml, tblStart);
+          if (tblEnd !== -1 && tblEnd > tblStart) {
             const equipmentTableXml = this.buildEquipmentTableXml(inspection.instruments || []);
             docXml = docXml.substring(0, tblStart) + equipmentTableXml + docXml.substring(tblEnd);
           }
@@ -796,15 +781,10 @@ export class ReportService {
       // Clean old documents and replace with actual RFI & ITP
       const docIdx = this.findHeaderIndex(docXml, ['DOCUMENTS USED', 'REFERENCE DOCUMENTS', 'APPLICABLE DOCUMENTS']);
       if (docIdx !== -1) {
-        const nextH = Math.min(...[
-          docXml.indexOf('SCOPE OF INSPECTION', docIdx),
-          docXml.indexOf('ITP LINE NO.', docIdx),
-        ].filter(x => x !== -1));
-
-        if (nextH !== Infinity && nextH !== -1) {
-          const tblStart = docXml.indexOf('<w:tbl', docIdx);
-          const tblEnd = docXml.lastIndexOf('</w:tbl>', nextH) + 8;
-          if (tblStart !== -1 && tblEnd > tblStart) {
+        const tblStart = docXml.indexOf('<w:tbl', docIdx);
+        if (tblStart !== -1) {
+          const tblEnd = this.findMatchingTableEnd(docXml, tblStart);
+          if (tblEnd !== -1 && tblEnd > tblStart) {
             const cleanDocsTable = this.buildDocumentsTableXml(inspection, project, itpNo, itpRev);
             docXml = docXml.substring(0, tblStart) + cleanDocsTable + docXml.substring(tblEnd);
           }
@@ -834,26 +814,27 @@ export class ReportService {
     }
 
     // === 8. REPAIR & POPULATE PHOTO SECTION ===
-    const photoHeaderIdx = this.findHeaderIndex(docXml, ['PHOTOS:', 'PHOTOS', 'Inspection Photos.', 'Inspection Photos', 'INSPECTION PHOTOS', 'PHOTOGRAPHS', 'PHOTO SHEET']);
-    if (photoHeaderIdx !== -1) {
-      const tblStart = docXml.indexOf('<w:tbl', photoHeaderIdx);
-      if (tblStart !== -1) {
-        let tblEnd = -1;
-        const sectPrIdx = docXml.indexOf('<w:sectPr', tblStart);
-        if (sectPrIdx !== -1) {
-          tblEnd = docXml.lastIndexOf('</w:tbl>', sectPrIdx) + 8;
-        } else {
-          tblEnd = this.findMatchingTableEnd(docXml, tblStart);
-        }
-
-        if (tblEnd !== -1 && tblEnd > tblStart) {
-          const photos = inspection.photos || [];
-          if (photos.length === 0) {
-            // If no photos uploaded, keep empty (no old sample photos!)
-            const emptyPhotoNotice = `<w:p w14:paraId="11111111" w14:textId="77777777"><w:pPr><w:jc w:val="center"/><w:spacing w:before="240" w:after="240"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:i/><w:color w:val="777777"/><w:sz w:val="20"/></w:rPr><w:t>No photographs attached for this inspection report.</w:t></w:r></w:p>`;
-            docXml = docXml.substring(0, tblStart) + emptyPhotoNotice + docXml.substring(tblEnd);
-          } else {
-            // Build clean photo table with uploaded photos
+    const photos = inspection.photos || [];
+    if (photos.length > 0) {
+      const photoHeaderIdx = this.findHeaderIndex(docXml, [
+        '13- PHOTOS',
+        '13-PHOTOS',
+        '13.0 PHOTOGRAPHS',
+        '13.0 PHOTOS',
+        '13. PHOTOGRAPHS',
+        '13. PHOTOS',
+        'Inspection Photos.',
+        'Inspection Photos',
+        'INSPECTION PHOTOS',
+        'PHOTOGRAPHS',
+        'PHOTO SHEET',
+        'PHOTOS:'
+      ]);
+      if (photoHeaderIdx !== -1) {
+        const tblStart = docXml.indexOf('<w:tbl', photoHeaderIdx);
+        if (tblStart !== -1) {
+          const tblEnd = this.findMatchingTableEnd(docXml, tblStart);
+          if (tblEnd !== -1 && tblEnd > tblStart) {
             const photoTableXml = await this.embedUploadedPhotos(zip, photos);
             docXml = docXml.substring(0, tblStart) + photoTableXml + docXml.substring(tblEnd);
           }
@@ -1133,19 +1114,15 @@ export class ReportService {
   private buildFlashAttendeesXml(attendees: any[], inspector?: any, project?: any): string {
     let listToRender = (attendees && attendees.length > 0) ? [...attendees] : [];
 
-    if (listToRender.length === 0) {
-      // If not provided in the app, render blank rows so report is completely blank
-      const blankRow = `<w:tr w:rsidR="00716511" w:rsidTr="00EB3EEF">
+    const blankRow = `<w:tr w:rsidR="00716511" w:rsidTr="00EB3EEF">
   <w:trPr><w:trHeight w:val="340"/></w:trPr>
   <w:tc><w:tcPr><w:tcW w:w="2615" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
   <w:tc><w:tcPr><w:tcW w:w="2479" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
   <w:tc><w:tcPr><w:tcW w:w="3040" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
   <w:tc><w:tcPr><w:tcW w:w="2053" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
 </w:tr>`;
-      return Array(3).fill(blankRow).join('\n');
-    }
 
-    return listToRender.map(a => {
+    const rows = listToRender.map(a => {
       const org = a.company ? (a.representedOrg ? `${escapeXml(a.company)} (OBO ${escapeXml(a.representedOrg)})` : escapeXml(a.company)) : (escapeXml(a.representedOrg || ''));
       const contact = [a.email, a.phone].filter(Boolean).join(' / ') || 'NA';
 
@@ -1172,7 +1149,12 @@ export class ReportService {
     </w:p>
   </w:tc>
 </w:tr>`;
-    }).join('\n');
+    });
+
+    while (rows.length < 7) {
+      rows.push(blankRow);
+    }
+    return rows.join('\n');
   }
 
   /**
@@ -1275,16 +1257,33 @@ export class ReportService {
     }
     const actCodesStr = Array.from(new Set(actEntries)).join(', ') || 'Inspection as per ITP';
 
-    if (listToRender.length === 0) {
-      return `<w:tr w:rsidR="00B77D49" w:rsidTr="008030D9">
+    const blankRow = `<w:tr w:rsidR="00B77D49" w:rsidTr="008030D9">
+  <w:tblPrEx><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/></w:tblCellMar></w:tblPrEx>
   <w:trPr><w:cantSplit/><w:trHeight w:val="432"/><w:jc w:val="center"/></w:trPr>
-  <w:tc><w:tcPr><w:tcW w:w="10172" w:type="dxa"/><w:gridSpan w:val="7"/><w:vAlign w:val="center"/></w:tcPr>
-    <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:i/><w:color w:val="666666"/><w:sz w:val="18"/></w:rPr><w:t>No items inspected for this report.</w:t></w:r></w:p>
+  <w:tc><w:tcPr><w:tcW w:w="1043" w:type="dxa"/><w:tcBorders><w:left w:val="single" w:sz="12" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t></w:t></w:r></w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="991" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t></w:t></w:r></w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="3150" w:type="dxa"/><w:gridSpan w:val="2"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t></w:t></w:r></w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="668" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t></w:t></w:r></w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1710" w:type="dxa"/><w:gridSpan w:val="2"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t></w:t></w:r></w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1350" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t></w:t></w:r></w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1260" w:type="dxa"/><w:tcBorders><w:right w:val="single" w:sz="12" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t></w:t></w:r></w:p>
   </w:tc>
 </w:tr>`;
-    }
 
-    return listToRender.map((item, idx) => {
+    const rows = listToRender.map((item, idx) => {
       const poItem = escapeXml(item.poItemNo || `'${idx + 1}`);
       const tag = escapeXml(item.tagNumber || `Item-${idx + 1}`);
       const desc = escapeXml(item.itemName || item.itemDescription || 'Control Valve');
@@ -1331,7 +1330,12 @@ export class ReportService {
     </w:p>
   </w:tc>
 </w:tr>`;
-    }).join('\n');
+    });
+
+    while (rows.length < 7) {
+      rows.push(blankRow);
+    }
+    return rows.join('\n');
   }
 
   /**
@@ -1462,11 +1466,16 @@ export class ReportService {
     const offeredItems = (items || []).filter((i: any) => i.presentedQty > 0);
     const listToRender = offeredItems.length > 0 ? offeredItems : (items || []);
 
-    if (listToRender.length === 0) {
-      return `<w:tr><w:trPr><w:cantSplit/><w:trHeight w:val="312"/></w:trPr><w:tc><w:tcPr><w:tcW w:w="10260" w:type="dxa"/><w:gridSpan w:val="5"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t>No materials offered for this visit.</w:t></w:r></w:p></w:tc></w:tr>`;
-    }
+    const blankRow = `<w:tr w:rsidR="00925296" w:rsidTr="00FF4246">
+  <w:trPr><w:trHeight w:val="312"/></w:trPr>
+  <w:tc><w:tcPr><w:tcW w:w="1260" w:type="dxa"/><w:tcBorders><w:bottom w:val="single" w:sz="8" w:space="0" w:color="auto"/></w:tcBorders></w:tcPr><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="2160" w:type="dxa"/><w:tcBorders><w:bottom w:val="single" w:sz="8" w:space="0" w:color="auto"/></w:tcBorders></w:tcPr><w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="4680" w:type="dxa"/><w:tcBorders><w:bottom w:val="single" w:sz="8" w:space="0" w:color="auto"/></w:tcBorders></w:tcPr><w:p><w:pPr><w:jc w:val="left"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="990" w:type="dxa"/><w:tcBorders><w:bottom w:val="single" w:sz="8" w:space="0" w:color="auto"/></w:tcBorders></w:tcPr><w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1170" w:type="dxa"/><w:tcBorders><w:bottom w:val="single" w:sz="8" w:space="0" w:color="auto"/></w:tcBorders></w:tcPr><w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
+</w:tr>`;
 
-    return listToRender.map((item, idx) => {
+    const rows = listToRender.map((item, idx) => {
       const itemNo = escapeXml(item.poItemNo || String(idx + 1));
       const tag = escapeXml(item.tagNumber || item.materialCode || 'SODS25195');
       const desc = escapeXml(item.itemName || item.itemDescription || 'VALVE ITEM');
@@ -1481,7 +1490,12 @@ export class ReportService {
   <w:tc><w:tcPr><w:tcW w:w="990" w:type="dxa"/><w:tcBorders><w:bottom w:val="single" w:sz="8" w:space="0" w:color="auto"/></w:tcBorders></w:tcPr><w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${qty}</w:t></w:r></w:p></w:tc>
   <w:tc><w:tcPr><w:tcW w:w="1170" w:type="dxa"/><w:tcBorders><w:bottom w:val="single" w:sz="8" w:space="0" w:color="auto"/></w:tcBorders></w:tcPr><w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${step}</w:t></w:r></w:p></w:tc>
 </w:tr>`;
-    }).join('\n');
+    });
+
+    while (rows.length < 6) {
+      rows.push(blankRow);
+    }
+    return rows.join('\n');
   }
 
   /**
@@ -1620,16 +1634,17 @@ export class ReportService {
     const offeredItems = (items || []).filter((i: any) => i.presentedQty > 0);
     const listToRender = offeredItems.length > 0 ? offeredItems : (items || []);
 
-    if (listToRender.length === 0) {
-      return `<w:tr w:rsidR="00BA3CA3">
-  <w:trPr><w:cantSplit/><w:trHeight w:val="333"/></w:trPr>
-  <w:tc><w:tcPr><w:tcW w:w="10777" w:type="dxa"/><w:gridSpan w:val="2"/><w:vAlign w:val="center"/></w:tcPr>
-    <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:i/><w:color w:val="666666"/><w:sz w:val="18"/></w:rPr><w:t>No materials or equipment offered for this inspection visit.</w:t></w:r></w:p>
+    const blankRow = `<w:tr w:rsidR="00BA3CA3" w:rsidRPr="007863FA" w:rsidTr="003A37F9">
+  <w:trPr><w:cantSplit/><w:trHeight w:val="429"/></w:trPr>
+  <w:tc><w:tcPr><w:tcW w:w="3185" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="2" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="2" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t></w:t></w:r></w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="7592" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="2" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="2" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t></w:t></w:r></w:p>
   </w:tc>
 </w:tr>`;
-    }
 
-    return listToRender.map((item, idx) => {
+    const rows = listToRender.map((item, idx) => {
       const tag = escapeXml(item.tagNumber || `Item-${idx + 1}`);
       const descParts = [
         item.sizeInch,
@@ -1653,7 +1668,12 @@ export class ReportService {
     </w:p>
   </w:tc>
 </w:tr>`;
-    }).join('\n');
+    });
+
+    while (rows.length < 3) {
+      rows.push(blankRow);
+    }
+    return rows.join('\n');
   }
 
   /**
@@ -1663,16 +1683,18 @@ export class ReportService {
     const offeredItems = (items || []).filter((i: any) => i.presentedQty > 0);
     const listToRender = offeredItems.length > 0 ? offeredItems : (items || []);
 
-    if (listToRender.length === 0) {
-      return `<w:tr w:rsidR="00737F9A">
-  <w:trPr><w:cantSplit/><w:trHeight w:val="400"/></w:trPr>
-  <w:tc><w:tcPr><w:tcW w:w="10766" w:type="dxa"/><w:gridSpan w:val="7"/><w:vAlign w:val="center"/></w:tcPr>
-    <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:i/><w:color w:val="666666"/><w:sz w:val="18"/></w:rPr><w:t>No materials or equipment offered for this inspection visit.</w:t></w:r></w:p>
-  </w:tc>
+    const blankRow = `<w:tr w:rsidR="00737F9A" w:rsidTr="00BA3CA3">
+  <w:trPr><w:cantSplit/><w:trHeight w:val="450"/></w:trPr>
+  <w:tc><w:tcPr><w:tcW w:w="1145" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1701" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="2835" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1441" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1275" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1134" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1269" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
 </w:tr>`;
-    }
 
-    return listToRender.map((item, idx) => {
+    const rows = listToRender.map((item, idx) => {
       const poItem = escapeXml(item.poItemNo || `'${idx + 1}`);
       const tag = escapeXml(item.tagNumber || `Item-${idx + 1}`);
       const name = escapeXml(item.itemName || item.itemDescription || 'Control Valve');
@@ -1719,7 +1741,12 @@ export class ReportService {
     </w:p>
   </w:tc>
 </w:tr>`;
-    }).join('\n');
+    });
+
+    while (rows.length < 3) {
+      rows.push(blankRow);
+    }
+    return rows.join('\n');
   }
 
   /**
@@ -1730,16 +1757,16 @@ export class ReportService {
     const offeredItems = (inspection.items || []).filter((i: any) => i.presentedQty > 0 || i.presentedQty === undefined);
     const itemsStr = escapeXml((offeredItems.length ? offeredItems : inspection.items)?.map((i: any) => i.tagNumber).join(', ') || 'Control Valve');
 
-    if (activities.length === 0) {
-      return `<w:tr w:rsidR="00737F9A">
+    const blankRow = `<w:tr w:rsidR="00737F9A">
   <w:trPr><w:cantSplit/><w:trHeight w:val="333"/></w:trPr>
-  <w:tc><w:tcPr><w:tcW w:w="10777" w:type="dxa"/><w:gridSpan w:val="5"/><w:tcBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr>
-    <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:i/><w:color w:val="666666"/></w:rPr><w:t>No inspection activities were executed on this visit.</w:t></w:r></w:p>
-  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1006" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="2835" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="3119" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="2670" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1147" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
 </w:tr>`;
-    }
 
-    return activities.map((act: any) => {
+    const rows = activities.map((act: any) => {
       const result = inspection.results?.find((r: any) => r.activityId === act.id);
       const actName = act.activityName || '';
       const isPressureOrLeakage = /hydro|pressure|shell|seat|leak|strength|body mount/i.test(actName);
@@ -1849,7 +1876,12 @@ export class ReportService {
     </w:p>
   </w:tc>
 </w:tr>`;
-    }).join('\n');
+    });
+
+    while (rows.length < 3) {
+      rows.push(blankRow);
+    }
+    return rows.join('\n');
   }
 
   /**
@@ -1937,17 +1969,16 @@ ${rowsXml}
    * Build Attendees table rows
    */
   private buildAttendeesXml(attendees: any[]): string {
-    if (!attendees || attendees.length === 0) {
-      const blankRow = `<w:tr w:rsidR="00737F9A">
+    const listToRender = (attendees && attendees.length > 0) ? [...attendees] : [];
+
+    const blankRow = `<w:tr w:rsidR="00737F9A">
   <w:trPr><w:cantSplit/><w:trHeight w:val="320"/></w:trPr>
   <w:tc><w:tcPr><w:tcW w:w="3119" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
   <w:tc><w:tcPr><w:tcW w:w="3898" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
   <w:tc><w:tcPr><w:tcW w:w="3783" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:t></w:t></w:r></w:p></w:tc>
 </w:tr>`;
-      return Array(2).fill(blankRow).join('\n');
-    }
 
-    return attendees.map(a => {
+    const rows = listToRender.map(a => {
       const orgInfo = a.representedOrg && a.representedOrg.trim() ? ` (OBO ${escapeXml(a.representedOrg.trim())})` : '';
       const compText = `${escapeXml(a.company || '')}${orgInfo}`;
 
@@ -2002,7 +2033,12 @@ ${rowsXml}
     </w:p>
   </w:tc>
 </w:tr>`;
-    }).join('\n');
+    });
+
+    while (rows.length < 3) {
+      rows.push(blankRow);
+    }
+    return rows.join('\n');
   }
 
   /**
@@ -2388,3 +2424,5 @@ ${rowsXml}
     return result;
   }
 }
+
+export const reportService = new ReportService();
