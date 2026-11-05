@@ -518,6 +518,51 @@ export class ReportService {
       }
     }
 
+    // Wood P5-DBN Report Summary Table: "REPORT SUMMARY:" -> "INSPECTION AND TESTS WITNESSED:"
+    const p5SummaryIdx = this.findHeaderIndex(docXml, ['REPORT SUMMARY:', 'REPORT SUMMARY']);
+    if (p5SummaryIdx !== -1) {
+      const witnessedIdx = docXml.indexOf('INSPECTION AND TESTS WITNESSED:', p5SummaryIdx);
+      if (witnessedIdx !== -1) {
+        const rowEnd = docXml.indexOf('</w:tr>', witnessedIdx);
+        let summaryText = '';
+        if (inspection.summaryNarrative && inspection.summaryNarrative.trim().length > 10) {
+          summaryText = inspection.summaryNarrative.trim();
+        } else {
+          summaryText = this.synthesizeInspectionSummary(inspection, project, itpFullRef);
+        }
+
+        const instrIdx = docXml.indexOf('Report the inspections and tests witnessed as per', witnessedIdx);
+        if (instrIdx !== -1 && instrIdx < rowEnd) {
+          let pStart = instrIdx;
+          while (pStart >= 0) {
+            pStart = docXml.lastIndexOf('<w:p', pStart);
+            if (pStart === -1) break;
+            const c = docXml.charAt(pStart + 4);
+            if (c === ' ' || c === '>') break;
+            pStart--;
+          }
+          const pEnd = docXml.indexOf('</w:p>', instrIdx) + 6;
+          if (pStart !== -1 && pEnd !== -1 && pEnd > pStart) {
+            const summaryP = `<w:p><w:pPr><w:jc w:val="both"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t>${escapeXml(summaryText)}</w:t></w:r></w:p>`;
+            docXml = docXml.substring(0, pStart) + summaryP + docXml.substring(pEnd);
+          }
+        }
+      }
+
+      // Check "further fabrication stages." checkbox in Row 5
+      const furtherFabIdx = docXml.indexOf('further fabrication stages.', p5SummaryIdx);
+      if (furtherFabIdx !== -1) {
+        const prevTr = docXml.lastIndexOf('<w:tr', furtherFabIdx);
+        const nextTr = docXml.indexOf('</w:tr>', furtherFabIdx);
+        const checkIdx = docXml.indexOf('<w:checkBox>', prevTr);
+        const checkEnd = docXml.indexOf('</w:checkBox>', checkIdx);
+        if (checkIdx !== -1 && checkEnd !== -1 && checkEnd < nextTr) {
+          const checkedXml = '<w:checkBox><w:sizeAuto/><w:default w:val="1"/><w:checked/></w:checkBox>';
+          docXml = docXml.substring(0, checkIdx) + checkedXml + docXml.substring(checkEnd + 13);
+        }
+      }
+    }
+
     if (!isFlashReport) {
       // === 2.4 GENERIC MATERIALS TABLE (Table 6) ===
       // Wipe old template sample generic materials and populate ONLY offered items
@@ -1086,26 +1131,23 @@ export class ReportService {
    */
   public synthesizeInspectionSummary(inspection: any, project: any, itpFullRef?: string): string {
     const itpDoc = itpFullRef || inspection?.itpNumber || project?.itpNumber || 'approved ITP';
-    const vendorName = project?.supplierName || inspection?.project?.supplierName || 'the manufacturer';
-    const vendorLoc = inspection?.location || project?.supplierAddress || inspection?.project?.supplierAddress || '';
-    const locText = vendorLoc ? ` at ${vendorName}, ${vendorLoc}` : ` at ${vendorName}`;
+    const rfiNo = (inspection as any)?.notificationNo || (inspection as any)?.noiNumber || inspection?.reportNumber || (project as any)?.poNumber || '';
+    const rfiPrefix = rfiNo ? `As per RFI No. ${rfiNo}, ` : 'As per RFI, ';
 
     const rawActs = (inspection?.activities || [])
       .map((a: any) => (a.activityName || '').split('\t')[0].replace(/^P\.O\.\s*item\(s\):?\s*/i, '').trim())
       .filter((n: string) => n.length > 2 && !n.toLowerCase().includes('p.o. item'));
     const uniqueActs = Array.from(new Set(rawActs));
-    const actsStr = uniqueActs.length > 0 ? uniqueActs.join(', ') : 'Inspection and testing';
+    const actsStr = uniqueActs.length > 0 ? uniqueActs.join(', ') : 'Positive Material Identification';
+    const pmiText = actsStr.toLowerCase().includes('positive material') || actsStr.toLowerCase().includes('pmi') ? 'PMI' : actsStr;
 
     const steps = (inspection?.activities || [])
       .map((a: any) => (a.clauseNumber || '').replace(',', '.').trim())
       .filter((c: string) => c && !c.includes('.2026') && !c.startsWith('Scope-') && !c.startsWith('Act-'));
-    const stepNo = Array.from(new Set(steps)).join(', ') || 'As per ITP';
+    const stepNo = Array.from(new Set(steps)).join(', ') || 'as per ITP';
+    const clauseStr = stepNo !== 'as per ITP' ? `as per ITP clause(s) ${stepNo}` : `as per approved ITP clause`;
 
-    const mat = inspection?.materialDescription || inspection?.items?.[0]?.itemName || 'materials';
-    const tags = (inspection?.items || []).map((i: any) => i.tagNumber).filter(Boolean).join(', ');
-    const itemDesc = tags ? `${mat} (Tag: ${tags})` : mat;
-
-    return `As per ITP No. ${itpDoc}, ${actsStr} was conducted${locText}.\n${actsStr} was performed on the supplied ${itemDesc}. The test and inspection results were found to be acceptable and in compliance with the specified requirements.\nITP Step/Clause No.: ${stepNo}\nIn accordance with approved ITP procedures, inspection of the above-mentioned items was completed during this visit. Further activities will be carried out during subsequent visits as per the agreed inspection schedule.`;
+    return `${rfiPrefix}IRP witnessed ${pmiText} ${clauseStr} and found acceptable.`;
   }
 
   /**
@@ -1151,7 +1193,7 @@ export class ReportService {
 </w:tr>`;
     });
 
-    while (rows.length < 7) {
+    if (rows.length === 0) {
       rows.push(blankRow);
     }
     return rows.join('\n');
@@ -1492,7 +1534,7 @@ export class ReportService {
 </w:tr>`;
     });
 
-    while (rows.length < 6) {
+    if (rows.length === 0) {
       rows.push(blankRow);
     }
     return rows.join('\n');
@@ -1670,7 +1712,7 @@ export class ReportService {
 </w:tr>`;
     });
 
-    while (rows.length < 3) {
+    if (rows.length === 0) {
       rows.push(blankRow);
     }
     return rows.join('\n');
@@ -1743,7 +1785,7 @@ export class ReportService {
 </w:tr>`;
     });
 
-    while (rows.length < 3) {
+    if (rows.length === 0) {
       rows.push(blankRow);
     }
     return rows.join('\n');
@@ -1878,7 +1920,7 @@ export class ReportService {
 </w:tr>`;
     });
 
-    while (rows.length < 3) {
+    if (rows.length === 0) {
       rows.push(blankRow);
     }
     return rows.join('\n');
@@ -2035,7 +2077,7 @@ ${rowsXml}
 </w:tr>`;
     });
 
-    while (rows.length < 3) {
+    if (rows.length === 0) {
       rows.push(blankRow);
     }
     return rows.join('\n');
@@ -2299,6 +2341,8 @@ ${rowsXml}
             customerName: project.customerName || 'ADNOC OFFSHORE',
             jobNo: project.projectNumber || project.jobNo || '2745',
             rev: inspection.revisionNumber || '0',
+            poNumber: project.poNumber || '',
+            vendorName: project.supplierName || '',
           });
         } else if (file.includes('footer')) {
           content = this.updateFooterXml(content, dateStr, inspection.inspector?.fullName || 'Jithin KB');
@@ -2311,7 +2355,7 @@ ${rowsXml}
     }
   }
 
-  private updateHeaderXml(xml: string, values: { reportNumber: string; reportDate: string; customerName: string; jobNo: string; rev?: string }): string {
+  private updateHeaderXml(xml: string, values: { reportNumber: string; reportDate: string; customerName: string; jobNo: string; rev?: string; poNumber?: string; vendorName?: string }): string {
     let result = xml;
 
     function setCellAfter(labelRegex: RegExp, newValue: string) {
@@ -2339,9 +2383,23 @@ ${rowsXml}
     setCellAfter(/Customer\s*:/i, values.customerName);
     setCellAfter(/(EVO\s*)?Job\s*No\s*:/i, values.jobNo);
 
-    // 1. Direct cell replacement for IR-XX (Report Number cell in TPIA headers)
-    const irCellRegex = /<w:tc[\s>][\s\S]*?IR-XX[\s\S]*?<\/w:tc>/g;
-    result = result.replace(irCellRegex, (tcXml) => {
+    // Safe direct text replacements for Wood P5-DBN and standard templates
+    result = result.replace(/<w:t>IR-XXXX<\/w:t>/g, `<w:t>${escapeXml(values.reportNumber)}</w:t>`);
+    result = result.replace(/<w:t>IR-XX<\/w:t>/g, `<w:t>${escapeXml(values.reportNumber)}</w:t>`);
+    if (values.poNumber) {
+      result = result.replace(/<w:t>Vendor PO #<\/w:t>/g, `<w:t>${escapeXml(values.poNumber)}</w:t>`);
+    }
+    if (values.vendorName) {
+      result = result.replace(/<w:t>Vendor Name<\/w:t>/g, `<w:t>${escapeXml(values.vendorName)}</w:t>`);
+    }
+    result = result.replace(/<w:t>-IR-XXXX<\/w:t>/g, `<w:t>-${escapeXml(values.reportNumber)}</w:t>`);
+    // Remove yellow highlights from header runs
+    result = result.replace(/<w:highlight w:val="yellow"\/>/g, '');
+
+    // For other templates with a single isolated cell containing IR-XX (safe regex that never crosses </w:tc>)
+    const safeIrCellRegex = /<w:tc\b[^>]*>(?:(?!<\/w:tc>)[\s\S])*?\bIR-XX\b(?:(?!<\/w:tc>)[\s\S])*?<\/w:tc>/g;
+    result = result.replace(safeIrCellRegex, (tcXml) => {
+      if (tcXml.includes(values.reportNumber)) return tcXml;
       const tcPrMatch = tcXml.match(/<w:tcPr[\s\S]*?<\/w:tcPr>/);
       const tcPr = tcPrMatch ? tcPrMatch[0] : '<w:tcPr/>';
       return `<w:tc>${tcPr}<w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:color w:val="0070C0"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t>${escapeXml(values.reportNumber)}</w:t></w:r></w:p></w:tc>`;
