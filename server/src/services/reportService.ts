@@ -107,28 +107,62 @@ export class ReportService {
 
     // 2. Load DOCX template
     const tplName = templateName || options?.templateName || (inspection as any).selectedTemplate || 'master-template.docx';
-    let tplPath = path.join(TEMPLATES_DIR, tplName);
-    if (!fs.existsSync(tplPath)) {
-      if (fs.existsSync(path.resolve(tplName))) {
-        tplPath = path.resolve(tplName);
-      } else {
-        // Try normalized filename lookup in TEMPLATES_DIR
-        const files = fs.existsSync(TEMPLATES_DIR) ? fs.readdirSync(TEMPLATES_DIR) : [];
-        const normTarget = tplName.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const found = files.find(f => f.toLowerCase().replace(/[^a-z0-9]/g, '') === normTarget);
-        if (found) {
-          tplPath = path.join(TEMPLATES_DIR, found);
-        } else {
-          const isFR = tplName.toLowerCase().includes('fr') || tplName.toLowerCase().includes('flash');
-          const fallback = isFR ? 'NPCC-ADNOC-Flash-Report-Template.docx' : 'master-template.docx';
-          console.warn(`Template not found: ${tplName}, falling back to ${fallback}`);
-          tplPath = path.join(TEMPLATES_DIR, fallback);
-        }
-      }
-    }
+    const isFR = tplName.toLowerCase().includes('fr') || tplName.toLowerCase().includes('flash') || tplName.toLowerCase().includes('fir');
+    const fallbackTemplate = isFR ? 'NPCC-ADNOC-Flash-Report-Template.docx' : 'master-template.docx';
 
-    const tplBuffer = fs.readFileSync(tplPath);
-    const zip = await JSZip.loadAsync(tplBuffer);
+    // Resolve template file path (always prefer .docx since JSZip only parses OpenXML archives)
+    const resolveTemplate = (name: string): string => {
+      // 1. Direct .docx match in TEMPLATES_DIR
+      const docxName = name.replace(/\.doc$/i, '.docx');
+      if (fs.existsSync(path.join(TEMPLATES_DIR, docxName))) {
+        return path.join(TEMPLATES_DIR, docxName);
+      }
+      // 2. Direct exact match in TEMPLATES_DIR
+      if (fs.existsSync(path.join(TEMPLATES_DIR, name))) {
+        return path.join(TEMPLATES_DIR, name);
+      }
+      // 3. Absolute path or relative to cwd
+      if (fs.existsSync(path.resolve(docxName))) {
+        return path.resolve(docxName);
+      }
+      if (fs.existsSync(path.resolve(name))) {
+        return path.resolve(name);
+      }
+      // 4. Normalized lookup in TEMPLATES_DIR (stripping .doc/.docx and punctuation)
+      if (fs.existsSync(TEMPLATES_DIR)) {
+        const files = fs.readdirSync(TEMPLATES_DIR);
+        const normTarget = name.toLowerCase().replace(/\.docx?$/i, '').replace(/[^a-z0-9]/g, '');
+        const docxFiles = files.filter(f => f.toLowerCase().endsWith('.docx'));
+        const exactNorm = docxFiles.find(f => f.toLowerCase().replace(/\.docx?$/i, '').replace(/[^a-z0-9]/g, '') === normTarget);
+        if (exactNorm) return path.join(TEMPLATES_DIR, exactNorm);
+
+        const partialNorm = docxFiles.find(f => {
+          const fn = f.toLowerCase().replace(/\.docx?$/i, '').replace(/[^a-z0-9]/g, '');
+          return fn.includes(normTarget) || normTarget.includes(fn);
+        });
+        if (partialNorm) return path.join(TEMPLATES_DIR, partialNorm);
+      }
+      // 5. Fallback
+      console.warn(`[ReportService] Template not found: "${name}", falling back to ${fallbackTemplate}`);
+      return path.join(TEMPLATES_DIR, fallbackTemplate);
+    };
+
+    let tplPath = resolveTemplate(tplName);
+    const docXmlPath = 'word/document.xml';
+    let zip: JSZip;
+
+    try {
+      const tplBuffer = fs.readFileSync(tplPath);
+      zip = await JSZip.loadAsync(tplBuffer);
+      if (!zip.file(docXmlPath)) {
+        throw new Error(`Template file "${tplPath}" is not a valid OpenXML document (missing ${docXmlPath})`);
+      }
+    } catch (zipErr: any) {
+      console.warn(`[ReportService] Failed to load template from "${tplPath}": ${zipErr?.message || zipErr}. Falling back to ${fallbackTemplate}`);
+      tplPath = path.join(TEMPLATES_DIR, fallbackTemplate);
+      const fallbackBuffer = fs.readFileSync(tplPath);
+      zip = await JSZip.loadAsync(fallbackBuffer);
+    }
 
     // 3. Parse Document AI extractions early
     let rfiExtracted: any = {};
@@ -153,8 +187,11 @@ export class ReportService {
     const dateLong = rawDates ? String(rawDates).trim() : activeDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
     // 4. Parse and modify document.xml
-    const docXmlPath = 'word/document.xml';
-    let docXml = await zip.file(docXmlPath)!.async('string');
+    const docXmlEntry = zip.file(docXmlPath);
+    if (!docXmlEntry) {
+      throw new Error(`Failed to load ${docXmlPath} from template "${tplPath}"`);
+    }
+    let docXml = await docXmlEntry.async('string');
 
     const project = inspection.project!;
 
@@ -2522,7 +2559,10 @@ ${rowsXml}
   private async embedUploadedPhotos(zip: JSZip, photos: any[]): Promise<{ tableXml: string; rowsXml: string; hasPhotos: boolean }> {
     // 1. Update relationships
     const relsPath = 'word/_rels/document.xml.rels';
-    let relsXml = await zip.file(relsPath)!.async('string');
+    const relsEntry = zip.file(relsPath);
+    let relsXml = relsEntry
+      ? await relsEntry.async('string')
+      : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>';
 
     const photoCards: { rId: string; caption: string; cx: number; cy: number }[] = [];
 
@@ -2733,7 +2773,9 @@ ${rowsXml}
     for (const file of files) {
       if (!file.endsWith('.xml')) continue;
       try {
-        let content = await zip.file(file)!.async('string');
+        const fileEntry = zip.file(file);
+        if (!fileEntry) continue;
+        let content = await fileEntry.async('string');
 
         if (file.includes('header')) {
           content = this.updateHeaderXml(content, {
