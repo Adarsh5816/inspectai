@@ -41,10 +41,20 @@ router.post('/upload', upload.any(), async (req, res) => {
         photoCaption = `${caption} (${i + 1})`;
       }
 
+      let base64Data: string | null = null;
+      try {
+        if (file.buffer) {
+          base64Data = file.buffer.toString('base64');
+        } else if (file.path && fs.existsSync(file.path)) {
+          base64Data = fs.readFileSync(file.path).toString('base64');
+        }
+      } catch {}
+
       const photo = await prisma.photo.create({
         data: {
           inspectionId,
           storageKey: file.path,
+          fileData: base64Data,
           originalFilename: file.originalname,
           category: category || 'Other',
           caption: photoCaption,
@@ -99,7 +109,16 @@ router.get('/file/:id', async (req, res) => {
         }
       }
     }
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+    if (!fs.existsSync(filePath)) {
+      if ((photo as any).fileData) {
+        const buf = Buffer.from((photo as any).fileData, 'base64');
+        const ext = path.extname(photo.originalFilename || photo.storageKey).toLowerCase();
+        const mime = ext === '.png' ? 'image/png' : 'image/jpeg';
+        res.setHeader('Content-Type', mime);
+        return res.send(buf);
+      }
+      return res.status(404).json({ error: 'File not found' });
+    }
     res.sendFile(filePath);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

@@ -322,6 +322,7 @@ model Photo {
   resultId            String?
   result              InspectionResult?   @relation(fields: [resultId], references: [id])
   storageKey          String
+  fileData            String?             // Base64-encoded image data for container persistence
   thumbnailKey        String?
   originalFilename    String
   category            String              // Name Plate, Leak Test, Calibration, Stroke Test, FE Test, Dimension

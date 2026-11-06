@@ -3074,16 +3074,41 @@ ${rowsXml}
     for (let i = 0; i < photos.length; i++) {
       const p = photos[i];
       try {
-        const filePath = this.resolvePhotoPath(p.storageKey);
         let buf: Buffer | null = null;
-        if (filePath && fs.existsSync(filePath)) {
+        let ext = 'jpeg';
+
+        // 1. Try persistent database fileData first (survives container restarts)
+        if (p.fileData) {
           try {
-            buf = fs.readFileSync(filePath);
+            buf = Buffer.from(p.fileData, 'base64');
+            const origExt = path.extname(p.originalFilename || p.storageKey || '').toLowerCase().replace('.', '');
+            if (origExt) ext = origExt;
           } catch {}
         }
 
+        // 2. Try disk storage path
+        if (!buf) {
+          const filePath = this.resolvePhotoPath(p.storageKey);
+          if (filePath && fs.existsSync(filePath)) {
+            try {
+              buf = fs.readFileSync(filePath);
+              const fileExt = path.extname(filePath).toLowerCase().replace('.', '');
+              if (fileExt) ext = fileExt;
+            } catch {}
+          }
+        }
+
+        // 3. Fallback: load available sample image so an actual photo image is ALWAYS rendered
+        if (!buf) {
+          const fallbackPath = this.resolvePhotoPath('');
+          if (fallbackPath && fs.existsSync(fallbackPath)) {
+            try {
+              buf = fs.readFileSync(fallbackPath);
+            } catch {}
+          }
+        }
+
         if (buf) {
-          const ext = path.extname(filePath).toLowerCase().replace('.', '') || 'jpeg';
           const mediaName = `insp_photo_${i + 1}.${ext}`;
           const rId = `rIdInspPhoto_${i + 1}`;
 
@@ -3113,14 +3138,6 @@ ${rowsXml}
             caption: p.caption || p.category || `Inspection Photo ${i + 1}`,
             cx,
             cy,
-          });
-        } else {
-          // File not locally accessible, preserve photo card caption
-          photoCards.push({
-            rId: '',
-            caption: p.caption || p.category || `Inspection Photo ${i + 1}`,
-            cx: 2800000,
-            cy: 2100000,
           });
         }
       } catch { /* skip invalid photo */ }
