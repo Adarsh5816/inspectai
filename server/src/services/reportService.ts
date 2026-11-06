@@ -242,7 +242,6 @@ export class ReportService {
       docXml = this.setCellValueAfterLabel(docXml, 'Client:', project.customerName);
       docXml = this.setCellValueAfterLabel(docXml, 'Customer Name:', project.customerName);
       docXml = this.setCellValueAfterLabel(docXml, 'Client Name:', project.customerName);
-      docXml = this.setCellValueAfterLabel(docXml, 'Name:', project.customerName);
     }
     if (project.customerAddress) {
       docXml = this.setCellValueAfterLabel(docXml, 'Address:', project.customerAddress);
@@ -260,6 +259,12 @@ export class ReportService {
     const isFlashReport = (tplName || '').toLowerCase().includes('flash') ||
       docXml.includes('Items Inspected / Activities / Results') ||
       docXml.includes('Flash Report No');
+
+    const isWoodTemplate = (tplName || '').toLowerCase().includes('p5') ||
+      (tplName || '').toLowerCase().includes('wood') ||
+      docXml.includes('P5-DBN') ||
+      docXml.includes('4.1- RESULTS OF TESTS AND INSPECTION') ||
+      docXml.includes('13- PHOTOS');
 
     // Resolve effective header values with fallback hierarchy (Inspection model -> Project model -> AI Extracted -> defaults)
     const effectiveNotificationNo = (inspection as any).notificationNo ||
@@ -298,6 +303,11 @@ export class ReportService {
       rfiExtracted.contactPerson ||
       '';
 
+    // Wood Template Table 1 Header Population
+    if (isWoodTemplate) {
+      docXml = this.populateWoodTable1(docXml, inspection, project, dateStr, rfiExtracted);
+    }
+
     // Flash Report Table 1 & Table 2 Header Fields
     if (isFlashReport) {
       docXml = this.setCellValueInNextCell(docXml, ['Flash Report No', 'Flash  Report  No'], effectiveReportNo);
@@ -334,7 +344,7 @@ export class ReportService {
           docXml = docXml.substring(0, prevCheckBox) + checkedBoxXml + docXml.substring(nextCheckBoxEnd + 13);
         }
       }
-    } else {
+    } else if (!isWoodTemplate) {
       docXml = this.setCellValueInNextCell(docXml, ['Flash Report No', 'Flash  Report  No'], inspection.reportNumber || '001');
       docXml = this.setCellValueInNextCell(docXml, ['Date:'], dateStr);
       docXml = this.setCellValueInNextCell(docXml, ['PROJECT NAME'], effectiveProjectName);
@@ -808,9 +818,9 @@ export class ReportService {
       }
     }
 
-    if (!isFlashReport) {
+    if (!isFlashReport && !isWoodTemplate) {
       // === 4. DYNAMIC SCOPE OF INSPECTION TABLE (Table 9) ===
-      const itpHeaderIdx = this.findHeaderIndex(docXml, ['ITP LINE NO.', 'ITP CLAUSE NO.', 'ITP CLAUSE', 'SCOPE OF INSPECTION']);
+      const itpHeaderIdx = this.findHeaderIndex(docXml, ['ITP LINE NO.', 'ITP CLAUSE NO.', 'SCOPE OF INSPECTION']);
       if (itpHeaderIdx !== -1) {
         const headerTrEnd = docXml.indexOf('</w:tr>', itpHeaderIdx) + 7;
         const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
@@ -1817,6 +1827,199 @@ export class ReportService {
   ${paras.join('\n')}
   </w:tc>
 </w:tr>`;
+  }
+
+  /**
+   * Populate Table 1 for Wood P5-DBN inspection report template
+   */
+  private populateWoodTable1(
+    docXml: string,
+    inspection: any,
+    project: any,
+    dateStr: string,
+    rfiExtracted: any
+  ): string {
+    const reportNoIdx = docXml.indexOf('REPORT NO.');
+    if (reportNoIdx === -1) return docXml;
+    const tblStart = this.findPrecedingTableStart(docXml, reportNoIdx);
+    const tblEnd = this.findMatchingTableEnd(docXml, tblStart);
+    if (tblStart === -1 || tblEnd === -1) return docXml;
+
+    let t1Xml = docXml.substring(tblStart, tblEnd);
+    const rows = [...t1Xml.matchAll(/<w:tr[\s>][\s\S]*?<\/w:tr>/g)].map(m => m[0]);
+    if (rows.length < 8) return docXml;
+
+    const effectiveNotificationNo = (inspection as any).notificationNo ||
+      (inspection as any).noiNumber ||
+      rfiExtracted.notificationNo ||
+      rfiExtracted.rfiNumber ||
+      '';
+
+    const effectiveReportNo = (inspection.reportNumber && inspection.reportNumber !== '001')
+      ? inspection.reportNumber
+      : (effectiveNotificationNo || 'P5-DBN-Vendor PO #- Vendor Name-IR-XXXX');
+
+    const effectiveContractNo = project.projectNumber && project.projectNumber !== 'Not specified'
+      ? project.projectNumber
+      : (rfiExtracted.projectNumber || 'PROJECT 5.0 (P5)');
+
+    const effectiveClientName = project.customerName ||
+      rfiExtracted.clientName ||
+      rfiExtracted.customerName ||
+      'ADNOC GAS';
+
+    let equipmentDesc = inspection.materialDescription ||
+      rfiExtracted.materialDescription ||
+      (inspection.items && inspection.items.length > 0
+        ? inspection.items.map((i: any) => i.tagNumber || i.itemName).filter(Boolean).join(', ')
+        : 'POSITIVE MATERIAL IDENTIFICATION ON CASING, PIPE MATERIAL INCLUDING WELDS');
+
+    const mrNoAndClass = (inspection as any).mrNumber ||
+      rfiExtracted.mrNumber ||
+      (inspection as any).inspectionClass ||
+      'Class 1 / MR-001';
+
+    const effectiveVendor = project.supplierName ||
+      rfiExtracted.vendorName ||
+      rfiExtracted.supplierName ||
+      'Triveni Turbines Limited';
+
+    let effectiveOrderNo = project.poNumber && project.poNumber !== 'Not specified'
+      ? project.poNumber
+      : (rfiExtracted.poNumber && rfiExtracted.poNumber !== 'Not specified' ? rfiExtracted.poNumber : '');
+    if (!effectiveOrderNo) {
+      const poMatch = (inspection.reportNumber || effectiveNotificationNo).match(/PO\.?([0-9A-Za-z_-]+)/i);
+      effectiveOrderNo = poMatch ? poMatch[1] : '608200';
+    }
+
+    const effectiveSubVendor = rfiExtracted.subVendor ||
+      project.supplierName ||
+      effectiveVendor;
+
+    const orderDate = rfiExtracted.orderDate || dateStr;
+
+    const addressForOrder = project.supplierAddress ||
+      rfiExtracted.supplierAddress ||
+      '12A, Peenya Industrial Area, Bangalore - 560 058';
+
+    const subOrderNo = rfiExtracted.subOrderNo || 'NA';
+
+    const inspectionLocation = inspection.location ||
+      project.supplierAddress ||
+      'Meladoor, Annamanada, Kerala, India';
+
+    const inspectorName = inspection.inspector?.fullName ||
+      (inspection as any).inspectorName ||
+      rfiExtracted.inspectorName ||
+      'Adarsh MS';
+
+    const inspectionAgency = inspection.inspector?.organization ||
+      (inspection as any).inspectionAgency ||
+      rfiExtracted.inspectionAgency ||
+      'Intertek';
+
+    const stageInspection = (inspection.activities && inspection.activities.length > 0)
+      ? inspection.activities.map((a: any) => a.activityName).slice(0, 2).join(' / ')
+      : (rfiExtracted.stageInspection || 'Witness / PMI');
+
+    const nextVisitDate = inspection.nextVisitDate
+      ? new Date(inspection.nextVisitDate).toLocaleDateString('en-GB')
+      : 'NA';
+
+    // Process each row
+    for (let r = 0; r < 8; r++) {
+      const cells = [...rows[r].matchAll(/<w:tc[\s>][\s\S]*?<\/w:tc>/g)].map(m => m[0]);
+      if (r === 0 && cells.length >= 4) {
+        // Cell 1: Report No (replace placeholder and strip highlight)
+        cells[1] = this.fillCellParagraph(cells[1], effectiveReportNo, 0, true);
+        cells[1] = cells[1].replace(/<w:highlight\s+w:val="[^"]*"\/>/g, '');
+        // Cell 2: CONTRACT
+        cells[2] = `<w:tc><w:tcPr><w:tcW w:w="2691" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:bCs/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t xml:space="preserve">CONTRACT : ${escapeXml(effectiveContractNo)}</w:t></w:r></w:p></w:tc>`;
+        // Cell 3: CLIENT
+        cells[3] = `<w:tc><w:tcPr><w:tcW w:w="2691" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:bCs/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t xml:space="preserve">CLIENT : ${escapeXml(effectiveClientName)}</w:t></w:r></w:p></w:tc>`;
+      } else if (r === 1 && cells.length >= 4) {
+        // Cell 1: Equipment description
+        cells[1] = this.fillCellParagraph(cells[1], equipmentDesc, 0, false);
+        // Cell 3: MR NO / INSPECTION CLASS
+        cells[3] = this.fillCellParagraph(cells[3], mrNoAndClass, 0, false);
+      } else if (r === 2 && cells.length >= 4) {
+        // Cell 1: VENDOR
+        cells[1] = this.fillCellParagraph(cells[1], effectiveVendor, 0, false);
+        // Cell 3: ORDER NO
+        cells[3] = this.fillCellParagraph(cells[3], effectiveOrderNo, 0, false);
+      } else if (r === 3 && cells.length >= 4) {
+        // Cell 1: SUB VENDOR
+        cells[1] = this.fillCellParagraph(cells[1], effectiveSubVendor, 0, false);
+        // Cell 3: ORDER DATE
+        cells[3] = this.fillCellParagraph(cells[3], orderDate, 0, false);
+      } else if (r === 4 && cells.length >= 4) {
+        // Cell 1: ADDRESS FOR ORDER
+        cells[1] = this.fillCellParagraph(cells[1], addressForOrder, 0, false);
+        // Cell 3: SUB ORDER NO
+        cells[3] = this.fillCellParagraph(cells[3], subOrderNo, 0, false);
+      } else if (r === 5 && cells.length >= 2) {
+        // Cell 1: INSPECTION LOCATION
+        cells[1] = this.fillCellParagraph(cells[1], inspectionLocation, 0, false);
+      } else if (r === 6 && cells.length >= 4) {
+        // Cell 0: INSPECTOR NAME
+        cells[0] = this.fillCellParagraph(cells[0], inspectorName, 1, false);
+        // Cell 2: DATE OF VISIT
+        cells[2] = this.fillCellParagraph(cells[2], dateStr, 1, false);
+        // Cell 3: INSPECTION AGENCY
+        cells[3] = this.fillCellParagraph(cells[3], inspectionAgency, 1, false);
+      } else if (r === 7 && cells.length >= 4) {
+        // Cell 0: NOTIFICATION NUMBER
+        cells[0] = this.fillCellParagraph(cells[0], effectiveNotificationNo || effectiveReportNo, 1, false);
+        // Cell 1: STAGE INSPECTION
+        cells[1] = this.fillCellParagraph(cells[1], stageInspection, 1, false);
+        // Cell 2: DATE OF NEXT VISIT
+        cells[2] = this.fillCellParagraph(cells[2], nextVisitDate, 1, false);
+      }
+
+      const trPrMatch = rows[r].match(/<w:trPr[\s\S]*?<\/w:trPr>/);
+      const trPr = trPrMatch ? trPrMatch[0] : '';
+      const trOpenMatch = rows[r].match(/<w:tr(\s[^>]*)?>/);
+      const trOpen = trOpenMatch ? trOpenMatch[0] : '<w:tr>';
+      rows[r] = `${trOpen}${trPr}${cells.join('')}</w:tr>`;
+    }
+
+    const tblPrMatch = t1Xml.match(/<w:tblPr[\s\S]*?<\/w:tblPr>/);
+    const tblPr = tblPrMatch ? tblPrMatch[0] : '';
+    const tblGridMatch = t1Xml.match(/<w:tblGrid[\s\S]*?<\/w:tblGrid>/);
+    const tblGrid = tblGridMatch ? tblGridMatch[0] : '';
+    const tblOpenMatch = t1Xml.match(/<w:tbl(\s[^>]*)?>/);
+    const tblOpen = tblOpenMatch ? tblOpenMatch[0] : '<w:tbl>';
+
+    const newT1Xml = `${tblOpen}${tblPr}${tblGrid}${rows.join('')}</w:tbl>`;
+    return docXml.substring(0, tblStart) + newT1Xml + docXml.substring(tblEnd);
+  }
+
+  private fillCellParagraph(tcXml: string, text: string, paraIndex: number = 0, isBold: boolean = false): string {
+    const pMatches = [...tcXml.matchAll(/<w:p[\s>][\s\S]*?<\/w:p>/g)];
+    if (pMatches.length === 0) return tcXml;
+    const targetP = pMatches[paraIndex] || pMatches[pMatches.length - 1];
+    const targetPXml = targetP[0];
+
+    const pPrMatch = targetPXml.match(/<w:pPr[\s\S]*?<\/w:pPr>/);
+    const pPr = pPrMatch ? pPrMatch[0] : '<w:pPr><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr>';
+
+    const boldXml = isBold ? '<w:b/><w:bCs/>' : '';
+    const newP = `<w:p>${pPr}<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/>${boldXml}<w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r></w:p>`;
+
+    return tcXml.replace(targetPXml, newP);
+  }
+
+  private appendToLastParagraph(tcXml: string, text: string, isBold: boolean = true): string {
+    const pMatches = [...tcXml.matchAll(/<w:p[\s>][\s\S]*?<\/w:p>/g)];
+    if (pMatches.length === 0) return tcXml;
+    const targetPXml = pMatches[pMatches.length - 1][0];
+    const pEndIdx = targetPXml.lastIndexOf('</w:p>');
+    if (pEndIdx === -1) return tcXml;
+
+    const boldXml = isBold ? '<w:b/><w:bCs/>' : '';
+    const runXml = `<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/>${boldXml}<w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t xml:space="preserve"> ${escapeXml(text)}</w:t></w:r>`;
+    const newP = targetPXml.substring(0, pEndIdx) + runXml + '</w:p>';
+    return tcXml.replace(targetPXml, newP);
   }
 
   /**
