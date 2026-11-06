@@ -5,6 +5,7 @@ import { DeploymentGuardian } from './DeploymentGuardian';
 import { AdminPage } from './AdminPage';
 import { saveDraft, loadDraft, clearDraft, saveOpenWindow, getOpenWindow, clearOpenWindow } from './draftStorage';
 import AutocompleteInput from './AutocompleteInput';
+import { renderAsync } from 'docx-preview';
 
 // ============================================================
 // Auth Context
@@ -5042,14 +5043,63 @@ function ObservationsTab({ inspection, onReload }: any) {
   );
 }
 
-// Tab: Report Generation
+// Tab: Report Generation & Live In-Browser Word Document Preview
 function ReportTab({ inspection, onReload }: any) {
   const [generating, setGenerating] = useState(false);
-  const [error, setError] = useState('');
   const [templates, setTemplates] = useState<any[]>([]);
   const [reportType, setReportType] = useState<'IR' | 'FR'>(inspection.reportFormatType === 'FR' ? 'FR' : 'IR');
   const [selectedTemplate, setSelectedTemplate] = useState(inspection.selectedTemplate || 'master-template.docx');
   const [uploadingTemplate, setUploadingTemplate] = useState(false);
+
+  // Live in-browser document preview states
+  const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
+  const [previewZoom, setPreviewZoom] = useState<number>(100);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
+
+  // Render docx Blob into DOM
+  const renderDocxBlob = async (blob: Blob) => {
+    if (!previewContainerRef.current) return;
+    previewContainerRef.current.innerHTML = '';
+    await renderAsync(blob, previewContainerRef.current, undefined, {
+      inWrapper: true,
+      breakPages: true,
+      renderHeaders: true,
+      renderFooters: true,
+      renderAltChunks: true,
+    });
+  };
+
+  const loadPreview = useCallback(async (tmplToUse?: string) => {
+    const tmpl = tmplToUse || selectedTemplate;
+    if (!tmpl || !inspection.id) return;
+    setPreviewLoading(true);
+    setPreviewError('');
+    try {
+      const res = await API.generateReport(inspection.id, tmpl);
+      const blob = res.data;
+      setPreviewBlob(blob);
+      await renderDocxBlob(blob);
+    } catch (err: any) {
+      console.error('Preview generation failed:', err);
+      let errMsg = 'Failed to generate document preview. Check that required inspection data is present.';
+      if (err.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const parsed = JSON.parse(text);
+          if (parsed.error) errMsg = `Server Error: ${parsed.error}`;
+        } catch {}
+      } else if (err.response?.data?.error) {
+        errMsg = `Server Error: ${err.response.data.error}`;
+      } else if (err.message) {
+        errMsg = `Error: ${err.message}`;
+      }
+      setPreviewError(errMsg);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [inspection.id, selectedTemplate]);
 
   useEffect(() => {
     API.getTemplates().then(r => {
@@ -5063,15 +5113,19 @@ function ReportTab({ inspection, onReload }: any) {
         t.name === initialTemplate || 
         t.name.replace(/\.docx?$/i, '').toLowerCase() === initialTemplate?.replace(/\.docx?$/i, '').toLowerCase()
       );
+      let chosen = initialTemplate || 'master-template.docx';
       if (foundMatch) {
+        chosen = foundMatch.name;
         setSelectedTemplate(foundMatch.name);
       } else if (initialTemplate) {
         setSelectedTemplate(initialTemplate);
       } else if (filtered.length > 0) {
+        chosen = filtered[0].name;
         setSelectedTemplate(filtered[0].name);
       }
+      loadPreview(chosen);
     }).catch(() => {});
-  }, [inspection.id, inspection.reportFormatType, inspection.selectedTemplate]);
+  }, [inspection.id, inspection.reportFormatType, inspection.selectedTemplate, loadPreview]);
 
   const handleTypeChange = async (newType: 'IR' | 'FR') => {
     setReportType(newType);
@@ -5079,6 +5133,7 @@ function ReportTab({ inspection, onReload }: any) {
     const newSelected = filtered.length > 0 ? filtered[0].name : '';
     if (newSelected) {
       setSelectedTemplate(newSelected);
+      loadPreview(newSelected);
     }
     try {
       await API.updateInspection(inspection.id, {
@@ -5093,6 +5148,7 @@ function ReportTab({ inspection, onReload }: any) {
 
   const handleTemplateSelect = async (tmplName: string) => {
     setSelectedTemplate(tmplName);
+    loadPreview(tmplName);
     try {
       await API.updateInspection(inspection.id, { selectedTemplate: tmplName });
       if (onReload) onReload();
@@ -5131,6 +5187,7 @@ function ReportTab({ inspection, onReload }: any) {
       setSelectedTemplate(file.name);
       await API.updateInspection(inspection.id, { selectedTemplate: file.name, reportFormatType: reportType });
       if (onReload) onReload();
+      loadPreview(file.name);
       alert(`Format template "${file.name}" uploaded successfully into ${reportType} category!`);
     } catch {
       alert('Failed to upload template format');
@@ -5139,24 +5196,33 @@ function ReportTab({ inspection, onReload }: any) {
     e.target.value = '';
   };
 
-  const attendedActivities = (inspection.activities || []).filter((act: any) => {
-    const result = inspection.results?.find((r: any) => r.activityId === act.id);
-    return act.status === 'ACCEPTABLE' || act.status === 'NOT_ACCEPTABLE' || (result && result.status !== 'PENDING');
-  });
-  const offeredItems = (inspection.items || []).filter((i: any) => i.presentedQty > 0 || i.presentedQty === undefined);
-  const photosCount = inspection.photos?.length || 0;
-
-  const handleGenerate = async () => {
-    setGenerating(true);
-    setError('');
-    try {
-      const r = await API.generateReport(inspection.id, selectedTemplate);
-      const url = window.URL.createObjectURL(new Blob([r.data], { type: 'application/msword' }));
+  const handleDownload = async () => {
+    if (previewBlob) {
+      const url = window.URL.createObjectURL(new Blob([previewBlob], { type: 'application/msword' }));
       const a = document.createElement('a');
       a.href = url;
       a.download = `${reportType}_Report_${inspection.reportNumber || 'draft'}.doc`;
       a.click();
       window.URL.revokeObjectURL(url);
+    } else {
+      await handleGenerate();
+    }
+  };
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    setPreviewError('');
+    try {
+      const r = await API.generateReport(inspection.id, selectedTemplate);
+      const blob = r.data;
+      setPreviewBlob(blob);
+      const url = window.URL.createObjectURL(new Blob([blob], { type: 'application/msword' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${reportType}_Report_${inspection.reportNumber || 'draft'}.doc`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      await renderDocxBlob(blob);
     } catch (e: any) {
       console.error('Report generation error:', e);
       let errMsg = 'Report generation failed. Check that all required data is present.';
@@ -5165,15 +5231,13 @@ function ReportTab({ inspection, onReload }: any) {
           const text = await e.response.data.text();
           const parsed = JSON.parse(text);
           if (parsed.error) errMsg = `Server Error: ${parsed.error}`;
-        } catch {
-          // not json
-        }
+        } catch {}
       } else if (e.response?.data?.error) {
         errMsg = `Server Error: ${e.response.data.error}`;
       } else if (e.message) {
         errMsg = `Error: ${e.message}`;
       }
-      setError(errMsg);
+      setPreviewError(errMsg);
     }
     setGenerating(false);
   };
@@ -5194,6 +5258,13 @@ function ReportTab({ inspection, onReload }: any) {
     }
   };
 
+  const attendedActivities = (inspection.activities || []).filter((act: any) => {
+    const result = inspection.results?.find((r: any) => r.activityId === act.id);
+    return act.status === 'ACCEPTABLE' || act.status === 'NOT_ACCEPTABLE' || (result && result.status !== 'PENDING');
+  });
+  const offeredItems = (inspection.items || []).filter((i: any) => i.presentedQty > 0 || i.presentedQty === undefined);
+  const photosCount = inspection.photos?.length || 0;
+
   const irTemplatesCount = templates.filter((t: any) => (t.type || 'IR') === 'IR').length;
   const frTemplatesCount = templates.filter((t: any) => t.type === 'FR').length;
   const filteredTemplates = templates.filter((t: any) => (t.type || 'IR') === reportType);
@@ -5203,12 +5274,14 @@ function ReportTab({ inspection, onReload }: any) {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
         <div>
-          <h3 className="font-semibold text-slate-800 text-lg">Report Generation & Format Customization</h3>
-          <p className="text-xs text-slate-500">Choose between Inspection Report (IR) or Final Report (FR), select matching templates, and export.</p>
+          <h3 className="font-semibold text-slate-800 text-lg">Report Generation & Live Document Preview</h3>
+          <p className="text-xs text-slate-500">
+            Select format, inspect the exact populated Word layout on-page in real time, and download verified .doc reports.
+          </p>
         </div>
       </div>
       
-      {/* Template Format Selector & Uploader */}
+      {/* 1. Template Format Selector & Uploader */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
         {/* IR vs FR Category Selection Bar */}
         <div>
@@ -5265,11 +5338,11 @@ function ReportTab({ inspection, onReload }: any) {
                     <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold uppercase tracking-wider ${
                       reportType === 'FR' ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600'
                     }`}>
-                      Final Report
+                      Flash / Final Report
                     </span>
                   </div>
                   <p className={`text-xs mt-0.5 ${reportType === 'FR' ? 'text-indigo-100' : 'text-slate-400'}`}>
-                    Final Factory Acceptance / Release
+                    Flash Inspection Report & Final Release
                   </p>
                 </div>
               </div>
@@ -5289,7 +5362,7 @@ function ReportTab({ inspection, onReload }: any) {
                 <span>📋</span> 2. Choose Matching {reportType} Template Format
               </h4>
               <p className="text-xs text-slate-500 mt-0.5">
-                Showing existing formats classified for <strong>{reportType === 'IR' ? 'Inspection Report (IR)' : 'Final Report (FR)'}</strong>.
+                Showing formats classified for <strong>{reportType === 'IR' ? 'Inspection Report (IR)' : 'Flash / Final Report (FR)'}</strong>.
               </p>
             </div>
             
@@ -5373,7 +5446,144 @@ function ReportTab({ inspection, onReload }: any) {
         </div>
       </div>
 
-      {/* Clean Template Assurance & Preview */}
+      {/* 2. Interactive Word Document Live Preview */}
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm space-y-0">
+        {/* Header Toolbar */}
+        <div className="bg-slate-800 text-white px-5 py-3.5 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-600 rounded-lg text-white">
+              <span className="text-lg">👁️</span>
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="font-bold text-sm text-white">Interactive Word Document Preview</h4>
+                <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded tracking-wider uppercase ${
+                  reportType === 'IR' ? 'bg-blue-500 text-white' : 'bg-indigo-500 text-white'
+                }`}>
+                  {reportType}
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 truncate max-w-md">
+                {selectedTemplate}
+              </p>
+            </div>
+          </div>
+
+          {/* Action buttons & Zoom controls */}
+          <div className="flex items-center gap-2">
+            {/* Zoom Controls */}
+            <div className="flex items-center bg-slate-700 rounded-lg p-0.5 border border-slate-600 text-xs">
+              <button
+                type="button"
+                onClick={() => setPreviewZoom(z => Math.max(50, z - 10))}
+                className="px-2 py-1 hover:bg-slate-600 rounded text-slate-200 font-bold"
+                title="Zoom Out"
+              >
+                －
+              </button>
+              <span className="px-2 py-1 text-slate-200 font-mono text-[11px] min-w-[45px] text-center">
+                {previewZoom}%
+              </span>
+              <button
+                type="button"
+                onClick={() => setPreviewZoom(z => Math.min(150, z + 10))}
+                className="px-2 py-1 hover:bg-slate-600 rounded text-slate-200 font-bold"
+                title="Zoom In"
+              >
+                ＋
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreviewZoom(100)}
+                className="px-2 py-1 hover:bg-slate-600 rounded text-slate-400 hover:text-white text-[10px]"
+                title="Reset Zoom to 100%"
+              >
+                100%
+              </button>
+            </div>
+
+            {/* Refresh Preview */}
+            <button
+              type="button"
+              onClick={() => loadPreview(selectedTemplate)}
+              disabled={previewLoading}
+              className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded-lg text-xs font-semibold text-slate-100 flex items-center gap-1.5 transition disabled:opacity-50"
+              title="Re-populate preview with latest inspection data"
+            >
+              <span className={previewLoading ? 'animate-spin' : ''}>🔄</span>
+              <span>{previewLoading ? 'Updating...' : 'Refresh Preview'}</span>
+            </button>
+
+            {/* Download Instant Button */}
+            <button
+              type="button"
+              onClick={handleDownload}
+              disabled={previewLoading || generating}
+              className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-md flex items-center gap-2 transition disabled:opacity-50"
+            >
+              <span>📥</span>
+              <span>Download Word (.doc)</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Status notice */}
+        <div className="bg-slate-100 border-b border-slate-200 px-5 py-2 text-xs text-slate-600 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+            <span>Live page preview of your synthesized report: inspect tables, clauses, attendances, and photos directly below.</span>
+          </div>
+          {previewBlob && (
+            <span className="text-slate-500 text-[11px] font-mono">
+              Ready • {(previewBlob.size / 1024 / 1024).toFixed(2)} MB
+            </span>
+          )}
+        </div>
+
+        {/* Document Preview Canvas */}
+        <div className="bg-slate-200/90 p-4 sm:p-8 min-h-[550px] max-h-[850px] overflow-auto flex flex-col items-center relative">
+          {previewLoading && (
+            <div className="absolute inset-0 bg-slate-900/30 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center text-white">
+              <div className="bg-slate-900/90 px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 border border-slate-700">
+                <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                <div>
+                  <div className="font-semibold text-sm">Rendering Word Document...</div>
+                  <div className="text-xs text-slate-400">Synthesizing template structure and inspection tables</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {previewError && (
+            <div className="w-full max-w-xl p-4 bg-red-50 border border-red-300 rounded-xl text-red-800 text-sm mb-4 shadow">
+              <div className="font-bold flex items-center gap-2">
+                <span>⚠️</span> Document Preview Notice
+              </div>
+              <p className="mt-1 text-xs">{previewError}</p>
+              <button
+                type="button"
+                onClick={() => loadPreview(selectedTemplate)}
+                className="mt-3 px-3 py-1 bg-red-600 text-white rounded text-xs font-semibold hover:bg-red-700"
+              >
+                Retry Preview
+              </button>
+            </div>
+          )}
+
+          <div
+            style={{
+              transform: `scale(${previewZoom / 100})`,
+              transformOrigin: 'top center',
+              transition: 'transform 0.15s ease-out'
+            }}
+            className="w-full flex justify-center"
+          >
+            <div ref={previewContainerRef} className="w-full max-w-5xl" />
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Clean Template Assurance */}
       <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-xs text-emerald-950 space-y-1.5 shadow-sm">
         <h5 className="font-bold text-sm text-emerald-900 flex items-center gap-2">
           <span>✨</span> Smart Report Sanitization Active
@@ -5381,11 +5591,11 @@ function ReportTab({ inspection, onReload }: any) {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
           <div className="bg-white p-2.5 rounded-lg border border-emerald-200">
             <span className="font-bold text-slate-800 text-sm block">{attendedActivities.length} Attended Activities</span>
-            <span className="text-slate-500">Only these are included in Table 9. Unattended clauses are omitted.</span>
+            <span className="text-slate-500">Only these are included in the results table. Unattended clauses are omitted.</span>
           </div>
           <div className="bg-white p-2.5 rounded-lg border border-emerald-200">
             <span className="font-bold text-slate-800 text-sm block">{offeredItems.length} Offered Valves</span>
-            <span className="text-slate-500">Materials selected as offered for this visit will be in Table 7.</span>
+            <span className="text-slate-500">Materials selected as offered for this visit will be in the materials table.</span>
           </div>
           <div className="bg-white p-2.5 rounded-lg border border-emerald-200">
             <span className="font-bold text-slate-800 text-sm block">{photosCount} Uploaded Photos</span>
@@ -5394,25 +5604,7 @@ function ReportTab({ inspection, onReload }: any) {
         </div>
       </div>
 
-      {/* Generation Action Box */}
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-xl p-6 shadow-md">
-        <h4 className="font-bold text-lg mb-2 flex items-center gap-2">
-          <span>⚡</span> Generate Official Inspection Report
-        </h4>
-        <p className="text-blue-100 text-sm mb-5 max-w-2xl">
-          Instantly synthesizes all inspection metadata, items inspected, scope activities, test results, calibration logs, attendees, and attached photo grids directly into the official Word (.doc) format.
-        </p>
-        <button
-          onClick={handleGenerate}
-          disabled={generating}
-          className="bg-white text-blue-700 hover:bg-blue-50 px-6 py-2.5 rounded-lg font-bold shadow-md transition disabled:opacity-50 text-sm flex items-center gap-2"
-        >
-          {generating ? '⏳ Populating Template...' : '📥 Generate & Download (.doc)'}
-        </button>
-        {error && <p className="text-red-200 bg-red-900/40 border border-red-400/40 rounded-lg p-3 text-sm mt-4">{error}</p>}
-      </div>
-
-      {/* Review Checklist */}
+      {/* 4. Review Checklist */}
       <div>
         <h4 className="font-semibold text-slate-800 mb-3">Pre-Generation Quality Checklist</h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -5426,6 +5618,7 @@ function ReportTab({ inspection, onReload }: any) {
     </div>
   );
 }
+
 
 function CheckItem({ label, ok }: { label: string; ok: boolean }) {
   return <div className={`p-3 rounded-lg border text-sm ${ok ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>{ok ? '✅' : '❌'} {label}</div>;

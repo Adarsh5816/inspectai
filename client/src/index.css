@@ -1,1 +1,23 @@
 @import "tailwindcss";
+
+/* Word Document Preview Styles */
+.docx-wrapper {
+  background: transparent !important;
+  padding: 1rem 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 2rem !important;
+}
+
+.docx-wrapper > section.docx {
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.18), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+  border-radius: 4px !important;
+  background: #ffffff !important;
+  margin-bottom: 2rem !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+.docx-wrapper > section.docx table {
+  border-collapse: collapse !important;
+}
