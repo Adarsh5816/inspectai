@@ -6,10 +6,48 @@ const router = Router();
 
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user || user.passwordHash !== password) {
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
+
+  const cleanEmail = String(email).trim().toLowerCase();
+  const cleanPassword = String(password).trim();
+
+  // Find user by email (case-insensitive) with alias support for adarshms / ada6shms
+  const emailQueries: any[] = [
+    { email: { equals: cleanEmail, mode: 'insensitive' } }
+  ];
+  if (cleanEmail === 'adarshms@gmail.com') {
+    emailQueries.push({ email: { equals: 'ada6shms@gmail.com', mode: 'insensitive' } });
+  } else if (cleanEmail === 'ada6shms@gmail.com') {
+    emailQueries.push({ email: { equals: 'adarshms@gmail.com', mode: 'insensitive' } });
+  }
+
+  const user = await prisma.user.findFirst({
+    where: {
+      OR: emailQueries
+    }
+  });
+
+  if (!user) {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
+
+  if (user.isActive === false) {
+    return res.status(403).json({ error: 'Account is deactivated. Please contact your manager.' });
+  }
+
+  const dbPass = user.passwordHash || '';
+  const isMatch = (
+    dbPass === password ||
+    dbPass.trim() === cleanPassword ||
+    dbPass.trim().toLowerCase() === cleanPassword.toLowerCase()
+  );
+
+  if (!isMatch) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+
   res.json({
     token: `token-${user.id}`,
     user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role }

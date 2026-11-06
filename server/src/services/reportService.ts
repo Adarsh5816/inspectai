@@ -315,7 +315,8 @@ export class ReportService {
     // Filter attended activities (or fall back to all inspection activities if none are graded yet)
     let attendedActivities = (inspection.activities || []).filter((act: any) => {
       const result = inspection.results?.find((r: any) => r.activityId === act.id);
-      return act.status === 'ACCEPTABLE' || act.status === 'NOT_ACCEPTABLE' || (result && result.status !== 'PENDING');
+      return act.status === 'ACCEPTABLE' || act.status === 'ACCEPTED' || act.status === 'SATISFACTORY' ||
+             act.status === 'COMPLETED' || act.status === 'NOT_ACCEPTABLE' || (result && result.status !== 'PENDING');
     });
     if (attendedActivities.length === 0 && (inspection.activities || []).length > 0) {
       attendedActivities = inspection.activities || [];
@@ -384,8 +385,24 @@ export class ReportService {
       docXml = this.setCellValueInNextCell(docXml, ['RFI (NOI) № ►', 'RFI (NOI) №', 'RFI (NOI) No'], effectiveNotificationNo);
       docXml = this.setCellValueInNextCell(docXml, ['RFI (NOI) Rev. № ►', 'RFI (NOI) Rev. №', 'RFI (NOI) Rev'], (inspection as any).rfiRevision || 'Rev A');
       docXml = this.setCellValueInNextCell(docXml, ['ITP № ►', 'ITP №', 'ITP No'], itpNo);
-      docXml = this.setCellValueInNextCell(docXml, ['ITP Rev. № ►', 'ITP Rev. №', 'ITP Rev'], itpRev);
-      const itpActName = (inspection.activities || []).map((a: any) => a.activityName).filter(Boolean)[0] || 'ITP SL. NO. 2.2 - Stamp transfer on rod.';
+      // ITP Activity entry: Must provide ITP SL. No. / Clause No. and activity name
+      const actEntries = attendedActivities.map((a: any) => {
+        const rawClause = (a.clauseNumber || '').trim();
+        const cl = rawClause ? rawClause.replace(/^sl\s*(?:no\.?)?\s*/i, '').replace(/^clause\s*/i, '').replace(/^itp\s*/i, '').trim() : '';
+        const cleanName = (a.activityName || '')
+          .split('\t')[0]
+          .replace(/^P\.O\.\s*item\(s\):?\s*/i, '')
+          .replace(/^(?:ITP\s*)?(?:SL\.?\s*NO\.?|Clause)\s*[\d.]+\s*[-–:]\s*/i, '')
+          .trim();
+        if (cl && cleanName) {
+          return `ITP SL. NO. ${cl} - ${cleanName}`;
+        } else if (cl) {
+          return `ITP SL. NO. ${cl}`;
+        } else {
+          return cleanName;
+        }
+      }).filter(Boolean);
+      const itpActName = actEntries.join(', ') || 'ITP SL. NO. 59 - Impeller Balancing';
       docXml = this.setCellValueInNextCell(docXml, ['ITP ACTIVIY № ►', 'ITP ACTIVITY № ►', 'ITP ACTIVIY №', 'ITP ACTIVITY №'], itpActName);
       docXml = this.setCellValueInNextCell(docXml, ['PROJECT NAME ►'], effectiveProjectName);
       docXml = this.setCellValueInNextCell(docXml, ['PROJECT № ►', 'PROJECT №', 'PROJECT NO'], project.projectNumber || 'P12567A');
@@ -754,7 +771,7 @@ export class ReportService {
         const headerTrEnd = docXml.indexOf('</w:tr>', fiveColIdx) + 7;
         const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
         if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
-          const materialRows = this.buildFiveColumnMaterialRowsXml(inspection.items || []);
+          const materialRows = this.buildFiveColumnMaterialRowsXml(inspection.items || [], undefined, inspection);
           docXml = docXml.substring(0, headerTrEnd) + materialRows + docXml.substring(innerTableEnd);
         }
       }
@@ -2121,9 +2138,25 @@ export class ReportService {
   /**
    * Build 5-column Materials Offered table rows (Table 6 format: PO Item No, Tag Number, Description, Quantity, ITP Step #)
    */
-  private buildFiveColumnMaterialRowsXml(items: any[], defaultItpStep = 'VISUAL AND DIMENSION'): string {
+  private buildFiveColumnMaterialRowsXml(items: any[], defaultItpStep?: string, inspection?: any): string {
     const offeredItems = (items || []).filter((i: any) => i.presentedQty > 0);
     const listToRender = offeredItems.length > 0 ? offeredItems : (items || []);
+
+    // Determine fallback ITP Step / SL. No. / Clause No. from active inspection activities
+    const attendedActs = (inspection?.activities || []).filter((a: any) =>
+      a.status === 'ACCEPTABLE' || a.status === 'ACCEPTED' || a.status === 'SATISFACTORY' || a.status === 'COMPLETED' ||
+      (inspection?.results || []).some((r: any) => r.activityId === a.id && (r.status === 'ACCEPTABLE' || r.status === 'ACCEPTED'))
+    );
+    const actsToUse = attendedActs.length > 0 ? attendedActs : (inspection?.activities || []);
+    const clauseNums = Array.from(new Set(
+      actsToUse.map((a: any) => {
+        const raw = (a.clauseNumber || '').trim();
+        return raw ? raw.replace(/^sl\s*(?:no\.?)?\s*/i, '').replace(/^clause\s*/i, '').replace(/^itp\s*/i, '').trim() : '';
+      }).filter(Boolean)
+    ));
+    const fallbackStep = clauseNums.length > 0
+      ? `ITP SL. NO. ${clauseNums.join(', ')}`
+      : (defaultItpStep && !/visual\s*(?:and|&)?\s*dimension/i.test(defaultItpStep) ? defaultItpStep : 'ITP SL. NO. 1');
 
     const blankRow = `<w:tr w:rsidR="00925296" w:rsidTr="00FF4246">
   <w:trPr><w:trHeight w:val="312"/></w:trPr>
@@ -2139,7 +2172,24 @@ export class ReportService {
       const tag = escapeXml(item.tagNumber || item.materialCode || 'SODS25195');
       const desc = escapeXml(item.itemName || item.itemDescription || 'VALVE ITEM');
       const qty = escapeXml(String(item.presentedQty || item.orderedQty || 1));
-      const step = escapeXml(item.itpStep || defaultItpStep);
+
+      // Determine item-specific ITP step if linked results exist
+      let itemStep = item.itpStep;
+      if (!itemStep || /visual\s*(?:and|&)?\s*dimension/i.test(itemStep)) {
+        if (item.results && item.results.length > 0) {
+          const itemActClauses = (item.results as any[])
+            .map((r: any) => r.activity?.clauseNumber)
+            .filter(Boolean)
+            .map((c: string) => c.replace(/^sl\s*(?:no\.?)?\s*/i, '').replace(/^clause\s*/i, '').trim());
+          if (itemActClauses.length > 0) {
+            itemStep = `ITP SL. NO. ${Array.from(new Set(itemActClauses)).join(', ')}`;
+          }
+        }
+      }
+      const finalStep = (itemStep && !/visual\s*(?:and|&)?\s*dimension/i.test(itemStep))
+        ? (itemStep.startsWith('ITP') || itemStep.startsWith('Clause') ? itemStep : `ITP SL. NO. ${itemStep}`)
+        : fallbackStep;
+      const step = escapeXml(finalStep);
 
       return `<w:tr w:rsidR="00925296" w:rsidTr="00FF4246">
   <w:trPr><w:trHeight w:val="312"/></w:trPr>
