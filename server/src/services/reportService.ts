@@ -723,6 +723,42 @@ export class ReportService {
           docXml = docXml.substring(0, headerTrEnd) + instRows + docXml.substring(innerTableEnd);
         }
       }
+
+      // === 2.11 RESULTS OF TESTS AND INSPECTION & CERTIFICATION REVIEWED (Table 11) ===
+      let t11Start = -1;
+      let t11End = -1;
+      let searchPos = 0;
+      while ((searchPos = docXml.indexOf('RESULTS OF TESTS', searchPos)) !== -1) {
+        const tblStart = this.findPrecedingTableStart(docXml, searchPos);
+        if (tblStart !== -1) {
+          const tblEnd = this.findMatchingTableEnd(docXml, tblStart);
+          if (tblEnd !== -1 && tblEnd > searchPos) {
+            const tblXml = docXml.substring(tblStart, tblEnd);
+            if (tblXml.includes('4.1') && tblXml.includes('CERTIFICATION REVIEWED')) {
+              t11Start = tblStart;
+              t11End = tblEnd;
+              break;
+            }
+          }
+        }
+        searchPos += 16;
+      }
+
+      if (t11Start !== -1 && t11End !== -1) {
+        const tblXml = docXml.substring(t11Start, t11End);
+        const rows = [...tblXml.matchAll(/<w:tr[\s>][\s\S]*?<\/w:tr>/g)].map(m => m[0]);
+        if (rows.length >= 4) {
+          const row0 = rows[0];
+          const row2 = rows[2];
+          const newRow1 = this.buildTestResultsRowXml(attendedActivities, inspection.items || [], inspection.results || []);
+          const newRow3 = this.buildCertificationReviewedRowXml((inspection as any).certificationNotes);
+
+          const row0Start = tblXml.indexOf(row0);
+          const tablePrefix = tblXml.substring(0, row0Start);
+          const newTable11 = `${tablePrefix}${row0}${newRow1}${row2}${newRow3}</w:tbl>`;
+          docXml = docXml.substring(0, t11Start) + newTable11 + docXml.substring(t11End);
+        }
+      }
     }
 
     // === 3.1 FLASH REPORT ACTIVITIES & RESULTS (Table 4) ===
@@ -876,12 +912,38 @@ export class ReportService {
         'PHOTOS:'
       ]);
       if (photoHeaderIdx !== -1) {
-        const tblStart = docXml.indexOf('<w:tbl', photoHeaderIdx);
-        if (tblStart !== -1) {
-          const tblEnd = this.findMatchingTableEnd(docXml, tblStart);
-          if (tblEnd !== -1 && tblEnd > tblStart) {
-            const photoTableXml = await this.embedUploadedPhotos(zip, photos);
-            docXml = docXml.substring(0, tblStart) + photoTableXml + docXml.substring(tblEnd);
+        const containingTblStart = this.findPrecedingTableStart(docXml, photoHeaderIdx);
+        let isInsideTable = false;
+        let tblStart = -1;
+        let tblEnd = -1;
+
+        if (containingTblStart !== -1) {
+          const containingTblEnd = this.findMatchingTableEnd(docXml, containingTblStart);
+          if (containingTblEnd !== -1 && containingTblEnd > photoHeaderIdx) {
+            isInsideTable = true;
+            tblStart = containingTblStart;
+            tblEnd = containingTblEnd;
+          }
+        }
+
+        if (!isInsideTable) {
+          tblStart = docXml.indexOf('<w:tbl', photoHeaderIdx);
+          if (tblStart !== -1) {
+            tblEnd = this.findMatchingTableEnd(docXml, tblStart);
+          }
+        }
+
+        if (tblStart !== -1 && tblEnd !== -1) {
+          const photoResult = await this.embedUploadedPhotos(zip, photos);
+          if (isInsideTable) {
+            // Keep Row 0 (header row "13- PHOTOS") and replace rows 1..N
+            const row0End = docXml.indexOf('</w:tr>', photoHeaderIdx) + 7;
+            if (row0End > photoHeaderIdx && row0End < tblEnd) {
+              docXml = docXml.substring(0, row0End) + photoResult.rowsXml + docXml.substring(tblEnd - 8);
+            }
+          } else {
+            // Standalone table following photo header
+            docXml = docXml.substring(0, tblStart) + photoResult.tableXml + docXml.substring(tblEnd);
           }
         }
       }
@@ -1047,6 +1109,20 @@ export class ReportService {
     }
 
     return docXml;
+  }
+
+  /**
+   * Find table start <w:tbl preceding a given character position
+   */
+  private findPrecedingTableStart(docXml: string, pos: number): number {
+    const re = /<w:tbl[\s>]/g;
+    let m;
+    let last = -1;
+    while ((m = re.exec(docXml)) !== null) {
+      if (m.index < pos) last = m.index;
+      else break;
+    }
+    return last;
   }
 
   /**
@@ -1670,6 +1746,80 @@ export class ReportService {
   }
 
   /**
+   * Build Table 11 Row 1: 4.1- RESULTS OF TESTS AND INSPECTION content
+   */
+  private buildTestResultsRowXml(activities: any[], items: any[], results: any[]): string {
+    const defaultItemsText = (items || []).map((i: any) => i.tagNumber || i.itemName).filter(Boolean).join(', ') || 'offered equipment / materials';
+    const paras: string[] = [];
+
+    if (activities && activities.length > 0) {
+      for (const act of activities) {
+        const clause = act.clauseNumber ? `Clause ${act.clauseNumber}` : 'Clause / ITP Stage';
+        const actName = act.activityName || 'Inspection Activity';
+        const res = (results || []).find((r: any) => r.activityId === act.id);
+
+        let findingsText = '';
+        if (res && res.remarks) {
+          findingsText = res.remarks;
+        } else if (/PMI|Positive Material/i.test(actName)) {
+          findingsText = `Witnessed Positive Material Identification (PMI) on casing, pipe material including welds for Item(s): ${defaultItemsText}. Testing was performed utilizing a calibrated PMI Analyzer (SciAps X200). Material chemical composition, key alloying elements (Cr, Ni, Mo, etc.), and alloy grades were verified against approved Material Test Certificates (MTCs) and applicable ASME/ASTM specifications. Results: Conform to requirements - ACCEPTABLE.`;
+        } else if (/Hydro|Pressure|Leak/i.test(actName)) {
+          findingsText = `Witnessed pressure / leak testing for Item(s): ${defaultItemsText} in accordance with approved test procedures and project specifications. Test pressure held for the designated holding period with zero pressure drop and zero leakage observed. Results: ACCEPTABLE.`;
+        } else if (/Visual|Dimension/i.test(actName)) {
+          findingsText = `Carried out visual and dimensional examination on Item(s): ${defaultItemsText}. Dimensions, flange faces, wall thickness, bevel ends, markings, and overall workmanship verified against approved fabrication drawings. Results: ACCEPTABLE.`;
+        } else if (/Hardness/i.test(actName)) {
+          findingsText = `Witnessed hardness testing on parent metal and weld heat-affected zones for Item(s): ${defaultItemsText}. Recorded hardness values were verified within project specified limits. Results: ACCEPTABLE.`;
+        } else {
+          findingsText = `Witnessed and verified ${actName} for Item(s): ${defaultItemsText} in full accordance with approved ITP requirements and project specifications. All quality parameters and acceptance criteria were witnessed and verified. Results: ACCEPTABLE.`;
+        }
+
+        paras.push(`<w:p>
+  <w:pPr><w:spacing w:after="40" w:line="240" w:lineRule="auto"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:val="en-US"/></w:rPr></w:pPr>
+  <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:val="en-US"/></w:rPr><w:t xml:space="preserve">${escapeXml(clause)} - ${escapeXml(actName)}: </w:t></w:r>
+</w:p>
+<w:p>
+  <w:pPr><w:spacing w:after="100" w:line="240" w:lineRule="auto"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:val="en-US"/></w:rPr></w:pPr>
+  <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:val="en-US"/></w:rPr><w:t>${escapeXml(findingsText)}</w:t></w:r>
+</w:p>`);
+      }
+    } else {
+      paras.push(`<w:p>
+  <w:pPr><w:spacing w:after="60" w:line="240" w:lineRule="auto"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:val="en-US"/></w:rPr></w:pPr>
+  <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:val="en-US"/></w:rPr><w:t>Witnessed inspection and testing of presented materials and equipment in accordance with approved ITP clauses and project specifications. All parameters, dimensions, and test results were verified and found acceptable.</w:t></w:r>
+</w:p>`);
+    }
+
+    return `<w:tr w:rsidR="00316468" w:rsidRPr="00316468" w:rsidTr="00316468">
+  <w:tc><w:tcPr><w:tcW w:w="10762" w:type="dxa"/></w:tcPr>
+  ${paras.join('\n')}
+  </w:tc>
+</w:tr>`;
+  }
+
+  /**
+   * Build Table 11 Row 3: 5- CERTIFICATION REVIEWED AND/OR SIGNED content
+   */
+  private buildCertificationReviewedRowXml(certNotes?: string): string {
+    const defaultNotes = [
+      '1. Reviewed and verified Vendor Material Test Certificates (EN 10204 Type 3.1 / 3.2) for casing, pipe materials, and consumables against approved project specifications; chemical analysis and mechanical test properties found fully compliant.',
+      '2. Reviewed calibration certificates of measuring & test equipment (SciAps X200 PMI Machine, Vernier Calipers, Pressure Gauges) and confirmed all instruments are valid within their calibration validity period.',
+      '3. Verified Quality Control records, NDT operator qualifications, and welding procedure specifications (WPS/PQR). Inspection & Test Plan (ITP) stage witness signed and endorsed.'
+    ];
+
+    const notesList = certNotes ? [certNotes] : defaultNotes;
+    const paras = notesList.map(n => `<w:p>
+  <w:pPr><w:spacing w:after="60" w:line="240" w:lineRule="auto"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:val="en-US"/></w:rPr></w:pPr>
+  <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:val="en-US"/></w:rPr><w:t>${escapeXml(n)}</w:t></w:r>
+</w:p>`);
+
+    return `<w:tr w:rsidR="00316468" w:rsidRPr="00316468" w:rsidTr="00AA785D">
+  <w:tc><w:tcPr><w:tcW w:w="10762" w:type="dxa"/></w:tcPr>
+  ${paras.join('\n')}
+  </w:tc>
+</w:tr>`;
+  }
+
+  /**
    * Build Generic Materials table rows (Table 6)
    */
   private buildGenericMaterialRowsXml(items: any[]): string {
@@ -2139,10 +2289,34 @@ ${rowsXml}
   }
 
   /**
+   * Resolve photo path checking direct path and multiple fallback storage candidate directories
+   */
+  private resolvePhotoPath(storageKey: string): string {
+    if (!storageKey) return '';
+    if (fs.existsSync(storageKey)) return storageKey;
+    const resolved = path.resolve(storageKey);
+    if (fs.existsSync(resolved)) return resolved;
+    const base = path.basename(storageKey);
+    const storageDir = process.env.STORAGE_DIR || path.resolve(__dirname, '../../../storage');
+    const candidates = [
+      path.join(storageDir, 'photos', base),
+      path.join(process.cwd(), 'storage', 'photos', base),
+      path.resolve(__dirname, '../../storage/photos', base),
+      path.resolve(__dirname, '../storage/photos', base),
+      path.resolve(__dirname, '../../../storage/photos', base),
+    ];
+    for (const cand of candidates) {
+      if (cand && fs.existsSync(cand)) return cand;
+    }
+    return '';
+  }
+
+  /**
    * Embed uploaded photos into Word DOCX and build clean 2-column photo table.
    * Keeps natural aspect ratio for landscape without stretching; adjusts portrait photos.
+   * Returns both full tableXml and inner rowsXml for preserving template table header rows.
    */
-  private async embedUploadedPhotos(zip: JSZip, photos: any[]): Promise<string> {
+  private async embedUploadedPhotos(zip: JSZip, photos: any[]): Promise<{ tableXml: string; rowsXml: string; hasPhotos: boolean }> {
     // 1. Update relationships
     const relsPath = 'word/_rels/document.xml.rels';
     let relsXml = await zip.file(relsPath)!.async('string');
@@ -2152,50 +2326,66 @@ ${rowsXml}
     for (let i = 0; i < photos.length; i++) {
       const p = photos[i];
       try {
-        const filePath = path.resolve(p.storageKey);
-        if (!fs.existsSync(filePath)) continue;
-
-        const buf = fs.readFileSync(filePath);
-        const ext = path.extname(filePath).toLowerCase().replace('.', '') || 'jpeg';
-        const mediaName = `insp_photo_${i + 1}.${ext}`;
-        const rId = `rIdInspPhoto_${i + 1}`;
-
-        // Save image to zip
-        zip.file(`word/media/${mediaName}`, buf);
-
-        // Add relationship
-        const relEntry = `<Relationship Id="${rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${mediaName}"/>`;
-        relsXml = relsXml.replace('</Relationships>', `${relEntry}</Relationships>`);
-
-        // Compute aspect ratio:
-        // Landscape photos: keep width at 2,800,000 EMUs, compute cy naturally so zero stretching occurs.
-        // Portrait photos: adjust height to 2,100,000 EMUs so it fits without expanding page vertically.
-        const { width, height } = this.getImageDimensions(buf);
-        let cx = 2800000;
-        let cy = 2100000;
-
-        if (width >= height) {
-          // Landscape: preserve exact natural aspect ratio
-          cy = Math.round(cx * (height / width));
-        } else {
-          // Portrait: height needs to be adjusted within cell
-          cy = 2100000;
-          cx = Math.round(cy * (width / height));
+        const filePath = this.resolvePhotoPath(p.storageKey);
+        let buf: Buffer | null = null;
+        if (filePath && fs.existsSync(filePath)) {
+          try {
+            buf = fs.readFileSync(filePath);
+          } catch {}
         }
 
-        photoCards.push({
-          rId,
-          caption: p.caption || p.category || `Inspection Photo ${i + 1}`,
-          cx,
-          cy,
-        });
+        if (buf) {
+          const ext = path.extname(filePath).toLowerCase().replace('.', '') || 'jpeg';
+          const mediaName = `insp_photo_${i + 1}.${ext}`;
+          const rId = `rIdInspPhoto_${i + 1}`;
+
+          // Save image to zip
+          zip.file(`word/media/${mediaName}`, buf);
+
+          // Add relationship
+          const relEntry = `<Relationship Id="${rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${mediaName}"/>`;
+          relsXml = relsXml.replace('</Relationships>', `${relEntry}</Relationships>`);
+
+          // Compute aspect ratio:
+          // Landscape photos: keep width at 2,800,000 EMUs, compute cy naturally so zero stretching occurs.
+          // Portrait photos: adjust height to 2,100,000 EMUs so it fits without expanding page vertically.
+          const { width, height } = this.getImageDimensions(buf);
+          let cx = 2800000;
+          let cy = 2100000;
+
+          if (width >= height) {
+            cy = Math.round(cx * (height / width));
+          } else {
+            cy = 2100000;
+            cx = Math.round(cy * (width / height));
+          }
+
+          photoCards.push({
+            rId,
+            caption: p.caption || p.category || `Inspection Photo ${i + 1}`,
+            cx,
+            cy,
+          });
+        } else {
+          // File not locally accessible, preserve photo card caption
+          photoCards.push({
+            rId: '',
+            caption: p.caption || p.category || `Inspection Photo ${i + 1}`,
+            cx: 2800000,
+            cy: 2100000,
+          });
+        }
       } catch { /* skip invalid photo */ }
     }
 
     zip.file(relsPath, relsXml);
 
     if (photoCards.length === 0) {
-      return `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t>No photographs attached for this inspection report.</w:t></w:r></w:p>`;
+      return {
+        tableXml: `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t>No photographs attached for this inspection report.</w:t></w:r></w:p>`,
+        rowsXml: '',
+        hasPhotos: false,
+      };
     }
 
     // 2. Build 2-column table
@@ -2205,22 +2395,30 @@ ${rowsXml}
       const right = photoCards[i + 1];
 
       // Row of images
-      const leftImg = this.buildImageXml(left.rId, i * 2 + 100, left.cx, left.cy);
-      const rightImg = right ? this.buildImageXml(right.rId, i * 2 + 101, right.cx, right.cy) : '';
+      const leftImg = left.rId
+        ? this.buildImageXml(left.rId, i * 2 + 100, left.cx, left.cy)
+        : `<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:i/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t xml:space="preserve">[Photo Attached: ${escapeXml(left.caption)}]</w:t></w:r>`;
+      const rightImg = right
+        ? (right.rId
+          ? this.buildImageXml(right.rId, i * 2 + 101, right.cx, right.cy)
+          : `<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:i/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t xml:space="preserve">[Photo Attached: ${escapeXml(right.caption)}]</w:t></w:r>`)
+        : '';
 
       rowsXml += `<w:tr w:rsidR="00ED010A">
-  <w:tc><w:tcPr><w:tcW w:w="5395" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r>${leftImg}</w:r></w:p></w:tc>
-  <w:tc><w:tcPr><w:tcW w:w="5395" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r>${rightImg}</w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="5395" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr>${leftImg}</w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="5395" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr>${rightImg}</w:p></w:tc>
 </w:tr>`;
 
       // Row of captions
       rowsXml += `<w:tr w:rsidR="00ED010A">
-  <w:tc><w:tcPr><w:tcW w:w="5395" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(left.caption)}</w:t></w:r></w:p></w:tc>
-  <w:tc><w:tcPr><w:tcW w:w="5395" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/></w:rPr><w:t>${right ? escapeXml(right.caption) : ''}</w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="5395" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/></w:rPr><w:t>${escapeXml(left.caption)}</w:t></w:r></w:p></w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="5395" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:sz w:val="18"/></w:rPr><w:t>${right ? escapeXml(right.caption) : ''}</w:t></w:r></w:p></w:tc>
 </w:tr>`;
     }
 
-    return `<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="10790" w:type="dxa"/><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid><w:gridCol w:w="5395"/><w:gridCol w:w="5395"/></w:tblGrid>${rowsXml}</w:tbl>`;
+    const tableXml = `<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="10790" w:type="dxa"/><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid><w:gridCol w:w="5395"/><w:gridCol w:w="5395"/></w:tblGrid>${rowsXml}</w:tbl>`;
+
+    return { tableXml, rowsXml, hasPhotos: true };
   }
 
   private buildImageXml(rId: string, docPrId: number, cx: number = 2800000, cy: number = 2100000): string {

@@ -82,7 +82,23 @@ router.get('/file/:id', async (req, res) => {
   try {
     const photo = await prisma.photo.findUnique({ where: { id: req.params.id } });
     if (!photo) return res.status(404).json({ error: 'Photo not found' });
-    const filePath = path.resolve(photo.storageKey);
+    let filePath = path.resolve(photo.storageKey);
+    if (!fs.existsSync(filePath)) {
+      const base = path.basename(photo.storageKey);
+      const candidates = [
+        path.join(photosDir, base),
+        path.join(storageDir, 'photos', base),
+        path.join(process.cwd(), 'storage', 'photos', base),
+        path.resolve(__dirname, '../../../storage/photos', base),
+        path.resolve(__dirname, '../../storage/photos', base),
+      ];
+      for (const cand of candidates) {
+        if (cand && fs.existsSync(cand)) {
+          filePath = cand;
+          break;
+        }
+      }
+    }
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
     res.sendFile(filePath);
   } catch (err: any) {
