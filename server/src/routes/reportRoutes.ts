@@ -79,13 +79,27 @@ router.post('/templates/upload', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No .docx or .doc file provided' });
     const formatType = (req.body.formatType === 'FR' ? 'FR' : 'IR') as 'IR' | 'FR';
 
-    // If file is uploaded as .doc, check if it's already an OpenXML file (starts with PK)
+    // If file is uploaded as .doc, check if it's already an OpenXML file (starts with PK) or binary .doc
     if (req.file.originalname.toLowerCase().endsWith('.doc')) {
       const buffer = fs.readFileSync(req.file.path);
+      const docxPath = req.file.path.replace(/\.doc$/i, '.docx');
       if (buffer.length > 4 && buffer[0] === 0x50 && buffer[1] === 0x4b) {
-        const docxPath = req.file.path.replace(/\.doc$/i, '.docx');
         fs.copyFileSync(req.file.path, docxPath);
         await reportService.updateTemplateCategory(path.basename(docxPath), formatType);
+      } else {
+        // Binary .doc: convert using Word COM via powershell if on windows
+        try {
+          const psScript = path.resolve(__dirname, '../../../convert_doc.ps1');
+          if (fs.existsSync(psScript) && process.platform === 'win32') {
+            const { execSync } = require('child_process');
+            execSync(`powershell -ExecutionPolicy Bypass -File "${psScript}" -InputPath "${req.file.path}" -OutputPath "${docxPath}"`, { timeout: 30000 });
+            if (fs.existsSync(docxPath)) {
+              await reportService.updateTemplateCategory(path.basename(docxPath), formatType);
+            }
+          }
+        } catch (convErr) {
+          console.warn('Could not auto-convert .doc to .docx:', convErr);
+        }
       }
     }
 

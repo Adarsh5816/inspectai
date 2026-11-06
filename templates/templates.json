@@ -48,6 +48,12 @@
     "description": "Flash inspection report format for KTI FIR RFI P12567A"
   },
   {
+    "name": "011-Flash Inspection Report-KTI-FIR-RFI-P12567A-TSV-NIR-015 (235651) DT.05.06.2026 (1).doc",
+    "type": "FR",
+    "displayName": "KTI Flash Inspection Report (FIR)",
+    "description": "Flash inspection report format for KTI FIR RFI P12567A (.doc)"
+  },
+  {
     "name": "FR_Report_001 (2).docx",
     "type": "FR",
     "displayName": "FR Report 001 (Flash Report)",

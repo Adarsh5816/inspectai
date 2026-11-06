@@ -359,6 +359,8 @@ export class ReportService {
       rfiExtracted.contactPerson ||
       '';
 
+    const inspectorName = inspection.inspector?.fullName || 'Inspection Engineer';
+
     // Wood Template Table 1 Header Population
     if (isWoodTemplate) {
       docXml = this.populateWoodTable1(docXml, inspection, project, dateStr, rfiExtracted);
@@ -366,6 +368,28 @@ export class ReportService {
 
     // Flash Report Table 1 & Table 2 Header Fields
     if (isFlashReport) {
+      // KTI Flash Report (FIR) Header Fields
+      docXml = this.setCellValueInNextCell(docXml, ['FIR № ►', 'FIR №', 'FIR No ►', 'FIR No'], effectiveReportNo);
+      docXml = this.setCellValueInNextCell(docXml, ['FIR Rev. № ►', 'FIR Rev. №', 'FIR Rev No', 'FIR Rev. No'], (inspection as any).revisionNumber || rfiExtracted.poRevision || '0');
+      docXml = this.setCellValueInNextCell(docXml, ['VISIT DATE/PERIOD ►', 'VISIT DATE/PERIOD'], effectiveInspectionDate);
+      docXml = this.setCellValueInNextCell(docXml, ['RFI (NOI) № ►', 'RFI (NOI) №', 'RFI (NOI) No'], effectiveNotificationNo);
+      docXml = this.setCellValueInNextCell(docXml, ['RFI (NOI) Rev. № ►', 'RFI (NOI) Rev. №', 'RFI (NOI) Rev'], (inspection as any).rfiRevision || 'Rev A');
+      docXml = this.setCellValueInNextCell(docXml, ['ITP № ►', 'ITP №', 'ITP No'], itpNo);
+      docXml = this.setCellValueInNextCell(docXml, ['ITP Rev. № ►', 'ITP Rev. №', 'ITP Rev'], itpRev);
+      const itpActName = (inspection.activities || []).map((a: any) => a.activityName).filter(Boolean)[0] || 'ITP SL. NO. 2.2 - Stamp transfer on rod.';
+      docXml = this.setCellValueInNextCell(docXml, ['ITP ACTIVIY № ►', 'ITP ACTIVITY № ►', 'ITP ACTIVIY №', 'ITP ACTIVITY №'], itpActName);
+      docXml = this.setCellValueInNextCell(docXml, ['PROJECT NAME ►'], effectiveProjectName);
+      docXml = this.setCellValueInNextCell(docXml, ['PROJECT № ►', 'PROJECT №', 'PROJECT NO'], project.projectNumber || 'P12567A');
+      docXml = this.setCellValueInNextCell(docXml, ['CLIENT (EPC) NAME ►', 'CLIENT (EPC) NAME'], effectiveContractor || effectiveClientName);
+      docXml = this.setCellValueInNextCell(docXml, ['END USER NAME ►', 'END USER NAME'], effectiveClientName);
+      docXml = this.setCellValueInNextCell(docXml, ['VENDOR NAME ►', 'VENDOR NAME'], effectiveVendor);
+      docXml = this.setCellValueInNextCell(docXml, ['SUBVENDOR NAME ►', 'SUBVENDOR NAME'], (project as any).subvendorName || '-');
+      docXml = this.setCellValueInNextCell(docXml, ['INSPECTION LOCATION ►', 'INSPECTION LOCATION'], inspection.location || project.supplierAddress || 'Meladoor, Annamanada, Kerala, India');
+      docXml = this.setCellValueInNextCell(docXml, ['COUNTRY ►', 'COUNTRY'], (inspection as any).country || 'India');
+      docXml = this.setCellValueInNextCell(docXml, ['KTI Inspector Name ►', 'KTI Inspector Name'], inspectorName);
+      docXml = this.setCellValueInNextCell(docXml, ['CLIENT VENDOR PO/WO № ►', 'CLIENT VENDOR PO/WO №'], project.poNumber || '');
+      docXml = this.setCellValueInNextCell(docXml, ['PO/WO № DATE ►', 'PO/WO № DATE'], dateStr);
+
       docXml = this.setCellValueInNextCell(docXml, ['Flash Report No', 'Flash  Report  No'], effectiveReportNo);
       docXml = this.setCellValueInNextCell(docXml, ['Rev #', 'Rev#'], (inspection as any).revisionNumber || rfiExtracted.poRevision || '0');
       docXml = this.setCellValueInNextCell(docXml, ['Date:'], effectiveInspectionDate);
@@ -456,7 +480,6 @@ export class ReportService {
     docXml = this.setCellValueAfterLabel(docXml, 'RECOMMENDED ACTION:', inspection.recommendedAction || 'NA');
 
     // Yellow highlights: Inspector Name & Signature Date
-    const inspectorName = inspection.inspector?.fullName || 'Inspection Engineer';
     docXml = docXml.replace(/<w:highlight w:val="yellow"\/>\s*<w:t>XXXXXXX<\/w:t>/g, `<w:t>${escapeXml(inspectorName)}</w:t>`);
     docXml = docXml.replace(/<w:t>XXXXXXX<\/w:t>/g, `<w:t>${escapeXml(inspectorName)}</w:t>`);
     docXml = docXml.replace(/<w:highlight w:val="yellow"\/>\s*<w:t>XXXXXXXX<\/w:t>/g, `<w:t>${escapeXml(dateLong)}</w:t>`);
@@ -632,6 +655,40 @@ export class ReportService {
           const checkedXml = '<w:checkBox><w:sizeAuto/><w:default w:val="1"/><w:checked/></w:checkBox>';
           docXml = docXml.substring(0, checkIdx) + checkedXml + docXml.substring(checkEnd + 13);
         }
+      }
+    }
+
+    // KTI Flash Report Summary Table: "INSPECTION SUMMARY THIS VISIT"
+    const ktiSummaryIdx = this.findHeaderIndex(docXml, ['INSPECTION SUMMARY THIS VISIT']);
+    if (ktiSummaryIdx !== -1) {
+      const row0End = docXml.indexOf('</w:tr>', ktiSummaryIdx) + 7;
+      const tblEnd = docXml.indexOf('</w:tbl>', row0End);
+      if (row0End !== -1 && tblEnd !== -1 && tblEnd > row0End) {
+        let summaryText = '';
+        if (inspection.summaryNarrative && inspection.summaryNarrative.trim().length > 15) {
+          summaryText = inspection.summaryNarrative.trim();
+        } else {
+          summaryText = this.synthesizeInspectionSummary(inspection, project, itpFullRef);
+        }
+        const paras = summaryText.split(/\r?\n/).filter(p => p.trim().length > 0);
+        const pXml = paras.map(p =>
+          `<w:p><w:pPr><w:spacing w:after="120" w:line="240" w:lineRule="auto"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/><w:szCs w:val="17"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/><w:szCs w:val="17"/></w:rPr><w:t xml:space="preserve">${escapeXml(p)}</w:t></w:r></w:p>`
+        ).join('');
+        const row1Xml = `<w:tr><w:trPr><w:jc w:val="center"/></w:trPr><w:tc><w:tcPr><w:tcW w:w="5000" w:type="pct"/><w:vAlign w:val="center"/></w:tcPr>${pXml}</w:tc></w:tr>`;
+        docXml = docXml.substring(0, row0End) + row1Xml + docXml.substring(tblEnd);
+      }
+    }
+
+    // KTI Major Concerns Table: "MAJOR CONCERNS / FINDINGS THIS VISIT"
+    const ktiConcernsIdx = this.findHeaderIndex(docXml, ['MAJOR CONCERNS / FINDINGS THIS VISIT']);
+    if (ktiConcernsIdx !== -1) {
+      const row0End = docXml.indexOf('</w:tr>', ktiConcernsIdx) + 7;
+      const tblEnd = docXml.indexOf('</w:tbl>', row0End);
+      if (row0End !== -1 && tblEnd !== -1 && tblEnd > row0End) {
+        const obs = (inspection.observations || []).map((o: any) => o.description).filter(Boolean).join('\n');
+        const concernsText = obs || (inspection as any).concerns || 'NA';
+        const row1Xml = `<w:tr><w:trPr><w:jc w:val="center"/></w:trPr><w:tc><w:tcPr><w:tcW w:w="5000" w:type="pct"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/><w:szCs w:val="17"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/><w:szCs w:val="17"/></w:rPr><w:t>${escapeXml(concernsText)}</w:t></w:r></w:p></w:tc></w:tr>`;
+        docXml = docXml.substring(0, row0End) + row1Xml + docXml.substring(tblEnd);
       }
     }
 
@@ -833,6 +890,18 @@ export class ReportService {
       }
     }
 
+    // KTI Flash Report Items Table: "DETAILS OF INSPECTED ITEMS THIS VISIT"
+    const ktiItemsIdx = this.findHeaderIndex(docXml, ['DETAILS OF INSPECTED ITEMS THIS VISIT', 'Item Unique Identification']);
+    if (ktiItemsIdx !== -1) {
+      const bannerTrEnd = docXml.indexOf('</w:tr>', ktiItemsIdx) + 7;
+      const row1End = docXml.indexOf('</w:tr>', bannerTrEnd) + 7;
+      const innerTableEnd = docXml.indexOf('</w:tbl>', row1End);
+      if (row1End !== -1 && innerTableEnd !== -1 && innerTableEnd > row1End) {
+        const ktiRows = this.buildKtiInspectedItemsRows(inspection.items || []);
+        docXml = docXml.substring(0, row1End) + ktiRows + docXml.substring(innerTableEnd);
+      }
+    }
+
     // === 3.1 FLASH REPORT ACTIVITIES & RESULTS (Table 4) ===
     const itemHeaderIdx = this.findHeaderIndex(docXml, ['Tag Nº', 'Tag No', 'PO Item No', 'Item No']);
     const actCodeIdx = this.findHeaderIndex(docXml, ['Activity Code', 'Activity  Code']);
@@ -965,22 +1034,33 @@ export class ReportService {
     }
 
     // === 7. ATTENDEES TABLE ===
-    const flashAttIdx = this.findHeaderIndex(docXml, ['Attendee Name', 'Organization  Name', 'Organization Name', 'Contact Details']);
-    if (flashAttIdx !== -1) {
-      const headerTrEnd = docXml.indexOf('</w:tr>', flashAttIdx) + 7;
-      const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
-      if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
-        const attendeeRows = this.buildFlashAttendeesXml(inspection.attendees || [], inspection.inspector, project);
-        docXml = docXml.substring(0, headerTrEnd) + attendeeRows + docXml.substring(innerTableEnd);
+    const ktiAttIdx = this.findHeaderIndex(docXml, ['SHOWEN DATE', 'SHOWEN  DATE', 'INSPECTION ATTENDEES']);
+    if (ktiAttIdx !== -1) {
+      const bannerTrEnd = docXml.indexOf('</w:tr>', ktiAttIdx) + 7;
+      const row1End = docXml.indexOf('</w:tr>', bannerTrEnd) + 7;
+      const innerTableEnd = docXml.indexOf('</w:tbl>', row1End);
+      if (row1End !== -1 && innerTableEnd !== -1 && innerTableEnd > row1End) {
+        const attendeeRows = this.buildKtiAttendeesRows(inspection.attendees || [], dateStr);
+        docXml = docXml.substring(0, row1End) + attendeeRows + docXml.substring(innerTableEnd);
       }
     } else {
-      const attendeeHeaderIdx = this.findHeaderIndex(docXml, ['COMPANY REPRESENTED', 'PERSONS ATTENDING', 'ATTENDEES', 'ATTENDANCE LIST']);
-      if (attendeeHeaderIdx !== -1) {
-        const headerTrEnd = docXml.indexOf('</w:tr>', attendeeHeaderIdx) + 7;
+      const flashAttIdx = this.findHeaderIndex(docXml, ['Attendee Name', 'Organization  Name', 'Organization Name', 'Contact Details']);
+      if (flashAttIdx !== -1) {
+        const headerTrEnd = docXml.indexOf('</w:tr>', flashAttIdx) + 7;
         const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
         if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
-          const attendeeRows = this.buildAttendeesXml(inspection.attendees || []);
+          const attendeeRows = this.buildFlashAttendeesXml(inspection.attendees || [], inspection.inspector, project);
           docXml = docXml.substring(0, headerTrEnd) + attendeeRows + docXml.substring(innerTableEnd);
+        }
+      } else {
+        const attendeeHeaderIdx = this.findHeaderIndex(docXml, ['COMPANY REPRESENTED', 'PERSONS ATTENDING', 'ATTENDEES', 'ATTENDANCE LIST']);
+        if (attendeeHeaderIdx !== -1) {
+          const headerTrEnd = docXml.indexOf('</w:tr>', attendeeHeaderIdx) + 7;
+          const innerTableEnd = docXml.indexOf('</w:tbl>', headerTrEnd);
+          if (headerTrEnd !== -1 && innerTableEnd !== -1 && innerTableEnd > headerTrEnd) {
+            const attendeeRows = this.buildAttendeesXml(inspection.attendees || []);
+            docXml = docXml.substring(0, headerTrEnd) + attendeeRows + docXml.substring(innerTableEnd);
+          }
         }
       }
     }
@@ -995,6 +1075,9 @@ export class ReportService {
         '13.0 PHOTOS',
         '13. PHOTOGRAPHS',
         '13. PHOTOS',
+        'DIGITAL PHOTOS this visit',
+        'DIGITAL PHOTOS THIS VISIT',
+        'DIGITAL PHOTOS',
         'Inspection Photos.',
         'Inspection Photos',
         'INSPECTION PHOTOS',
@@ -1038,6 +1121,13 @@ export class ReportService {
           }
         }
       }
+    }
+
+    // KTI Results & Signature (Table 9)
+    const ktiResultsIdx = this.findHeaderIndex(docXml, ['Inspection results', 'KTI Middle East Inspector']);
+    if (ktiResultsIdx !== -1) {
+      docXml = this.setCellValueAfterLabel(docXml, 'Name', inspectorName);
+      docXml = this.setCellValueAfterLabel(docXml, 'Date', dateStr);
     }
 
     // Validate XML integrity to ensure generated document is not corrupted
@@ -1423,6 +1513,78 @@ export class ReportService {
     </w:p>
   </w:tc>
 </w:tr>`;
+    }).join('\n');
+  }
+
+  /**
+   * Build KTI Flash Inspection Report (FIR) Table 4 rows: DETAILS OF INSPECTED ITEMS THIS VISIT
+   * Columns: PO/WO Item № /Sr.no (407 pct) | Quantity (472 pct) | Description (2972 pct) | Item Unique Identification (1149 pct)
+   */
+  private buildKtiInspectedItemsRows(items: any[]): string {
+    const offered = (items || []).filter((i: any) => i.presentedQty > 0 || i.presentedQty === undefined);
+    const list = offered.length > 0 ? offered : (items || []);
+    if (list.length === 0) {
+      return `<w:tr><w:trPr><w:jc w:val="center"/></w:trPr>
+        <w:tc><w:tcPr><w:tcW w:w="407" w:type="pct"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/></w:rPr></w:pPr><w:r><w:t>01</w:t></w:r></w:p></w:tc>
+        <w:tc><w:tcPr><w:tcW w:w="472" w:type="pct"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/></w:rPr></w:pPr><w:r><w:t>-</w:t></w:r></w:p></w:tc>
+        <w:tc><w:tcPr><w:tcW w:w="2972" w:type="pct"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="left"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/></w:rPr></w:pPr><w:r><w:t>Items offered for inspection</w:t></w:r></w:p></w:tc>
+        <w:tc><w:tcPr><w:tcW w:w="1149" w:type="pct"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/></w:rPr></w:pPr><w:r><w:t>-</w:t></w:r></w:p></w:tc>
+      </w:tr>`;
+    }
+
+    return list.map((item: any, idx: number) => {
+      const itemNo = item.itemNumber || String(idx + 1).padStart(2, '0');
+      const qty = item.presentedQty ?? item.quantity ?? 1;
+      const desc = item.description || item.itemName || item.itemTag || 'Item';
+      const idParts = [
+        item.batchNo ? `Batch NO: ${item.batchNo}` : '',
+        item.heatNumber ? `HEAT NO: ${item.heatNumber}` : '',
+        item.serialNumber ? `S/N: ${item.serialNumber}` : '',
+        item.materialGrade ? `Grade: ${item.materialGrade}` : '',
+        item.tagNumber ? `Tag: ${item.tagNumber}` : ''
+      ].filter(Boolean);
+      const idText = idParts.length > 0 ? idParts.join('\n') : (item.itemTag || '-');
+      const idParas = idText.split('\n').map(l =>
+        `<w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/><w:szCs w:val="17"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/><w:szCs w:val="17"/></w:rPr><w:t>${escapeXml(l)}</w:t></w:r></w:p>`
+      ).join('');
+
+      return `<w:tr><w:trPr><w:jc w:val="center"/></w:trPr>
+        <w:tc><w:tcPr><w:tcW w:w="407" w:type="pct"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/><w:szCs w:val="17"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/><w:szCs w:val="17"/></w:rPr><w:t>${escapeXml(itemNo)}</w:t></w:r></w:p></w:tc>
+        <w:tc><w:tcPr><w:tcW w:w="472" w:type="pct"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/><w:szCs w:val="17"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/><w:szCs w:val="17"/></w:rPr><w:t>${escapeXml(String(qty))}</w:t></w:r></w:p></w:tc>
+        <w:tc><w:tcPr><w:tcW w:w="2972" w:type="pct"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/><w:szCs w:val="17"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/><w:szCs w:val="17"/></w:rPr><w:t xml:space="preserve">${escapeXml(desc)}</w:t></w:r></w:p></w:tc>
+        <w:tc><w:tcPr><w:tcW w:w="1149" w:type="pct"/><w:vAlign w:val="center"/></w:tcPr>${idParas}</w:tc>
+      </w:tr>`;
+    }).join('\n');
+  }
+
+  /**
+   * Build KTI Flash Inspection Report (FIR) Table 3 rows: INSPECTION ATTENDEES
+   * Columns: NAME (1149 pct) | POSITION (1419 pct) | COMPANY (1554 pct) | SHOWEN DATE (878 pct)
+   */
+  private buildKtiAttendeesRows(attendees: any[], dateStr: string): string {
+    const list = (attendees || []).filter((a: any) => a.name && a.name.trim().length > 0);
+    if (list.length === 0) {
+      return `<w:tr><w:trPr><w:jc w:val="center"/></w:trPr>
+        <w:tc><w:tcPr><w:tcW w:w="1149" w:type="pct"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/></w:rPr></w:pPr><w:r><w:t>As per attendance register</w:t></w:r></w:p></w:tc>
+        <w:tc><w:tcPr><w:tcW w:w="1419" w:type="pct"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/></w:rPr></w:pPr><w:r><w:t>Inspector</w:t></w:r></w:p></w:tc>
+        <w:tc><w:tcPr><w:tcW w:w="1554" w:type="pct"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/></w:rPr></w:pPr><w:r><w:t>-</w:t></w:r></w:p></w:tc>
+        <w:tc><w:tcPr><w:tcW w:w="878" w:type="pct"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/></w:rPr></w:pPr><w:r><w:t>${escapeXml(dateStr)}</w:t></w:r></w:p></w:tc>
+      </w:tr>`;
+    }
+
+    return list.map((att: any) => {
+      const name = att.name || '';
+      const position = att.position || att.title || 'Inspector';
+      const company = att.company || att.organization || '';
+      const companyFormatted = company ? (company.startsWith('OBO') ? company : `OBO (${company})`) : '-';
+      const attDate = att.date ? new Date(att.date).toLocaleDateString('en-GB') : dateStr;
+
+      return `<w:tr><w:trPr><w:jc w:val="center"/></w:trPr>
+        <w:tc><w:tcPr><w:tcW w:w="1149" w:type="pct"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/><w:szCs w:val="17"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/><w:szCs w:val="17"/></w:rPr><w:t>${escapeXml(name)}</w:t></w:r></w:p></w:tc>
+        <w:tc><w:tcPr><w:tcW w:w="1419" w:type="pct"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/><w:szCs w:val="17"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/><w:szCs w:val="17"/></w:rPr><w:t>${escapeXml(position)}</w:t></w:r></w:p></w:tc>
+        <w:tc><w:tcPr><w:tcW w:w="1554" w:type="pct"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/><w:szCs w:val="17"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/><w:szCs w:val="17"/></w:rPr><w:t>${escapeXml(companyFormatted)}</w:t></w:r></w:p></w:tc>
+        <w:tc><w:tcPr><w:tcW w:w="878" w:type="pct"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/><w:szCs w:val="17"/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="17"/><w:szCs w:val="17"/></w:rPr><w:t>${escapeXml(attDate)}</w:t></w:r></w:p></w:tc>
+      </w:tr>`;
     }).join('\n');
   }
 
