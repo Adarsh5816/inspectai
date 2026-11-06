@@ -31,7 +31,7 @@ export class ReportService {
 
   async getTemplates(): Promise<{ name: string; path: string; size: number; type: 'IR' | 'FR'; displayName: string; description?: string }[]> {
     if (!fs.existsSync(TEMPLATES_DIR)) return [];
-    const files = fs.readdirSync(TEMPLATES_DIR).filter(f => f.endsWith('.docx'));
+    const files = fs.readdirSync(TEMPLATES_DIR).filter(f => f.endsWith('.docx') || f.endsWith('.doc'));
     const metaPath = path.join(TEMPLATES_DIR, 'templates.json');
     let meta: any[] = [];
     if (fs.existsSync(metaPath)) {
@@ -40,16 +40,35 @@ export class ReportService {
       } catch {}
     }
 
-    return files.map(f => {
-      const match = meta.find(m => m.name === f);
-      const isFR = f.toLowerCase().includes('22sept') || f.toLowerCase().includes('final') || f.toLowerCase().includes('fr');
+    // Deduplicate: if both foo.docx and foo.doc exist, prefer foo.docx
+    const seenBases = new Set<string>();
+    const uniqueFiles: string[] = [];
+
+    const sortedFiles = [...files].sort((a, b) => {
+      if (a.endsWith('.docx') && !b.endsWith('.docx')) return -1;
+      if (!a.endsWith('.docx') && b.endsWith('.docx')) return 1;
+      return a.localeCompare(b);
+    });
+
+    for (const f of sortedFiles) {
+      const base = f.replace(/\.docx?$/i, '').toLowerCase();
+      if (!seenBases.has(base)) {
+        seenBases.add(base);
+        uniqueFiles.push(f);
+      }
+    }
+
+    return uniqueFiles.map(f => {
+      const baseName = f.replace(/\.docx?$/i, '').toLowerCase();
+      const match = meta.find(m => m.name === f || m.name.replace(/\.docx?$/i, '').toLowerCase() === baseName);
+      const isFR = f.toLowerCase().includes('22sept') || f.toLowerCase().includes('final') || f.toLowerCase().includes('fr') || f.toLowerCase().includes('flash') || f.toLowerCase().includes('fir');
       const defaultType: 'IR' | 'FR' = isFR ? 'FR' : 'IR';
       return {
         name: f,
         path: path.join(TEMPLATES_DIR, f),
         size: fs.statSync(path.join(TEMPLATES_DIR, f)).size,
         type: match?.type || defaultType,
-        displayName: match?.displayName || (f.replace('.docx', '') + (defaultType === 'FR' ? ' (FR)' : ' (IR)')),
+        displayName: match?.displayName || (f.replace(/\.docx?$/i, '') + (defaultType === 'FR' ? ' (FR)' : ' (IR)')),
         description: match?.description || (defaultType === 'FR' ? 'Final inspection report format' : 'Inspection report format'),
       };
     });
@@ -534,7 +553,7 @@ export class ReportService {
     }
 
     // Flash Report Summary Paragraph
-    const flashSummaryIdx = this.findHeaderIndex(docXml, ['Summary of the Inspection:', 'Summary of the Inspection']);
+    const flashSummaryIdx = this.findHeaderIndex(docXml, ['Summary of the Inspection:', 'Summary of the Inspection', 'Items Inspected / Activities / Results']);
     if (flashSummaryIdx !== -1) {
       const pEnd = docXml.indexOf('</w:p>', flashSummaryIdx) + 6;
       if (pEnd !== -1) {
@@ -548,18 +567,24 @@ export class ReportService {
         const lines = summaryText.split(/\r?\n/).filter(l => l.trim().length > 0);
         const summaryP = lines.map(line => {
           const isBold = /^itp\s*step/i.test(line.trim());
-          const boldTag = isBold ? '<w:b/>' : '';
-          return `<w:p><w:pPr><w:spacing w:before="60" w:after="80"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/>${boldTag}</w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/>${boldTag}</w:rPr><w:t xml:space="preserve">${escapeXml(line)}</w:t></w:r></w:p>`;
+          const boldTag = isBold ? '<w:b/><w:bCs/>' : '';
+          return `<w:p><w:pPr><w:ind w:left="720" w:right="72"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="16"/><w:szCs w:val="16"/>${boldTag}</w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="16"/><w:szCs w:val="16"/>${boldTag}</w:rPr><w:t xml:space="preserve">${escapeXml(line)}</w:t></w:r></w:p>`;
         }).join('');
 
-        const nextTblStart = docXml.indexOf('<w:tbl', pEnd);
-        if (nextTblStart !== -1) {
-          const nextPStart = docXml.indexOf('<w:p', pEnd);
-          if (nextPStart !== -1 && nextPStart < nextTblStart) {
-            const nextPEnd = docXml.lastIndexOf('</w:p>', nextTblStart) + 6;
-            docXml = docXml.substring(0, nextPStart) + summaryP + docXml.substring(nextPEnd);
-          } else {
-            docXml = docXml.substring(0, pEnd) + summaryP + docXml.substring(pEnd);
+        const tcEnd = docXml.indexOf('</w:tc>', pEnd);
+        const nextTr = docXml.indexOf('<w:tr', pEnd);
+        if (tcEnd !== -1 && (nextTr === -1 || tcEnd < nextTr)) {
+          docXml = docXml.substring(0, pEnd) + summaryP + docXml.substring(tcEnd);
+        } else {
+          const nextTblStart = docXml.indexOf('<w:tbl', pEnd);
+          if (nextTblStart !== -1) {
+            const nextPStart = docXml.indexOf('<w:p', pEnd);
+            if (nextPStart !== -1 && nextPStart < nextTblStart) {
+              const nextPEnd = docXml.lastIndexOf('</w:p>', nextTblStart) + 6;
+              docXml = docXml.substring(0, nextPStart) + summaryP + docXml.substring(nextPEnd);
+            } else {
+              docXml = docXml.substring(0, pEnd) + summaryP + docXml.substring(pEnd);
+            }
           }
         }
       }
@@ -809,6 +834,24 @@ export class ReportService {
     }
 
     // === 3.1 FLASH REPORT ACTIVITIES & RESULTS (Table 4) ===
+    const itemHeaderIdx = this.findHeaderIndex(docXml, ['Tag Nº', 'Tag No', 'PO Item No', 'Item No']);
+    const actCodeIdx = this.findHeaderIndex(docXml, ['Activity Code', 'Activity  Code']);
+    if (itemHeaderIdx !== -1 && actCodeIdx !== -1 && actCodeIdx > itemHeaderIdx) {
+      const headerTrEnd = docXml.indexOf('</w:tr>', itemHeaderIdx) + 7;
+      let actCodeTrStart = docXml.lastIndexOf('<w:tr ', actCodeIdx);
+      if (actCodeTrStart === -1) actCodeTrStart = docXml.lastIndexOf('<w:tr>', actCodeIdx);
+
+      if (headerTrEnd !== -1 && actCodeTrStart > headerTrEnd) {
+        const headerRowXml = docXml.substring(docXml.lastIndexOf('<w:tr', itemHeaderIdx), headerTrEnd);
+        const is7Col = headerRowXml.includes('Tag Nº') || headerRowXml.includes('Tag N') || !headerRowXml.includes('PO Item No');
+
+        const actRows = is7Col
+          ? this.buildFlash7ColTableRows(inspection.items || [], attendedActivities)
+          : this.buildFlashActivitiesTableRows(inspection.items || [], attendedActivities);
+
+        docXml = docXml.substring(0, headerTrEnd) + actRows + docXml.substring(actCodeTrStart);
+      }
+    } else {
     const flashActHeaderIdx = this.findHeaderIndex(docXml, ['Items Inspected / Activities / Results', 'PO Item No']);
     if (flashActHeaderIdx !== -1) {
       const poItemIdx = docXml.indexOf('PO Item No', flashActHeaderIdx);
@@ -853,6 +896,7 @@ export class ReportService {
           docXml = docXml.substring(0, concernsValTrStart) + concernsRow + docXml.substring(concernsValTrEnd);
         }
       }
+    }
     }
 
     if (!isFlashReport && !isWoodTemplate) {
@@ -1376,6 +1420,93 @@ export class ReportService {
   <w:tc><w:tcPr><w:tcW w:w="1269" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="2" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr>
     <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr>
       <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/></w:rPr><w:t>${acceptedToDate}</w:t></w:r>
+    </w:p>
+  </w:tc>
+</w:tr>`;
+    }).join('\n');
+  }
+
+  /**
+   * Build 7-column Flash Report activities/results dynamic rows (KTI / FIR format)
+   * Columns: Item No | Tag Nº | Description | Qty. | Activities | Accept | Reject
+   */
+  private buildFlash7ColTableRows(items: any[], activities: any[]): string {
+    const offeredItems = (items || []).filter((i: any) => i.presentedQty > 0);
+    const listToRender = offeredItems.length > 0 ? offeredItems : (items || []);
+
+    const actEntries: string[] = [];
+    for (const act of (activities || [])) {
+      const clause = (act.clauseNumber || '').replace(',', '.').trim();
+      const rawName = (act.activityName || '')
+        .split('\t')[0]
+        .replace(/^P\.O\.\s*item\(s\):?\s*/i, '')
+        .trim();
+      if (!rawName || rawName.length < 3 || rawName.toLowerCase().includes('p.o. item')) continue;
+
+      let code = '';
+      const lower = rawName.toLowerCase();
+      if (/pmi|positive material/i.test(lower)) code = 'PMI';
+      else if (/visual/i.test(lower)) code = 'VI';
+      else if (/dimens/i.test(lower)) code = 'D';
+      else if (/hydro|pressure|leak/i.test(lower)) code = 'HT';
+      else if (/paint|dft|coating/i.test(lower)) code = 'P';
+      else if (/final/i.test(lower)) code = 'F';
+      else if (/cert|document/i.test(lower)) code = 'R';
+      else if (/magnet|residual/i.test(lower)) code = 'MP';
+      else if (/balanc/i.test(lower)) code = 'Balancing';
+      else if (/hard/i.test(lower)) code = 'HDT';
+      else if (/ultra/i.test(lower)) code = 'UT';
+      else if (/penetr/i.test(lower)) code = 'PT';
+
+      if (clause && !clause.includes('.2026') && !clause.startsWith('Scope-') && !clause.startsWith('Act-')) {
+        actEntries.push(code ? `${clause} (${code})` : `${clause} (${rawName.substring(0, 20)})`);
+      } else {
+        actEntries.push(code || rawName.substring(0, 25));
+      }
+    }
+    const actCodesStr = Array.from(new Set(actEntries)).join(', ') || 'PMI';
+
+    return listToRender.map((item: any, idx: number) => {
+      const tag = item.tagNumber || item.jobNo || item.serialNumber || `Item-${idx + 1}`;
+      const desc = item.itemName || item.valveSeries || item.description || 'Valve Component';
+      const qty = String(item.presentedQty || item.totalQty || '1');
+
+      return `<w:tr w:rsidR="007937EA" w:rsidTr="008030D9">
+  <w:tblPrEx><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/></w:tblCellMar></w:tblPrEx>
+  <w:trPr><w:cantSplit/><w:trHeight w:val="432"/><w:jc w:val="center"/></w:trPr>
+  <w:tc><w:tcPr><w:tcW w:w="1043" w:type="dxa"/><w:tcBorders><w:left w:val="single" w:sz="12" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t>${idx + 1}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="991" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t>${escapeXml(tag)}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="3150" w:type="dxa"/><w:gridSpan w:val="2"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t>${escapeXml(desc)}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="668" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t>${escapeXml(qty)}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1710" w:type="dxa"/><w:gridSpan w:val="2"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t>${escapeXml(actCodesStr)}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1350" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t>${escapeXml(qty)}</w:t></w:r>
+    </w:p>
+  </w:tc>
+  <w:tc><w:tcPr><w:tcW w:w="1260" w:type="dxa"/><w:tcBorders><w:right w:val="single" w:sz="12" w:space="0" w:color="auto"/></w:tcBorders><w:vAlign w:val="center"/></w:tcPr>
+    <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr>
+      <w:r><w:t></w:t></w:r>
     </w:p>
   </w:tc>
 </w:tr>`;

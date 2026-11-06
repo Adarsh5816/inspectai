@@ -5059,11 +5059,16 @@ function ReportTab({ inspection, onReload }: any) {
 
       const filtered = r.data.filter((t: any) => (t.type || 'IR') === currentType);
       const initialTemplate = inspection.selectedTemplate;
-      if (initialTemplate && filtered.some((t: any) => t.name === initialTemplate)) {
+      const foundMatch = filtered.find((t: any) => 
+        t.name === initialTemplate || 
+        t.name.replace(/\.docx?$/i, '').toLowerCase() === initialTemplate?.replace(/\.docx?$/i, '').toLowerCase()
+      );
+      if (foundMatch) {
+        setSelectedTemplate(foundMatch.name);
+      } else if (initialTemplate) {
         setSelectedTemplate(initialTemplate);
       } else if (filtered.length > 0) {
         setSelectedTemplate(filtered[0].name);
-        API.updateInspection(inspection.id, { selectedTemplate: filtered[0].name }).catch(() => {});
       }
     }).catch(() => {});
   }, [inspection.id, inspection.reportFormatType, inspection.selectedTemplate]);
@@ -5315,6 +5320,11 @@ function ReportTab({ inspection, onReload }: any) {
                         {t.displayName || t.name} ({(t.size ? t.size / 1024 / 1024 : 0.05).toFixed(2)} MB)
                       </option>
                     ))}
+                    {selectedTemplate && !filteredTemplates.some(t => t.name === selectedTemplate) && (
+                      <option key={selectedTemplate} value={selectedTemplate}>
+                        {selectedTemplate} (Active Custom)
+                      </option>
+                    )}
                   </select>
                   {selectedTemplate !== 'master-template.docx' && (
                     <button

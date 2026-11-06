@@ -78,6 +78,17 @@ router.post('/templates/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No .docx or .doc file provided' });
     const formatType = (req.body.formatType === 'FR' ? 'FR' : 'IR') as 'IR' | 'FR';
+
+    // If file is uploaded as .doc, check if it's already an OpenXML file (starts with PK)
+    if (req.file.originalname.toLowerCase().endsWith('.doc')) {
+      const buffer = fs.readFileSync(req.file.path);
+      if (buffer.length > 4 && buffer[0] === 0x50 && buffer[1] === 0x4b) {
+        const docxPath = req.file.path.replace(/\.doc$/i, '.docx');
+        fs.copyFileSync(req.file.path, docxPath);
+        await reportService.updateTemplateCategory(path.basename(docxPath), formatType);
+      }
+    }
+
     await reportService.updateTemplateCategory(req.file.originalname, formatType);
     res.json({
       name: req.file.originalname,
