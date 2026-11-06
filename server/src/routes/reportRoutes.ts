@@ -17,7 +17,7 @@ const upload = multer({
     filename: (_, file, cb) => cb(null, file.originalname),
   }),
   fileFilter: (_, file, cb) => {
-    cb(null, file.originalname.endsWith('.docx'));
+    cb(null, file.originalname.endsWith('.docx') || file.originalname.endsWith('.doc'));
   },
 });
 
@@ -34,7 +34,9 @@ router.post('/generate/:inspectionId', async (req, res) => {
 
     const { templateName } = req.body;
     const docPath = await reportService.generateReport(req.params.inspectionId, templateName);
-    const filename = path.basename(docPath);
+    const filename = path.basename(docPath).replace(/\.docx$/i, '.doc');
+    res.setHeader('Content-Type', 'application/msword');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.download(docPath, filename);
   } catch (error: any) {
     console.error('Report generation error:', error);
@@ -74,7 +76,7 @@ router.put('/templates/:name/category', async (req, res) => {
 // Upload a new template with optional formatType ('IR' or 'FR')
 router.post('/templates/upload', upload.single('file'), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: 'No .docx file provided' });
+    if (!req.file) return res.status(400).json({ error: 'No .docx or .doc file provided' });
     const formatType = (req.body.formatType === 'FR' ? 'FR' : 'IR') as 'IR' | 'FR';
     await reportService.updateTemplateCategory(req.file.originalname, formatType);
     res.json({

@@ -974,7 +974,7 @@ export class ReportService {
     await this.updateHeadersAndFooters(zip, inspection, project, dateLong, dateStr);
 
     // 10. Generate output file
-    const outputFilename = `IR-${inspection.reportNumber}-${Date.now()}.docx`;
+    const outputFilename = `IR-${inspection.reportNumber}-${Date.now()}.doc`;
     const outputPath = path.join(REPORTS_DIR, outputFilename);
     const outputBuffer = await zip.generateAsync({
       type: 'nodebuffer',

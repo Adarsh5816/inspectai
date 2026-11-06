@@ -5111,8 +5111,8 @@ function ReportTab({ inspection, onReload }: any) {
   const handleTemplateUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.[0]) return;
     const file = e.target.files[0];
-    if (!file.name.endsWith('.docx')) {
-      alert('Please upload a valid .docx format template');
+    if (!file.name.endsWith('.docx') && !file.name.endsWith('.doc')) {
+      alert('Please upload a valid .docx or .doc format template');
       return;
     }
     setUploadingTemplate(true);
@@ -5146,10 +5146,10 @@ function ReportTab({ inspection, onReload }: any) {
     setError('');
     try {
       const r = await API.generateReport(inspection.id, selectedTemplate);
-      const url = window.URL.createObjectURL(new Blob([r.data]));
+      const url = window.URL.createObjectURL(new Blob([r.data], { type: 'application/msword' }));
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${reportType}_Report_${inspection.reportNumber || 'draft'}.docx`;
+      a.download = `${reportType}_Report_${inspection.reportNumber || 'draft'}.doc`;
       a.click();
       window.URL.revokeObjectURL(url);
     } catch (e: any) {
@@ -5289,8 +5289,8 @@ function ReportTab({ inspection, onReload }: any) {
             </div>
             
             <label className={`inline-flex items-center gap-2 bg-white border border-slate-300 text-slate-700 px-3.5 py-1.5 rounded-lg font-medium text-xs hover:bg-slate-100 cursor-pointer shadow-sm ${uploadingTemplate ? 'opacity-50' : ''}`}>
-              <span>📤</span> {uploadingTemplate ? 'Uploading...' : `Upload New ${reportType} Format (.docx)`}
-              <input type="file" accept=".docx" onChange={handleTemplateUpload} className="hidden" />
+              <span>📤</span> {uploadingTemplate ? 'Uploading...' : `Upload New ${reportType} Format (.doc)`}
+              <input type="file" accept=".docx,.doc" onChange={handleTemplateUpload} className="hidden" />
             </label>
           </div>
 
@@ -5390,14 +5390,14 @@ function ReportTab({ inspection, onReload }: any) {
           <span>⚡</span> Generate Official Inspection Report
         </h4>
         <p className="text-blue-100 text-sm mb-5 max-w-2xl">
-          Instantly synthesizes all inspection metadata, items inspected, scope activities, test results, calibration logs, attendees, and attached photo grids directly into the chosen DOCX format.
+          Instantly synthesizes all inspection metadata, items inspected, scope activities, test results, calibration logs, attendees, and attached photo grids directly into the official Word (.doc) format.
         </p>
         <button
           onClick={handleGenerate}
           disabled={generating}
           className="bg-white text-blue-700 hover:bg-blue-50 px-6 py-2.5 rounded-lg font-bold shadow-md transition disabled:opacity-50 text-sm flex items-center gap-2"
         >
-          {generating ? '⏳ Populating Template...' : '📥 Generate & Download (.docx)'}
+          {generating ? '⏳ Populating Template...' : '📥 Generate & Download (.doc)'}
         </button>
         {error && <p className="text-red-200 bg-red-900/40 border border-red-400/40 rounded-lg p-3 text-sm mt-4">{error}</p>}
       </div>
