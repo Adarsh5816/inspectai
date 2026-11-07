@@ -1224,8 +1224,8 @@ export class ReportService {
     // === 9. UPDATE HEADERS & FOOTERS ===
     await this.updateHeadersAndFooters(zip, inspection, project, dateLong, dateStr);
 
-    // 10. Generate output file
-    const outputFilename = `IR-${inspection.reportNumber}-${Date.now()}.doc`;
+    // 10. Generate output file (.docx is the modern standard Word format supported across all devices)
+    const outputFilename = `IR-${inspection.reportNumber}-${Date.now()}.docx`;
     const outputPath = path.join(REPORTS_DIR, outputFilename);
     const outputBuffer = await zip.generateAsync({
       type: 'nodebuffer',
@@ -3119,7 +3119,30 @@ ${rowsXml}
       ? await relsEntry.async('string')
       : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>';
 
-    const photoCards: { rId: string; caption: string; cx: number; cy: number }[] = [];
+    // Ensure [Content_Types].xml has mappings for jpeg, jpg, png
+    const typesPath = '[Content_Types].xml';
+    const typesEntry = zip.file(typesPath);
+    if (typesEntry) {
+      let typesXml = await typesEntry.async('string');
+      let modifiedTypes = false;
+      if (!typesXml.includes('Extension="jpg"')) {
+        typesXml = typesXml.replace('</Types>', '<Default Extension="jpg" ContentType="image/jpeg"/></Types>');
+        modifiedTypes = true;
+      }
+      if (!typesXml.includes('Extension="jpeg"')) {
+        typesXml = typesXml.replace('</Types>', '<Default Extension="jpeg" ContentType="image/jpeg"/></Types>');
+        modifiedTypes = true;
+      }
+      if (!typesXml.includes('Extension="png"')) {
+        typesXml = typesXml.replace('</Types>', '<Default Extension="png" ContentType="image/png"/></Types>');
+        modifiedTypes = true;
+      }
+      if (modifiedTypes) {
+        zip.file(typesPath, typesXml);
+      }
+    }
+
+    const photoCards: { rId: string; caption: string; widthPt: number; heightPt: number }[] = [];
 
     for (let i = 0; i < photos.length; i++) {
       const p = photos[i];
@@ -3159,7 +3182,8 @@ ${rowsXml}
         }
 
         if (buf) {
-          const mediaName = `insp_photo_${i + 1}.${ext}`;
+          const mediaExt = ext === 'png' ? 'png' : 'jpeg';
+          const mediaName = `insp_photo_${i + 1}.${mediaExt}`;
           const rId = `rIdInspPhoto_${i + 1}`;
 
           // Save image to zip
@@ -3169,25 +3193,29 @@ ${rowsXml}
           const relEntry = `<Relationship Id="${rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${mediaName}"/>`;
           relsXml = relsXml.replace('</Relationships>', `${relEntry}</Relationships>`);
 
-          // Compute aspect ratio:
-          // Landscape photos: keep width at 2,800,000 EMUs, compute cy naturally so zero stretching occurs.
-          // Portrait photos: adjust height to 2,100,000 EMUs so it fits without expanding page vertically.
+          // Compute natural aspect ratio in points (1 pt = 1/72 inch, native to Word VML):
+          // Standard cell width in 2-column photo grid is ~255 pt.
           const { width, height } = this.getImageDimensions(buf);
-          let cx = 2800000;
-          let cy = 2100000;
+          let widthPt = 250;
+          let heightPt = 188;
 
-          if (width >= height) {
-            cy = Math.round(cx * (height / width));
-          } else {
-            cy = 2100000;
-            cx = Math.round(cy * (width / height));
+          if (width && height && width > 0 && height > 0) {
+            if (width >= height) {
+              // Landscape
+              widthPt = 250;
+              heightPt = Math.max(120, Math.min(240, Math.round(widthPt * (height / width))));
+            } else {
+              // Portrait
+              heightPt = 210;
+              widthPt = Math.max(120, Math.min(230, Math.round(heightPt * (width / height))));
+            }
           }
 
           photoCards.push({
             rId,
             caption: p.caption || p.category || `Inspection Photo ${i + 1}`,
-            cx,
-            cy,
+            widthPt,
+            heightPt,
           });
         }
       } catch { /* skip invalid photo */ }
@@ -3211,11 +3239,11 @@ ${rowsXml}
 
       // Row of images
       const leftImg = left.rId
-        ? this.buildImageXml(left.rId, i * 2 + 100, left.cx, left.cy)
+        ? this.buildImageXml(left.rId, i * 2 + 1050, left.widthPt, left.heightPt, left.caption)
         : `<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:i/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t xml:space="preserve">[Photo Attached: ${escapeXml(left.caption)}]</w:t></w:r>`;
       const rightImg = right
         ? (right.rId
-          ? this.buildImageXml(right.rId, i * 2 + 101, right.cx, right.cy)
+          ? this.buildImageXml(right.rId, i * 2 + 1051, right.widthPt, right.heightPt, right.caption)
           : `<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:i/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t xml:space="preserve">[Photo Attached: ${escapeXml(right.caption)}]</w:t></w:r>`)
         : '';
 
@@ -3236,35 +3264,8 @@ ${rowsXml}
     return { tableXml, rowsXml, hasPhotos: true };
   }
 
-  private buildImageXml(rId: string, docPrId: number, cx: number = 2800000, cy: number = 2100000): string {
-    return `<w:drawing>
-  <wp:inline distT="0" distB="0" distL="0" distR="0">
-    <wp:extent cx="${cx}" cy="${cy}"/>
-    <wp:effectExtent b="0" l="0" r="0" t="0"/>
-    <wp:docPr id="${docPrId}" name="Picture ${docPrId}"/>
-    <wp:cNvGraphicFramePr>
-      <a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/>
-    </wp:cNvGraphicFramePr>
-    <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
-      <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
-        <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
-          <pic:nvPicPr>
-            <pic:cNvPr id="${docPrId}" name="Picture ${docPrId}"/>
-            <pic:cNvPicPr/>
-          </pic:nvPicPr>
-          <pic:blipFill>
-            <a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="${rId}"/>
-            <a:stretch><a:fillRect/></a:stretch>
-          </pic:blipFill>
-          <pic:spPr>
-            <a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>
-            <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
-          </pic:spPr>
-        </pic:pic>
-      </a:graphicData>
-    </a:graphic>
-  </wp:inline>
-</w:drawing>`;
+  private buildImageXml(rId: string, docPrId: number, widthPt: number = 250, heightPt: number = 188, caption: string = 'Photo'): string {
+    return `<w:r><w:pict><v:shape id="_x0000_i${docPrId}" type="#_x0000_t75" style="width:${widthPt}pt;height:${heightPt}pt"><v:imagedata r:id="${rId}" o:title="${escapeXml(caption)}"/></v:shape></w:pict></w:r>`;
   }
 
   /**
@@ -3499,6 +3500,47 @@ ${rowsXml}
     });
 
     return result;
+  }
+
+  /**
+   * Convert DOCX report to high-fidelity PDF using native Word COM (Windows) or LibreOffice
+   */
+  async convertToPdf(docPath: string): Promise<string> {
+    const pdfPath = docPath.replace(/\.docx?$/i, '.pdf');
+    if (fs.existsSync(pdfPath) && fs.statSync(pdfPath).size > 1000) {
+      return pdfPath;
+    }
+
+    // 1. On Windows: Try Word COM via PowerShell script
+    if (process.platform === 'win32') {
+      const psScript = path.resolve(__dirname, '../../../convert_pdf.ps1');
+      if (fs.existsSync(psScript)) {
+        try {
+          const { execSync } = require('child_process');
+          execSync(
+            `powershell -ExecutionPolicy Bypass -File "${psScript}" -InputPath "${docPath}" -OutputPath "${pdfPath}"`,
+            { timeout: 60000, stdio: 'pipe' }
+          );
+          if (fs.existsSync(pdfPath) && fs.statSync(pdfPath).size > 1000) {
+            return pdfPath;
+          }
+        } catch (err: any) {
+          console.warn('[ReportService] Word COM PDF conversion warning:', err?.message || err);
+        }
+      }
+    }
+
+    // 2. Try LibreOffice headless if available
+    try {
+      const { execSync } = require('child_process');
+      const outDir = path.dirname(pdfPath);
+      execSync(`soffice --headless --convert-to pdf --outdir "${outDir}" "${docPath}"`, { timeout: 60000, stdio: 'pipe' });
+      if (fs.existsSync(pdfPath) && fs.statSync(pdfPath).size > 1000) {
+        return pdfPath;
+      }
+    } catch {}
+
+    throw new Error('PDF conversion failed: Neither Microsoft Word COM nor LibreOffice is available on the server.');
   }
 }
 

@@ -32,10 +32,21 @@ router.post('/generate/:inspectionId', async (req, res) => {
       }
     }
 
-    const { templateName } = req.body;
+    const { templateName, format } = req.body;
+    const isPdf = format === 'pdf' || req.query.format === 'pdf';
     const docPath = await reportService.generateReport(req.params.inspectionId, templateName);
-    const filename = path.basename(docPath).replace(/\.docx$/i, '.doc');
-    res.setHeader('Content-Type', 'application/msword');
+
+    if (isPdf) {
+      const pdfPath = await reportService.convertToPdf(docPath);
+      const filename = path.basename(pdfPath);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      return res.download(pdfPath, filename);
+    }
+
+    // Modern standard Word format (.docx) compatible with all devices
+    const filename = path.basename(docPath);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.download(docPath, filename);
   } catch (error: any) {

@@ -126,8 +126,8 @@ export const validateInspection = (inspectionId: string) =>
   api.get(`/validation/${inspectionId}`);
 
 // Reports
-export const generateReport = (inspectionId: string, templateName?: string) =>
-  api.post(`/reports/generate/${inspectionId}`, { templateName }, { responseType: 'blob' });
+export const generateReport = (inspectionId: string, templateName?: string, format: 'docx' | 'pdf' = 'docx') =>
+  api.post(`/reports/generate/${inspectionId}`, { templateName, format }, { responseType: 'blob' });
 export const getTemplates = (type?: 'IR' | 'FR') => api.get('/reports/templates', { params: type ? { type } : {} });
 export const uploadTemplate = (formData: FormData) =>
   api.post('/reports/templates/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });

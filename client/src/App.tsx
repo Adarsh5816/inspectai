@@ -5050,6 +5050,7 @@ function ReportTab({ inspection, onReload }: any) {
   const [reportType, setReportType] = useState<'IR' | 'FR'>(inspection.reportFormatType === 'FR' ? 'FR' : 'IR');
   const [selectedTemplate, setSelectedTemplate] = useState(inspection.selectedTemplate || 'master-template.docx');
   const [uploadingTemplate, setUploadingTemplate] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   // Live in-browser document preview states
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
@@ -5196,12 +5197,12 @@ function ReportTab({ inspection, onReload }: any) {
     e.target.value = '';
   };
 
-  const handleDownload = async () => {
+  const handleDownloadWord = async () => {
     if (previewBlob) {
-      const url = window.URL.createObjectURL(new Blob([previewBlob], { type: 'application/msword' }));
+      const url = window.URL.createObjectURL(new Blob([previewBlob], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }));
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${reportType}_Report_${inspection.reportNumber || 'draft'}.doc`;
+      a.download = `${reportType}_Report_${inspection.reportNumber || 'draft'}.docx`;
       a.click();
       window.URL.revokeObjectURL(url);
     } else {
@@ -5209,17 +5210,48 @@ function ReportTab({ inspection, onReload }: any) {
     }
   };
 
+  const handleDownloadPdf = async () => {
+    setDownloadingPdf(true);
+    try {
+      const res = await API.generateReport(inspection.id, selectedTemplate, 'pdf');
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${reportType}_Report_${inspection.reportNumber || 'draft'}.pdf`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error('PDF generation error:', err);
+      let errMsg = 'Failed to generate PDF. Please ensure Microsoft Word or LibreOffice is available on the server.';
+      if (err.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const parsed = JSON.parse(text);
+          if (parsed.error) errMsg = `Server Error: ${parsed.error}`;
+        } catch {}
+      } else if (err.response?.data?.error) {
+        errMsg = `Server Error: ${err.response.data.error}`;
+      } else if (err.message) {
+        errMsg = `Error: ${err.message}`;
+      }
+      alert(errMsg);
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
   const handleGenerate = async () => {
     setGenerating(true);
     setPreviewError('');
     try {
-      const r = await API.generateReport(inspection.id, selectedTemplate);
+      const r = await API.generateReport(inspection.id, selectedTemplate, 'docx');
       const blob = r.data;
       setPreviewBlob(blob);
-      const url = window.URL.createObjectURL(new Blob([blob], { type: 'application/msword' }));
+      const url = window.URL.createObjectURL(new Blob([blob], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }));
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${reportType}_Report_${inspection.reportNumber || 'draft'}.doc`;
+      a.download = `${reportType}_Report_${inspection.reportNumber || 'draft'}.docx`;
       a.click();
       window.URL.revokeObjectURL(url);
       await renderDocxBlob(blob);
@@ -5276,7 +5308,7 @@ function ReportTab({ inspection, onReload }: any) {
         <div>
           <h3 className="font-semibold text-slate-800 text-lg">Report Generation & Live Document Preview</h3>
           <p className="text-xs text-slate-500">
-            Select format, inspect the exact populated Word layout on-page in real time, and download verified .doc reports.
+            Select format, inspect the exact populated Word layout on-page in real time, and download verified reports in modern Word (.docx) or PDF format.
           </p>
         </div>
       </div>
@@ -5514,15 +5546,28 @@ function ReportTab({ inspection, onReload }: any) {
               <span>{previewLoading ? 'Updating...' : 'Refresh Preview'}</span>
             </button>
 
-            {/* Download Instant Button */}
+            {/* Download Word (.docx) Button */}
             <button
               type="button"
-              onClick={handleDownload}
-              disabled={previewLoading || generating}
-              className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-md flex items-center gap-2 transition disabled:opacity-50"
+              onClick={handleDownloadWord}
+              disabled={previewLoading || generating || downloadingPdf}
+              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-md flex items-center gap-1.5 transition disabled:opacity-50"
+              title="Download modern standard Word document (.docx) compatible with all devices"
             >
               <span>📥</span>
-              <span>Download Word (.doc)</span>
+              <span>Download Word (.docx)</span>
+            </button>
+
+            {/* Download PDF (.pdf) Button */}
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              disabled={previewLoading || generating || downloadingPdf}
+              className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white rounded-lg text-xs font-bold shadow-md flex items-center gap-1.5 transition disabled:opacity-50"
+              title="Download official PDF report for direct distribution and printing"
+            >
+              <span className={downloadingPdf ? 'animate-spin' : ''}>{downloadingPdf ? '⏳' : '📕'}</span>
+              <span>{downloadingPdf ? 'Exporting PDF...' : 'Download PDF'}</span>
             </button>
           </div>
         </div>
