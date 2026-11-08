@@ -35,17 +35,7 @@ router.get('/', async (req, res) => {
       include: {
         project: true,
         inspector: { select: { id: true, fullName: true, email: true, role: true } },
-        rfiDocument: true,
-        itpDocument: true,
-        offerDocument: true,
-        items: true,
-        activities: true,
-        results: { include: { item: true, activity: true } },
-        attendees: true,
-        photos: true,
-        observations: true,
-        instruments: true,
-        documents: { include: { extractions: true }, orderBy: { uploadedAt: 'desc' } },
+        documents: { select: { id: true, documentType: true, originalFilename: true, uploadedAt: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
