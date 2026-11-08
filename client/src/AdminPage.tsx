@@ -3,7 +3,7 @@ import * as API from './api';
 import { CLIENT_VERSION } from './DeploymentGuardian';
 
 export function AdminPage({ currentUser }: { currentUser?: any }) {
-  const [activeTab, setActiveTab] = useState<'releases' | 'sessions' | 'system' | 'users'>('releases');
+  const [activeTab, setActiveTab] = useState<'releases' | 'sessions' | 'system' | 'users' | 'formats'>('releases');
   const [releasesData, setReleasesData] = useState<any>(null);
   const [onlineData, setOnlineData] = useState<any>(null);
   const [systemData, setSystemData] = useState<any>(null);
@@ -26,8 +26,24 @@ export function AdminPage({ currentUser }: { currentUser?: any }) {
     managerId: '',
     organization: '',
     isActive: true,
+    subscriptionStartDate: '',
+    subscriptionEndDate: '',
   });
   const [savingUser, setSavingUser] = useState(false);
+
+  // Formats & Templates state
+  const [templatesList, setTemplatesList] = useState<any[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [formatSearchQuery, setFormatSearchQuery] = useState('');
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [renameForm, setRenameForm] = useState({ name: '', displayName: '', newFileName: '' });
+  const [savingRename, setSavingRename] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadFormatType, setUploadFormatType] = useState<'IR' | 'FR'>('IR');
+  const [uploadingTemplate, setUploadingTemplate] = useState(false);
+  const [cleanupStatus, setCleanupStatus] = useState<string | null>(null);
+  const [runningCleanup, setRunningCleanup] = useState(false);
 
   // Add Note Modal
   const [showAddModal, setShowAddModal] = useState(false);
@@ -53,6 +69,18 @@ export function AdminPage({ currentUser }: { currentUser?: any }) {
     }
   };
 
+  const loadFormats = async () => {
+    setLoadingTemplates(true);
+    try {
+      const res = await API.getTemplates();
+      setTemplatesList(res.data || []);
+    } catch {
+      // quiet
+    } finally {
+      setLoadingTemplates(false);
+    }
+  };
+
   const loadUsersData = async () => {
     setLoadingUsers(true);
     try {
@@ -74,6 +102,7 @@ export function AdminPage({ currentUser }: { currentUser?: any }) {
   useEffect(() => {
     loadAll();
     loadUsersData();
+    loadFormats();
     const interval = setInterval(() => {
       // Auto-refresh online users & status quietly
       API.getOnlineUsers().then(r => setOnlineData(r.data)).catch(() => {});
@@ -82,6 +111,8 @@ export function AdminPage({ currentUser }: { currentUser?: any }) {
   }, []);
 
   const handleOpenAddUser = (defaultManagerId?: string) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const oneMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     setUserForm({
       id: '',
       fullName: '',
@@ -91,6 +122,8 @@ export function AdminPage({ currentUser }: { currentUser?: any }) {
       managerId: defaultManagerId || (currentUser?.role === 'MANAGER' ? currentUser.id : ''),
       organization: currentUser?.organization || 'Intertek',
       isActive: true,
+      subscriptionStartDate: today,
+      subscriptionEndDate: oneMonth,
     });
     setShowUserModal(true);
   };
@@ -105,6 +138,8 @@ export function AdminPage({ currentUser }: { currentUser?: any }) {
       managerId: user.managerId || '',
       organization: user.organization || '',
       isActive: user.isActive,
+      subscriptionStartDate: user.subscriptionStartDate ? String(user.subscriptionStartDate).slice(0, 10) : '',
+      subscriptionEndDate: user.subscriptionEndDate ? String(user.subscriptionEndDate).slice(0, 10) : '',
     });
     setShowUserModal(true);
   };
@@ -143,6 +178,95 @@ export function AdminPage({ currentUser }: { currentUser?: any }) {
       loadUsersData();
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to update user status');
+    }
+  };
+
+  const handleOpenRename = (template: any) => {
+    setRenameForm({
+      name: template.name,
+      displayName: template.displayName || template.name,
+      newFileName: template.name,
+    });
+    setShowRenameModal(true);
+  };
+
+  const handleSaveRename = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!renameForm.displayName.trim()) return;
+    setSavingRename(true);
+    try {
+      await API.renameTemplate(renameForm.name, renameForm.displayName, renameForm.newFileName);
+      setShowRenameModal(false);
+      loadFormats();
+      alert('Template renamed successfully!');
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to rename template');
+    } finally {
+      setSavingRename(false);
+    }
+  };
+
+  const handleToggleTemplateCategory = async (name: string, currentType: 'IR' | 'FR') => {
+    const nextType: 'IR' | 'FR' = currentType === 'IR' ? 'FR' : 'IR';
+    try {
+      await API.updateTemplateCategory(name, nextType);
+      loadFormats();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to update category');
+    }
+  };
+
+  const handleDeleteTemplate = async (name: string) => {
+    if (name === 'master-template.docx') {
+      alert('The master template cannot be deleted.');
+      return;
+    }
+    if (!confirm(`Are you sure you want to delete template "${name}"?`)) return;
+    try {
+      await API.deleteTemplate(name);
+      loadFormats();
+      alert('Template deleted successfully.');
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to delete template');
+    }
+  };
+
+  const handleUploadTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!uploadFile) {
+      alert('Please select a file to upload.');
+      return;
+    }
+    setUploadingTemplate(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', uploadFile);
+      formData.append('formatType', uploadFormatType);
+      await API.uploadTemplate(formData);
+      setShowUploadModal(false);
+      setUploadFile(null);
+      loadFormats();
+      alert('Format template uploaded successfully!');
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to upload template');
+    } finally {
+      setUploadingTemplate(false);
+    }
+  };
+
+  const handleRunCleanup = async () => {
+    if (!confirm('Run storage cleanup now? All ephemeral reports exported more than 5 days ago will be purged.')) return;
+    setRunningCleanup(true);
+    try {
+      const res = await API.runCleanup();
+      const count = res.data?.purgedCount ?? 0;
+      const kb = Math.round((res.data?.freedBytes ?? 0) / 1024);
+      setCleanupStatus(`Cleanup complete: Purged ${count} expired inspection(s), freed ~${kb} KB.`);
+      alert(`Cleanup completed! Purged ${count} expired report(s), freed ~${kb} KB.`);
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Cleanup failed');
+    } finally {
+      setRunningCleanup(false);
     }
   };
 
@@ -310,6 +434,16 @@ export function AdminPage({ currentUser }: { currentUser?: any }) {
           }`}
         >
           <span>🌳</span> Team &amp; Access Hierarchy ({usersList.length})
+        </button>
+        <button
+          onClick={() => { setActiveTab('formats'); loadFormats(); }}
+          className={`pb-3 px-4 font-semibold text-sm border-b-2 transition flex items-center gap-2 ${
+            activeTab === 'formats'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <span>📑</span> Report Formats &amp; Templates ({templatesList.length})
         </button>
       </div>
 
@@ -760,10 +894,20 @@ export function AdminPage({ currentUser }: { currentUser?: any }) {
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                               u.role === 'ADMIN' ? 'bg-purple-100 text-purple-800' :
                               u.role === 'MANAGER' ? 'bg-blue-100 text-blue-800' :
+                              u.role === 'REPORT_ONLY' ? 'bg-amber-100 text-amber-800 border border-amber-300' :
                               'bg-emerald-100 text-emerald-800'
                             }`}>
-                              {u.role === 'ADMIN' ? '👑 Admin' : u.role === 'MANAGER' ? '👔 Manager' : '👷 Field Staff'}
+                              {u.role === 'ADMIN' ? '👑 Admin' : u.role === 'MANAGER' ? '👔 Manager' : u.role === 'REPORT_ONLY' ? '⚡ Report Generator' : '👷 Field Staff'}
                             </span>
+                            {u.subscriptionEndDate && (
+                              <div className="text-[10px] text-amber-700 mt-0.5 font-medium">
+                                {new Date(u.subscriptionEndDate) < new Date() ? (
+                                  <span className="text-red-600 font-bold">⚠️ Expired ({new Date(u.subscriptionEndDate).toLocaleDateString()})</span>
+                                ) : (
+                                  <span>Exp: {new Date(u.subscriptionEndDate).toLocaleDateString()}</span>
+                                )}
+                              </div>
+                            )}
                           </td>
                           <td className="p-3">
                             {u.manager ? (
@@ -810,6 +954,255 @@ export function AdminPage({ currentUser }: { currentUser?: any }) {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* TAB 5: Report Formats & Templates */}
+      {activeTab === 'formats' && (
+        <div className="space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200">
+            <div className="flex-1 max-w-md">
+              <input
+                type="text"
+                placeholder="Search formats and display names..."
+                value={formatSearchQuery}
+                onChange={e => setFormatSearchQuery(e.target.value)}
+                className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRunCleanup}
+                disabled={runningCleanup}
+                className="px-3.5 py-2 border border-rose-300 text-rose-700 hover:bg-rose-50 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+                title="Purge expired temporary reports (held for 5 days after download to save space)"
+              >
+                <span>🧹</span> {runningCleanup ? 'Cleaning...' : 'Run 5-Day Storage Purge'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowUploadModal(true)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-1.5"
+              >
+                <span>+</span> Upload New Format
+              </button>
+            </div>
+          </div>
+
+          {cleanupStatus && (
+            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-semibold flex items-center justify-between">
+              <span>{cleanupStatus}</span>
+              <button onClick={() => setCleanupStatus(null)} className="text-rose-600 hover:text-rose-900 font-bold ml-2">✕</button>
+            </div>
+          )}
+
+          {loadingTemplates ? (
+            <div className="p-12 text-center text-slate-400">Loading formats and templates...</div>
+          ) : templatesList.length === 0 ? (
+            <div className="p-12 text-center text-slate-400 bg-white rounded-xl border">No templates found.</div>
+          ) : (
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase font-bold text-[10px] tracking-wider">
+                  <tr>
+                    <th className="p-3">Format / Display Name</th>
+                    <th className="p-3">Category</th>
+                    <th className="p-3">Filename</th>
+                    <th className="p-3 text-center">File Size</th>
+                    <th className="p-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {templatesList
+                    .filter((t: any) => {
+                      if (!formatSearchQuery) return true;
+                      const q = formatSearchQuery.toLowerCase();
+                      return (
+                        (t.displayName || '').toLowerCase().includes(q) ||
+                        (t.name || '').toLowerCase().includes(q) ||
+                        (t.type || '').toLowerCase().includes(q)
+                      );
+                    })
+                    .map((t: any) => {
+                      const isMaster = t.name === 'master-template.docx';
+                      const kb = Math.round((t.size || 0) / 1024);
+                      const isFR = t.type === 'FR';
+
+                      return (
+                        <tr key={t.name} className="hover:bg-slate-50 transition">
+                          <td className="p-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-base">{isFR ? '⚡' : '📄'}</span>
+                              <div>
+                                <span className="font-bold text-slate-800 text-sm block">
+                                  {t.displayName || t.name}
+                                </span>
+                                {isMaster && (
+                                  <span className="inline-block mt-0.5 px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                                    Default Master Template
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleTemplateCategory(t.name, t.type)}
+                              title="Click to toggle category"
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-bold border transition ${
+                                isFR
+                                  ? 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200'
+                                  : 'bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-200'
+                              }`}
+                            >
+                              {isFR ? '⚡ Flash Report (FR)' : '📄 Inspection Report (IR)'}
+                            </button>
+                          </td>
+                          <td className="p-3 font-mono text-slate-500 text-[11px] truncate max-w-xs" title={t.name}>
+                            {t.name}
+                          </td>
+                          <td className="p-3 text-center text-slate-600 font-mono text-[11px]">
+                            {kb > 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb} KB`}
+                          </td>
+                          <td className="p-3 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenRename(t)}
+                                className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 text-blue-600 rounded-lg text-xs font-semibold shadow-2xs transition"
+                              >
+                                ✏️ Rename
+                              </button>
+                              {!isMaster && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteTemplate(t.name)}
+                                  className="px-2.5 py-1 text-red-600 hover:bg-red-50 rounded-lg text-xs font-semibold transition"
+                                >
+                                  Delete
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Rename Format Modal */}
+      {showRenameModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <span>✏️</span> Rename Report Format
+              </h3>
+              <button onClick={() => setShowRenameModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+            </div>
+            <form onSubmit={handleSaveRename} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Friendly Display Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={renameForm.displayName}
+                  onChange={e => setRenameForm({ ...renameForm, displayName: e.target.value })}
+                  placeholder="e.g. KTI Flash Inspection Report (2026)"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+                <p className="text-[11px] text-slate-500 mt-1">This is the title users will see when choosing this format.</p>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Template Filename</label>
+                <input
+                  type="text"
+                  value={renameForm.newFileName}
+                  onChange={e => setRenameForm({ ...renameForm, newFileName: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowRenameModal(false)}
+                  className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingRename}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-sm"
+                >
+                  {savingRename ? 'Saving...' : 'Save Format Name'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Upload New Format Modal */}
+      {showUploadModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <span>📤</span> Upload Report Format Template
+              </h3>
+              <button onClick={() => setShowUploadModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+            </div>
+            <form onSubmit={handleUploadTemplate} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Select Word Template (.docx / .doc) *</label>
+                <input
+                  type="file"
+                  required
+                  accept=".docx,.doc"
+                  onChange={e => setUploadFile(e.target.files?.[0] || null)}
+                  className="w-full p-2 border border-slate-300 rounded-lg text-sm bg-slate-50"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Report Category</label>
+                <select
+                  value={uploadFormatType}
+                  onChange={e => setUploadFormatType(e.target.value as 'IR' | 'FR')}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+                >
+                  <option value="IR">Inspection Report (IR) - Standard full report</option>
+                  <option value="FR">Final Report / Flash Report (FR) - KTI / ADNOC Flash style</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowUploadModal(false)}
+                  className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={uploadingTemplate}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-sm"
+                >
+                  {uploadingTemplate ? 'Uploading...' : 'Upload Template'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -882,6 +1275,7 @@ export function AdminPage({ currentUser }: { currentUser?: any }) {
                       <option value="INSPECTOR">👷 Field Staff (Inspector)</option>
                       <option value="MANAGER">👔 Team Manager / Lead</option>
                       <option value="ADMIN">👑 Company Admin</option>
+                      <option value="REPORT_ONLY">⚡ Report Generator (Temporary / 5-Day Purge)</option>
                     </select>
                   )}
                 </div>
@@ -923,6 +1317,78 @@ export function AdminPage({ currentUser }: { currentUser?: any }) {
                 />
               </div>
 
+              {/* Subscription & Validity Period */}
+              <div className="bg-amber-50/70 p-3 rounded-xl border border-amber-200/90 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-amber-900 text-xs flex items-center gap-1.5">
+                    <span>📅</span> Subscription &amp; Validity Dates
+                  </span>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const now = new Date();
+                        const start = now.toISOString().slice(0, 10);
+                        const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+                        setUserForm({ ...userForm, subscriptionStartDate: start, subscriptionEndDate: end });
+                      }}
+                      className="px-2 py-0.5 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 text-[10px] font-bold"
+                    >
+                      +1 Mo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const now = new Date();
+                        const start = now.toISOString().slice(0, 10);
+                        const end = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+                        setUserForm({ ...userForm, subscriptionStartDate: start, subscriptionEndDate: end });
+                      }}
+                      className="px-2 py-0.5 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 text-[10px] font-bold"
+                    >
+                      +3 Mo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const now = new Date();
+                        const start = now.toISOString().slice(0, 10);
+                        const end = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+                        setUserForm({ ...userForm, subscriptionStartDate: start, subscriptionEndDate: end });
+                      }}
+                      className="px-2 py-0.5 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 text-[10px] font-bold"
+                    >
+                      +1 Yr
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-600 mb-1">Valid From</label>
+                    <input
+                      type="date"
+                      value={userForm.subscriptionStartDate}
+                      onChange={e => setUserForm({ ...userForm, subscriptionStartDate: e.target.value })}
+                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-600 mb-1">Valid Until (Expiry)</label>
+                    <input
+                      type="date"
+                      value={userForm.subscriptionEndDate}
+                      onChange={e => setUserForm({ ...userForm, subscriptionEndDate: e.target.value })}
+                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white font-bold text-amber-900"
+                    />
+                  </div>
+                </div>
+                <p className="text-[10px] text-amber-800/80 leading-relaxed">
+                  {userForm.role === 'REPORT_ONLY'
+                    ? '⚡ Report Generator group: User logins to create projects/inspections, upload docs, and generate reports. Once downloaded, reports are retained for 5 days, after which they are automatically purged to save space.'
+                    : 'Setting an expiry date limits this user account from signing in past the validity date.'}
+                </p>
+              </div>
+
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
@@ -953,12 +1419,16 @@ function OrgTreeNode({ node, currentUser, onAddUnder, onEdit, onToggleActive }: 
     ? 'border-purple-200 bg-purple-50/40 text-purple-900'
     : node.role === 'MANAGER'
     ? 'border-blue-200 bg-blue-50/40 text-blue-900'
+    : node.role === 'REPORT_ONLY'
+    ? 'border-amber-200 bg-amber-50/40 text-amber-900'
     : 'border-emerald-200 bg-emerald-50/40 text-emerald-900';
 
   const roleBadge = node.role === 'ADMIN'
     ? 'bg-purple-100 text-purple-800 border-purple-200'
     : node.role === 'MANAGER'
     ? 'bg-blue-100 text-blue-800 border-blue-200'
+    : node.role === 'REPORT_ONLY'
+    ? 'bg-amber-100 text-amber-800 border-amber-200'
     : 'bg-emerald-100 text-emerald-800 border-emerald-200';
 
   return (
@@ -966,13 +1436,13 @@ function OrgTreeNode({ node, currentUser, onAddUnder, onEdit, onToggleActive }: 
       <div className={`p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs ${roleColor}`}>
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-white border flex items-center justify-center text-base shadow-xs">
-            {node.role === 'ADMIN' ? '👑' : node.role === 'MANAGER' ? '👔' : '👷'}
+            {node.role === 'ADMIN' ? '👑' : node.role === 'MANAGER' ? '👔' : node.role === 'REPORT_ONLY' ? '⚡' : '👷'}
           </div>
           <div>
             <div className="flex items-center gap-2">
               <span className="font-bold text-sm text-slate-800">{node.fullName}</span>
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${roleBadge}`}>
-                {node.role === 'ADMIN' ? 'Admin' : node.role === 'MANAGER' ? 'Manager' : 'Field Staff'}
+                {node.role === 'ADMIN' ? 'Admin' : node.role === 'MANAGER' ? 'Manager' : node.role === 'REPORT_ONLY' ? 'Report Generator' : 'Field Staff'}
               </span>
               {!node.isActive && (
                 <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800">

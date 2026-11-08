@@ -15,6 +15,7 @@ import userRoutes from './routes/userRoutes';
 import suggestionRoutes from './routes/suggestionRoutes';
 import { auth } from './middleware/auth';
 import { ValidationService } from './services/validationService';
+import { CleanupService } from './services/cleanupService';
 
 const app = express();
 app.use(cors());
@@ -175,6 +176,7 @@ app.listen(PORT, () => {
   console.log(`🚀 INSPECTAI server running on http://localhost:${PORT}`);
   console.log(`   Storage: ${storageDir}`);
   console.log(`   Templates: ${process.env.TEMPLATES_DIR || path.resolve(__dirname, '../../templates')}`);
+  CleanupService.startScheduler();
 
   // Auto-seed default admin if database is empty
   prisma.user.findFirst().then(async (u) => {

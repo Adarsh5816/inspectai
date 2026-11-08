@@ -23,6 +23,8 @@ model User {
   subordinates     User[]       @relation("UserManager")
   telegramUserId   String?      @unique
   telegramUsername String?
+  subscriptionStartDate DateTime?
+  subscriptionEndDate   DateTime?
   isActive         Boolean      @default(true)
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
@@ -79,6 +81,8 @@ model Document {
   id               String       @id @default(uuid())
   projectId        String
   project          Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  inspectionId     String?
+  inspection       Inspection?  @relation("InspectionDocuments", fields: [inspectionId], references: [id], onDelete: Cascade)
   documentType     String       // RFI, ITP, DATASHEET, GAD, FAT_PROCEDURE, TEST_PROCEDURE, CALIBRATION_CERTIFICATE, MATERIAL_CERTIFICATE, OTHER
   documentNumber   String?      // e.g. "P30339B-30-99-52-4607"
   revision         String?      // e.g. "Rev C", "Rev 2"
@@ -147,9 +151,13 @@ model Inspection {
   applicableDrawings  String?    // Serialized JSON of applicable drawings from ITP
   reportFormatType  String?      @default("IR") // "IR" (Inspection Report) or "FR" (Final Report)
   selectedTemplate  String?      // e.g. "master-template.docx"
+  exportedAt        DateTime?    // When report was first exported
+  retentionExpiryDate DateTime?  // Purge deadline (e.g. 5 days after export for REPORT_ONLY users)
+  isPurged          Boolean      @default(false)
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
 
+  documents         Document[]   @relation("InspectionDocuments")
   items             InspectionItem[]
   activities        InspectionActivity[]
   results           InspectionResult[]
@@ -368,3 +376,18 @@ model AuditEvent {
   ipAddress    String?
   timestamp    DateTime    @default(now())
 }
+
+// -------------------------------------------------------------
+// 14. Report Templates & Formats Catalog
+// -------------------------------------------------------------
+model ReportTemplate {
+  id          String   @id @default(uuid())
+  name        String   @unique // filename e.g. "master-template.docx"
+  displayName String   // friendly display name e.g. "Standard Inspection Report"
+  type        String   @default("IR") // "IR" or "FR"
+  description String?
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+

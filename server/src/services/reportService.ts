@@ -103,6 +103,63 @@ export class ReportService {
     return dest;
   }
 
+  async renameTemplate(name: string, newDisplayName: string, newFileName?: string): Promise<{ name: string; displayName: string }> {
+    const metaPath = path.join(TEMPLATES_DIR, 'templates.json');
+    let meta: any[] = [];
+    if (fs.existsSync(metaPath)) {
+      try {
+        meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+      } catch {}
+    }
+
+    let finalName = name;
+    if (newFileName && newFileName.trim() && newFileName.trim() !== name) {
+      let sanitized = newFileName.trim();
+      if (!sanitized.endsWith('.docx') && !sanitized.endsWith('.doc')) {
+        sanitized += '.docx';
+      }
+      const oldPath = path.join(TEMPLATES_DIR, name);
+      const newPath = path.join(TEMPLATES_DIR, sanitized);
+      if (fs.existsSync(oldPath)) {
+        try {
+          fs.renameSync(oldPath, newPath);
+          finalName = sanitized;
+        } catch (renameErr) {
+          console.warn('Could not rename template file on disk:', renameErr);
+        }
+      }
+    }
+
+    const idx = meta.findIndex(m => m.name === name || m.name === finalName);
+    if (idx !== -1) {
+      meta[idx].name = finalName;
+      meta[idx].displayName = newDisplayName.trim();
+    } else {
+      meta.push({
+        name: finalName,
+        displayName: newDisplayName.trim(),
+        type: finalName.toLowerCase().includes('fr') || finalName.toLowerCase().includes('flash') ? 'FR' : 'IR',
+      });
+    }
+
+    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+
+    // Also sync to DB ReportTemplate
+    try {
+      await prisma.reportTemplate.upsert({
+        where: { name: finalName },
+        update: { displayName: newDisplayName.trim() },
+        create: {
+          name: finalName,
+          displayName: newDisplayName.trim(),
+          type: finalName.toLowerCase().includes('fr') || finalName.toLowerCase().includes('flash') ? 'FR' : 'IR',
+        },
+      });
+    } catch {}
+
+    return { name: finalName, displayName: newDisplayName.trim() };
+  }
+
   async generateReport(inspectionId: string, templateName?: string, options?: ReportOptions): Promise<string> {
     // 1. Load inspection with ALL related data
     const inspection = await prisma.inspection.findUnique({

@@ -37,6 +37,16 @@ router.post('/login', async (req, res) => {
     return res.status(403).json({ error: 'Account is deactivated. Please contact your manager.' });
   }
 
+  // Check subscription expiry for REPORT_ONLY temporary users
+  if (user.role === 'REPORT_ONLY' && user.subscriptionEndDate) {
+    const expiry = new Date(user.subscriptionEndDate);
+    if (new Date() > expiry) {
+      return res.status(403).json({
+        error: `Your subscription expired on ${expiry.toLocaleDateString()}. Please contact an administrator to renew.`
+      });
+    }
+  }
+
   const dbPass = user.passwordHash || '';
   const isMatch = (
     dbPass === password ||
@@ -50,7 +60,14 @@ router.post('/login', async (req, res) => {
 
   res.json({
     token: `token-${user.id}`,
-    user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role }
+    user: {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      role: user.role,
+      subscriptionStartDate: user.subscriptionStartDate,
+      subscriptionEndDate: user.subscriptionEndDate,
+    }
   });
 });
 
@@ -60,7 +77,16 @@ router.post('/register', async (req, res) => {
     const user = await prisma.user.create({
       data: { email, passwordHash: password, fullName: name || 'User', role: 'INSPECTOR' }
     });
-    res.json({ user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role } });
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role,
+        subscriptionStartDate: user.subscriptionStartDate,
+        subscriptionEndDate: user.subscriptionEndDate,
+      }
+    });
   } catch (error) {
     res.status(400).json({ error: 'Registration failed' });
   }
@@ -71,13 +97,35 @@ router.get('/me', auth, async (req, res) => {
   if (userId) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (user) {
-      return res.json({ user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role } });
+      // Check subscription expiry
+      if (user.role === 'REPORT_ONLY' && user.subscriptionEndDate && new Date() > new Date(user.subscriptionEndDate)) {
+        return res.status(403).json({ error: 'Subscription expired. Please contact an administrator.' });
+      }
+      return res.json({
+        user: {
+          id: user.id,
+          email: user.email,
+          fullName: user.fullName,
+          role: user.role,
+          subscriptionStartDate: user.subscriptionStartDate,
+          subscriptionEndDate: user.subscriptionEndDate,
+        }
+      });
     }
   }
   // Fallback for demo token
   const admin = await prisma.user.findFirst({ where: { role: 'ADMIN' } });
   if (admin) {
-    return res.json({ user: { id: admin.id, email: admin.email, fullName: admin.fullName, role: admin.role } });
+    return res.json({
+      user: {
+        id: admin.id,
+        email: admin.email,
+        fullName: admin.fullName,
+        role: admin.role,
+        subscriptionStartDate: admin.subscriptionStartDate,
+        subscriptionEndDate: admin.subscriptionEndDate,
+      }
+    });
   }
   res.json({ user: { id: 'admin', email: 'admin@inspectai.com', fullName: 'Admin', role: 'ADMIN' } });
 });

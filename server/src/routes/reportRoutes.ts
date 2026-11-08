@@ -4,6 +4,8 @@ import path from 'path';
 import fs from 'fs';
 import { ReportService } from '../services/reportService';
 import { AccessControlService } from '../services/accessControlService';
+import prisma from '../db/prisma';
+import { CleanupService } from '../services/cleanupService';
 
 const router = Router();
 const reportService = new ReportService();
@@ -35,6 +37,30 @@ router.post('/generate/:inspectionId', async (req, res) => {
     const { templateName, format } = req.body;
     const isPdf = format === 'pdf' || req.query.format === 'pdf';
     const docPath = await reportService.generateReport(req.params.inspectionId, templateName);
+
+    // If report creator/inspector has role REPORT_ONLY, activate the 5-day auto-purge retention timer
+    try {
+      const inspRecord = await prisma.inspection.findUnique({
+        where: { id: req.params.inspectionId },
+        include: { inspector: true },
+      });
+      if (inspRecord && (inspRecord.inspector?.role === 'REPORT_ONLY' || user?.role === 'REPORT_ONLY')) {
+        if (!inspRecord.exportedAt) {
+          const now = new Date();
+          const retentionExpiryDate = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000); // 5 days retention
+          await prisma.inspection.update({
+            where: { id: req.params.inspectionId },
+            data: {
+              exportedAt: now,
+              retentionExpiryDate,
+            },
+          });
+          console.log(`[ReportRoutes] 5-day retention timer activated for inspection ${inspRecord.id} (expires: ${retentionExpiryDate.toISOString()})`);
+        }
+      }
+    } catch (retErr) {
+      console.warn('Could not record export retention timestamp:', retErr);
+    }
 
     if (isPdf) {
       const pdfPath = await reportService.convertToPdf(docPath);
@@ -127,15 +153,26 @@ router.post('/templates/upload', upload.single('file'), async (req, res) => {
   }
 });
 
-// Delete a template (prevent deleting master)
-router.delete('/templates/:name', async (req, res) => {
+// Rename a template (display name and optionally file name)
+router.put('/templates/:name/rename', async (req, res) => {
   try {
-    const name = req.params.name;
-    if (name === 'master-template.docx') return res.status(400).json({ error: 'Cannot delete the master template' });
-    const tplPath = path.join(TEMPLATES_DIR, name);
-    if (!fs.existsSync(tplPath)) return res.status(404).json({ error: 'Template not found' });
-    fs.unlinkSync(tplPath);
-    res.json({ success: true });
+    const { name } = req.params;
+    const { displayName, newFileName } = req.body;
+    if (!displayName || !displayName.trim()) {
+      return res.status(400).json({ error: 'Display name is required' });
+    }
+    const result = await reportService.renameTemplate(name, displayName, newFileName);
+    res.json({ success: true, ...result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Manual trigger for ephemeral storage cleanup (admin only or system check)
+router.post('/cleanup', async (req, res) => {
+  try {
+    const result = await CleanupService.runCleanup();
+    res.json({ success: true, ...result });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

@@ -21,8 +21,15 @@ const upload = multer({
 router.post('/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    const { projectId } = req.body;
-    if (!projectId) return res.status(400).json({ error: 'projectId is required' });
+    let { projectId, inspectionId } = req.body;
+    if (!projectId && inspectionId) {
+      const insp = await prisma.inspection.findUnique({
+        where: { id: inspectionId },
+        select: { projectId: true },
+      });
+      if (insp) projectId = insp.projectId;
+    }
+    if (!projectId) return res.status(400).json({ error: 'projectId or inspectionId is required' });
 
     // Use explicit documentType if provided, otherwise auto-detect from filename
     let documentType = req.body.documentType;
@@ -42,6 +49,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     const document = await prisma.document.create({
       data: {
         projectId,
+        inspectionId: inspectionId || null,
         documentType,
         title: req.file.originalname,
         originalFilename: req.file.originalname,
@@ -50,6 +58,35 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         fileSizeBytes: req.file.size,
       },
     });
+
+    // If uploaded directly for an inspection, auto-process and auto-link
+    if (inspectionId) {
+      try {
+        const docService = new DocumentService();
+        await docService.processDocument(document.id, path.resolve(document.storageKey), document.documentType);
+        await prisma.document.update({ where: { id: document.id }, data: { isVerified: true } });
+
+        if (documentType === 'RFI') {
+          const insp = await prisma.inspection.findUnique({ where: { id: inspectionId } });
+          if (insp && !insp.rfiDocumentId) {
+            await prisma.inspection.update({
+              where: { id: inspectionId },
+              data: { rfiDocumentId: document.id },
+            });
+          }
+        } else if (documentType === 'ITP') {
+          const insp = await prisma.inspection.findUnique({ where: { id: inspectionId } });
+          if (insp && !insp.itpDocumentId) {
+            await prisma.inspection.update({
+              where: { id: inspectionId },
+              data: { itpDocumentId: document.id },
+            });
+          }
+        }
+      } catch (procErr) {
+        console.warn('Auto-processing error for uploaded inspection document:', procErr);
+      }
+    }
 
     res.json(document);
   } catch (err: any) {
@@ -95,6 +132,7 @@ router.get('/', async (req, res) => {
   try {
     const where: any = {};
     if (req.query.projectId) where.projectId = String(req.query.projectId);
+    if (req.query.inspectionId) where.inspectionId = String(req.query.inspectionId);
     const docs = await prisma.document.findMany({
       where,
       include: { extractions: true },

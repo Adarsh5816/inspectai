@@ -41,8 +41,8 @@ export const deleteProject = (id: string) => api.delete(`/projects/${id}`);
 // Documents
 export const uploadDocument = (formData: FormData) =>
   api.post('/documents/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-export const getDocuments = (projectId: string) =>
-  api.get('/documents', { params: { projectId } });
+export const getDocuments = (projectId?: string, inspectionId?: string) =>
+  api.get('/documents', { params: { ...(projectId ? { projectId } : {}), ...(inspectionId ? { inspectionId } : {}) } });
 export const getDocument = (id: string) => api.get(`/documents/${id}`);
 export const processDocument = (id: string) => api.post(`/documents/${id}/process`);
 export const deleteDocument = (id: string) => api.delete(`/documents/${id}`);
@@ -133,7 +133,12 @@ export const uploadTemplate = (formData: FormData) =>
   api.post('/reports/templates/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
 export const updateTemplateCategory = (name: string, type: 'IR' | 'FR') =>
   api.put(`/reports/templates/${encodeURIComponent(name)}/category`, { type });
+export const renameTemplate = (name: string, displayName: string, newFileName?: string) =>
+  api.put(`/reports/templates/${encodeURIComponent(name)}/rename`, { displayName, newFileName });
 export const deleteTemplate = (name: string) => api.delete(`/reports/templates/${name}`);
+export const runCleanup = () => api.post('/reports/cleanup');
+export const uploadInspectionDocument = (inspectionId: string, formData: FormData) =>
+  api.post(`/inspections/${inspectionId}/upload-doc`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
 
 // Admin & Releases
 export const getReleases = () => api.get('/admin/releases');

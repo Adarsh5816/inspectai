@@ -103,12 +103,16 @@ function Layout({ user, onLogout, children }: { user: any; onLogout: () => void;
     ? 'bg-purple-100 text-purple-800 border-purple-200'
     : user?.role === 'MANAGER'
     ? 'bg-blue-100 text-blue-800 border-blue-200'
+    : user?.role === 'REPORT_ONLY'
+    ? 'bg-amber-100 text-amber-800 border-amber-200'
     : 'bg-emerald-100 text-emerald-800 border-emerald-200';
 
   const roleLabel = user?.role === 'ADMIN'
     ? '👑 Admin'
     : user?.role === 'MANAGER'
     ? '👔 Manager'
+    : user?.role === 'REPORT_ONLY'
+    ? '⚡ Report Generator'
     : '👷 Field Staff';
 
   return (
@@ -136,6 +140,25 @@ function Layout({ user, onLogout, children }: { user: any; onLogout: () => void;
           <button onClick={onLogout} className="text-xs font-semibold px-2 py-1 text-red-600 hover:bg-red-50 rounded-lg transition">Logout</button>
         </div>
       </nav>
+
+      {/* Subscription & Ephemeral Notice for REPORT_ONLY users */}
+      {user?.role === 'REPORT_ONLY' && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-xs text-amber-900 flex items-center justify-between flex-wrap gap-2 shadow-2xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold flex items-center gap-1">⚡ Quick Report Workspace</span>
+            <span className="text-amber-700">| Upload RFI/ITP & generate instant reports.</span>
+            <span className="bg-amber-200 text-amber-900 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">
+              5-Day Storage Retention
+            </span>
+            <span className="text-amber-700 hidden sm:inline">Files are held for 5 days after download before auto-purging to optimize space.</span>
+          </div>
+          {user?.subscriptionEndDate && (
+            <div className="text-amber-950 font-medium text-[11px] bg-amber-100/80 px-2 py-0.5 rounded border border-amber-300">
+              Subscription valid until: <span className="font-bold">{new Date(user.subscriptionEndDate).toLocaleDateString()}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1 p-3 sm:p-6 pb-20 md:pb-8 max-w-7xl w-full mx-auto">{children}</main>
@@ -842,12 +865,24 @@ function NewInspectionPage({ currentUser }: { currentUser?: any }) {
   const projectId = searchParams.get('projectId') || '';
   const [projects, setProjects] = useState<any[]>([]);
   const [teamUsers, setTeamUsers] = useState<any[]>([]);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [showQuickProjectModal, setShowQuickProjectModal] = useState(false);
+  const [quickProjectForm, setQuickProjectForm] = useState({
+    projectNumber: '',
+    projectName: '',
+    customerName: '',
+    supplierName: '',
+    supplierAddress: '',
+  });
+  const [creatingProject, setCreatingProject] = useState(false);
   const canAssignStaff = currentUser?.role === 'ADMIN' || currentUser?.role === 'MANAGER';
 
   const [form, setForm] = useState(() => {
     const draft = loadDraft<any>('new_inspection');
     return draft?.data || {
       projectId,
+      selectedTemplate: 'master-template.docx',
+      reportFormatType: 'IR',
       reportNumber: '',
       inspectionType: 'FAT',
       location: '',
@@ -856,8 +891,24 @@ function NewInspectionPage({ currentUser }: { currentUser?: any }) {
     };
   });
 
-  useEffect(() => {
+  const loadProjects = () => {
     API.getProjects().then(r => setProjects(r.data)).catch(() => {});
+  };
+
+  useEffect(() => {
+    loadProjects();
+    API.getTemplates().then(r => {
+      setTemplates(r.data || []);
+      if (r.data?.length > 0 && !form.selectedTemplate) {
+        const def = r.data.find((t: any) => t.isDefault) || r.data[0];
+        setForm((prev: any) => ({
+          ...prev,
+          selectedTemplate: prev.selectedTemplate || def.name,
+          reportFormatType: prev.reportFormatType || def.type || 'IR',
+        }));
+      }
+    }).catch(() => {});
+
     if (canAssignStaff) {
       API.getUsers().then(r => setTeamUsers(r.data)).catch(() => {});
     }
@@ -876,8 +927,42 @@ function NewInspectionPage({ currentUser }: { currentUser?: any }) {
     }
   }, [form]);
 
+  const handleCreateQuickProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickProjectForm.projectNumber.trim() || !quickProjectForm.projectName.trim()) {
+      alert('Please enter project number and name');
+      return;
+    }
+    setCreatingProject(true);
+    try {
+      const res = await API.createProject(quickProjectForm);
+      setQuickProjectForm({
+        projectNumber: '',
+        projectName: '',
+        customerName: '',
+        supplierName: '',
+        supplierAddress: '',
+      });
+      setShowQuickProjectModal(false);
+      await loadProjects();
+      setForm((prev: any) => ({
+        ...prev,
+        projectId: res.data.id,
+        location: prev.location || res.data.supplierAddress || '',
+      }));
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to create project');
+    } finally {
+      setCreatingProject(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.selectedTemplate) {
+      alert('Please select a report format / template first.');
+      return;
+    }
     try {
       const r = await API.createInspection(form);
       clearDraft('new_inspection');
@@ -888,7 +973,7 @@ function NewInspectionPage({ currentUser }: { currentUser?: any }) {
   return (
     <div className="max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold text-slate-800 mb-6">New Inspection</h1>
-      <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+      <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
         {loadDraft('new_inspection') && (
           <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs px-3 py-1.5 rounded-lg flex items-center justify-between">
             <span>🛡️ Restored unsaved inspection draft from your previous session.</span>
@@ -898,6 +983,8 @@ function NewInspectionPage({ currentUser }: { currentUser?: any }) {
                 clearDraft('new_inspection');
                 setForm({
                   projectId,
+                  selectedTemplate: templates[0]?.name || 'master-template.docx',
+                  reportFormatType: templates[0]?.type || 'IR',
                   reportNumber: '',
                   inspectionType: 'FAT',
                   location: '',
@@ -911,8 +998,74 @@ function NewInspectionPage({ currentUser }: { currentUser?: any }) {
             </button>
           </div>
         )}
+
+        {/* STEP 1: Select Format / Template FIRST */}
+        <div className="bg-gradient-to-r from-blue-50/70 via-indigo-50/40 to-slate-50 border border-blue-200 rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center font-black shadow-xs">1</span>
+              <span>Select Report Format / Template First</span>
+            </label>
+            <span className="text-[11px] font-semibold text-blue-700 bg-blue-100/60 px-2 py-0.5 rounded-full">
+              Format is set before generating
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {templates.map((tpl: any) => {
+              const isSelected = form.selectedTemplate === tpl.name;
+              const isFlash = tpl.type === 'FR';
+              return (
+                <div
+                  key={tpl.name}
+                  onClick={() => setForm((prev: any) => ({
+                    ...prev,
+                    selectedTemplate: tpl.name,
+                    reportFormatType: tpl.type || (isFlash ? 'FR' : 'IR'),
+                  }))}
+                  className={`p-3 rounded-xl border-2 cursor-pointer transition flex items-start gap-3 bg-white ${
+                    isSelected
+                      ? 'border-blue-600 ring-2 ring-blue-500/20 bg-blue-50/30 shadow-xs'
+                      : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="text-2xl mt-0.5">{isFlash ? '⚡' : '📄'}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-bold text-xs text-slate-900 truncate">{tpl.displayName || tpl.name}</span>
+                      <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
+                        isFlash ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-blue-100 text-blue-800 border border-blue-200'
+                      }`}>
+                        {tpl.type || 'IR'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
+                      {tpl.description || (isFlash ? 'Concise flash summary report' : 'Full comprehensive inspection report')}
+                    </p>
+                  </div>
+                  {isSelected && (
+                    <div className="w-5 h-5 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center font-bold">
+                      ✓
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* STEP 2: Project Selection */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Project</label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="block text-sm font-medium text-slate-700">Project</label>
+            <button
+              type="button"
+              onClick={() => setShowQuickProjectModal(true)}
+              className="text-xs text-blue-600 hover:text-blue-800 font-bold underline"
+            >
+              + Quick Create Project
+            </button>
+          </div>
           <select
             value={form.projectId}
             onChange={e => {
@@ -959,7 +1112,7 @@ function NewInspectionPage({ currentUser }: { currentUser?: any }) {
                 .filter(u => u.id !== currentUser?.id)
                 .map((u: any) => (
                   <option key={u.id} value={u.id}>
-                    {u.fullName} ({u.role === 'INSPECTOR' ? 'Field Staff' : u.role}) - {u.email}
+                    {u.fullName} ({u.role === 'INSPECTOR' ? 'Field Staff' : u.role === 'REPORT_ONLY' ? 'Report Generator' : u.role}) - {u.email}
                   </option>
                 ))}
             </select>
@@ -982,8 +1135,72 @@ function NewInspectionPage({ currentUser }: { currentUser?: any }) {
           <AutocompleteInput label="Location" category="location" value={form.location} onChange={v => setForm({ ...form, location: v })} placeholder="Meladoor, Kerala" required />
           <Input label="Start Date" value={form.startDate} onChange={v => setForm({ ...form, startDate: v })} type="date" required />
         </div>
-        <button type="submit" className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium">Create Inspection</button>
+        <button type="submit" className="bg-blue-600 text-white px-6 py-2.5 rounded-lg hover:bg-blue-700 font-semibold shadow-xs transition w-full sm:w-auto">
+          Create Inspection &amp; Proceed
+        </button>
       </form>
+
+      {/* Quick Project Creation Modal */}
+      {showQuickProjectModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <h3 className="font-bold text-lg text-slate-800">Quick Create Project</h3>
+              <button onClick={() => setShowQuickProjectModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+            </div>
+            <form onSubmit={handleCreateQuickProject} className="space-y-3">
+              <Input
+                label="Project Number"
+                value={quickProjectForm.projectNumber}
+                onChange={v => setQuickProjectForm({ ...quickProjectForm, projectNumber: v })}
+                placeholder="e.g. P30339B"
+                required
+              />
+              <Input
+                label="Project Name"
+                value={quickProjectForm.projectName}
+                onChange={v => setQuickProjectForm({ ...quickProjectForm, projectName: v })}
+                placeholder="e.g. Ruwais Refinery Expansion"
+                required
+              />
+              <Input
+                label="Customer Name"
+                value={quickProjectForm.customerName}
+                onChange={v => setQuickProjectForm({ ...quickProjectForm, customerName: v })}
+                placeholder="e.g. ADNOC Onshore"
+              />
+              <Input
+                label="Supplier Name"
+                value={quickProjectForm.supplierName}
+                onChange={v => setQuickProjectForm({ ...quickProjectForm, supplierName: v })}
+                placeholder="e.g. KSB MIL Controls Limited"
+              />
+              <Input
+                label="Supplier Address / Location"
+                value={quickProjectForm.supplierAddress}
+                onChange={v => setQuickProjectForm({ ...quickProjectForm, supplierAddress: v })}
+                placeholder="e.g. Meladoor, Kerala"
+              />
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowQuickProjectModal(false)}
+                  className="px-4 py-2 border rounded-lg text-sm text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingProject}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold disabled:opacity-50"
+                >
+                  {creatingProject ? 'Creating...' : 'Create & Select'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1034,6 +1251,9 @@ function InspectionWorkspacePage() {
   // Customer Offer List state
   const [showOfferModal, setShowOfferModal] = useState(false);
   const [offerDocs, setOfferDocs] = useState<any[]>([]);
+
+  // Format selection modal state
+  const [showFormatModal, setShowFormatModal] = useState(false);
 
   // Location edit state
   const [showEditLocationModal, setShowEditLocationModal] = useState(() => {
@@ -1402,6 +1622,7 @@ function InspectionWorkspacePage() {
 
   const tabs = [
     { key: 'overview', label: '📊 Overview' },
+    { key: 'docs', label: `📁 Documents (${inspection.documents?.length || 0})` },
     { key: 'items', label: `🔧 Items (${inspection.items?.length || 0})` },
     { key: 'activities', label: `📋 Activities (${inspection.activities?.length || 0})` },
     { key: 'results', label: `📝 Results (${inspection.results?.length || 0})` },
@@ -1510,12 +1731,28 @@ function InspectionWorkspacePage() {
         </div>
       )}
 
-      {/* Progress / Info bar with Linked RFI, ITP, and Customer Offer List */}
+      {/* Progress / Info bar with Format, Linked RFI, ITP, and Customer Offer List */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4 shadow-xs">
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 text-sm items-center">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-9 gap-3 text-sm items-center">
           <div><span className="text-slate-500">Project:</span> <span className="font-medium">{inspection.project?.projectNumber}</span></div>
           <div><span className="text-slate-500">Type:</span> <span className="font-medium">{inspection.inspectionType}</span></div>
           <div><span className="text-slate-500">Date:</span> <span className="font-medium">{new Date(inspection.startDate).toLocaleDateString()}</span></div>
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500 block text-xs">Format:</span>
+              <button
+                type="button"
+                onClick={() => setShowFormatModal(true)}
+                className="text-[11px] text-blue-600 hover:text-blue-800 underline font-semibold ml-1"
+                title="Change active report template / format"
+              >
+                Change
+              </button>
+            </div>
+            <span className="font-bold text-slate-800 text-xs truncate block mt-0.5" title={inspection.selectedTemplate}>
+              {inspection.reportFormatType === 'FR' ? '⚡ Flash (FR)' : '📄 Report (IR)'}
+            </span>
+          </div>
           <div>
             <div className="flex items-center justify-between">
               <span className="text-slate-500">Location:</span>
@@ -1611,6 +1848,7 @@ function InspectionWorkspacePage() {
           const r = await API.validateInspection(id!);
           setValidation(r.data);
         }} validation={validation} onOpenRfiModal={loadRfiDocuments} onOpenItpModal={loadItpDocuments} onOpenOfferModal={loadOfferDocuments} onRecallRfi={handleRecallRfi} recallingRfi={recallingRfi} onOpenEditDetailsModal={openEditDetailsModal} onAutofillSummary={handleAutofillSummary} autofillingSummary={autofillingSummary} />}
+        {activeTab === 'docs' && <InspectionDocumentsTab inspection={inspection} onReload={load} />}
         {activeTab === 'items' && <ItemsTab inspection={inspection} onReload={load} onOpenRfiModal={loadRfiDocuments} onOpenOfferModal={loadOfferDocuments} onRecallRfi={handleRecallRfi} recallingRfi={recallingRfi} />}
         {activeTab === 'activities' && <ActivitiesTab inspection={inspection} onReload={load} onOpenRfiModal={loadRfiDocuments} onOpenItpModal={loadItpDocuments} onOpenOfferModal={loadOfferDocuments} />}
         {activeTab === 'results' && <ResultsTab inspection={inspection} onReload={load} />}
@@ -1939,6 +2177,14 @@ function InspectionWorkspacePage() {
         offerDocs={offerDocs}
         isOpen={showOfferModal}
         onClose={() => setShowOfferModal(false)}
+        onReload={load}
+      />
+
+      {/* Change Report Format Modal */}
+      <ChangeFormatModal
+        inspection={inspection}
+        isOpen={showFormatModal}
+        onClose={() => setShowFormatModal(false)}
         onReload={load}
       />
     </div>
@@ -2686,6 +2932,365 @@ function OfferListModal({ inspection, offerDocs, isOpen, onClose, onReload }: { 
             </button>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Modal: Change Report Format / Template
+function ChangeFormatModal({ inspection, isOpen, onClose, onReload }: { inspection: any; isOpen: boolean; onClose: () => void; onReload: () => void }) {
+  if (!isOpen) return null;
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState(inspection.selectedTemplate || 'master-template.docx');
+  const [formatType, setFormatType] = useState(inspection.reportFormatType || 'IR');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    API.getTemplates().then(r => setTemplates(r.data || [])).catch(() => {});
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await API.updateInspection(inspection.id, {
+        selectedTemplate,
+        reportFormatType: formatType,
+      });
+      onReload();
+      onClose();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to update template format');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+        <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+          <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+            <span>📄</span> Select Report Format &amp; Template
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+        </div>
+        <p className="text-xs text-slate-500">
+          Select which template and layout format should be used when rendering and exporting the Word (.docx) inspection report.
+        </p>
+
+        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+          {templates.map((tpl: any) => {
+            const isSelected = selectedTemplate === tpl.name;
+            const isFlash = tpl.type === 'FR';
+            return (
+              <div
+                key={tpl.name}
+                onClick={() => {
+                  setSelectedTemplate(tpl.name);
+                  setFormatType(tpl.type || (isFlash ? 'FR' : 'IR'));
+                }}
+                className={`p-3.5 rounded-xl border-2 cursor-pointer transition flex items-start gap-3 ${
+                  isSelected
+                    ? 'border-blue-600 bg-blue-50/30 ring-2 ring-blue-500/20'
+                    : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                }`}
+              >
+                <div className="text-2xl mt-0.5">{isFlash ? '⚡' : '📄'}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-sm text-slate-800 truncate">{tpl.displayName || tpl.name}</span>
+                    <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
+                      isFlash ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-blue-100 text-blue-800 border border-blue-200'
+                    }`}>
+                      {tpl.type || 'IR'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">{tpl.description || (isFlash ? 'Flash summary report' : 'Full inspection report')}</p>
+                </div>
+                {isSelected && (
+                  <span className="text-blue-600 font-bold text-lg">✓</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 border rounded-lg text-sm text-slate-600 hover:bg-slate-50 font-medium"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-xs transition disabled:opacity-50"
+          >
+            {saving ? 'Updating...' : 'Set Active Format'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Tab: Dedicated Inspection Documents & Multi-RFI repository
+function InspectionDocumentsTab({ inspection, onReload }: { inspection: any; onReload: () => void }) {
+  const [uploadingType, setUploadingType] = useState<string | null>(null);
+  const [syncingDocId, setSyncingDocId] = useState<string | null>(null);
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+
+  const docs = inspection.documents || [];
+  const rfiDocs = docs.filter((d: any) => d.documentType === 'RFI' || d.originalFilename.toLowerCase().includes('rfi'));
+  const itpDocs = docs.filter((d: any) => d.documentType === 'ITP' || d.originalFilename.toLowerCase().includes('itp') || d.originalFilename.toLowerCase().includes('plan'));
+  const otherDocs = docs.filter((d: any) => !rfiDocs.includes(d) && !itpDocs.includes(d));
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>, docType: string) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setUploadingType(docType);
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('documentType', docType);
+        fd.append('inspectionId', inspection.id);
+        if (inspection.projectId) fd.append('projectId', inspection.projectId);
+        await API.uploadInspectionDocument(inspection.id, fd);
+      }
+      onReload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || `Failed to upload ${docType}`);
+    } finally {
+      setUploadingType(null);
+      e.target.value = '';
+    }
+  };
+
+  const handleSyncRfi = async (docId: string) => {
+    setSyncingDocId(docId);
+    try {
+      const res = await API.importRFI(inspection.id, docId);
+      alert(res.data.message || 'RFI materials and activities successfully synced!');
+      onReload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to sync RFI');
+    } finally {
+      setSyncingDocId(null);
+    }
+  };
+
+  const handleSyncItp = async (docId: string) => {
+    setSyncingDocId(docId);
+    try {
+      const res = await API.importITP(inspection.id, docId);
+      alert(res.data.message || 'ITP activities successfully synced!');
+      onReload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to sync ITP');
+    } finally {
+      setSyncingDocId(null);
+    }
+  };
+
+  const handleDeleteDoc = async (docId: string, filename: string) => {
+    if (!confirm(`Delete document "${filename}"?`)) return;
+    setDeletingDocId(docId);
+    try {
+      await API.deleteDocument(docId);
+      onReload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to delete document');
+    } finally {
+      setDeletingDocId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Retention / Info Notice */}
+      {inspection.retentionExpiryDate ? (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-900 flex items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">⏳</span>
+            <div>
+              <p className="font-bold">5-Day Ephemeral Retention Active</p>
+              <p className="text-amber-700">
+                This inspection has been exported. To optimize storage, all uploaded files and report records will be purged on{' '}
+                <span className="font-bold underline">{new Date(inspection.retentionExpiryDate).toLocaleString()}</span>.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-4 text-xs text-blue-900 flex items-center gap-3 shadow-2xs">
+          <span className="text-2xl">💡</span>
+          <div>
+            <p className="font-bold text-sm text-blue-950">Per-Inspection Document Uploads &amp; Multi-RFI Support</p>
+            <p className="text-blue-800 mt-0.5">
+              Each inspection has its own independent document repository. Upload multiple independent RFIs and an ITP. Material items, tag numbers, and activities accumulate automatically so multiple RFIs do not overwrite each other.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Upload Boxes */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* Upload RFI */}
+        <label className={`p-4 rounded-xl border-2 border-dashed border-blue-300 hover:border-blue-500 bg-blue-50/30 hover:bg-blue-50 cursor-pointer transition flex flex-col items-center justify-center text-center group ${uploadingType === 'RFI' ? 'opacity-50 pointer-events-none' : ''}`}>
+          <span className="text-2xl mb-1 group-hover:scale-110 transition">📄</span>
+          <span className="font-bold text-sm text-blue-900">+ Upload RFI(s)</span>
+          <span className="text-[11px] text-blue-600 mt-0.5">Supports Multiple RFIs (.pdf, .docx, .xlsx)</span>
+          <input type="file" multiple accept=".pdf,.docx,.doc,.xlsx,.xls,.csv" onChange={e => handleUpload(e, 'RFI')} className="hidden" />
+          {uploadingType === 'RFI' && <span className="text-xs text-blue-600 font-bold mt-1">Uploading &amp; Parsing...</span>}
+        </label>
+
+        {/* Upload ITP */}
+        <label className={`p-4 rounded-xl border-2 border-dashed border-emerald-300 hover:border-emerald-500 bg-emerald-50/30 hover:bg-emerald-50 cursor-pointer transition flex flex-col items-center justify-center text-center group ${uploadingType === 'ITP' ? 'opacity-50 pointer-events-none' : ''}`}>
+          <span className="text-2xl mb-1 group-hover:scale-110 transition">📋</span>
+          <span className="font-bold text-sm text-emerald-900">+ Upload ITP Plan</span>
+          <span className="text-[11px] text-emerald-700 mt-0.5">Inspection &amp; Test Plan (.pdf, .docx, .xlsx)</span>
+          <input type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.csv" onChange={e => handleUpload(e, 'ITP')} className="hidden" />
+          {uploadingType === 'ITP' && <span className="text-xs text-emerald-600 font-bold mt-1">Uploading &amp; Extracting...</span>}
+        </label>
+
+        {/* Upload Other Docs */}
+        <label className={`p-4 rounded-xl border-2 border-dashed border-slate-300 hover:border-slate-500 bg-slate-50 hover:bg-slate-100/70 cursor-pointer transition flex flex-col items-center justify-center text-center group ${uploadingType === 'OTHER' ? 'opacity-50 pointer-events-none' : ''}`}>
+          <span className="text-2xl mb-1 group-hover:scale-110 transition">📎</span>
+          <span className="font-bold text-sm text-slate-800">+ Upload Other Documents</span>
+          <span className="text-[11px] text-slate-500 mt-0.5">Drawings, Specs, Offer Lists, MTCs</span>
+          <input type="file" multiple accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.png,.jpg,.jpeg" onChange={e => handleUpload(e, 'OTHER')} className="hidden" />
+          {uploadingType === 'OTHER' && <span className="text-xs text-slate-600 font-bold mt-1">Uploading...</span>}
+        </label>
+      </div>
+
+      {/* Uploaded Documents List */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h4 className="font-bold text-sm text-slate-800 flex items-center gap-2">
+            <span>📁</span> Inspection Documents ({docs.length})
+          </h4>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold border border-blue-200">
+              {rfiDocs.length} RFI{rfiDocs.length === 1 ? '' : 's'}
+            </span>
+            <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">
+              {itpDocs.length} ITP{itpDocs.length === 1 ? '' : 's'}
+            </span>
+            <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold border border-slate-200">
+              {otherDocs.length} Other
+            </span>
+          </div>
+        </div>
+
+        {docs.length === 0 ? (
+          <div className="text-center py-10 bg-slate-50 border border-slate-200 rounded-xl text-slate-500 text-sm">
+            No documents uploaded directly to this inspection yet. Use the upload boxes above to add RFIs, ITPs, or technical specifications.
+          </div>
+        ) : (
+          <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 bg-white shadow-xs">
+            {docs.map((doc: any) => {
+              const isRfi = doc.documentType === 'RFI' || doc.originalFilename.toLowerCase().includes('rfi');
+              const isItp = doc.documentType === 'ITP' || doc.originalFilename.toLowerCase().includes('itp');
+              const extraction = doc.extractions?.[0];
+
+              return (
+                <div key={doc.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/80 transition">
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    <span className="text-2xl mt-0.5">
+                      {isRfi ? '📄' : isItp ? '📋' : '📎'}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <a
+                          href={`/api/documents/${doc.id}/download`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-bold text-sm text-blue-700 hover:text-blue-900 hover:underline truncate"
+                          title={doc.originalFilename}
+                        >
+                          {doc.originalFilename}
+                        </a>
+                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                          isRfi
+                            ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                            : isItp
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            : 'bg-slate-100 text-slate-700 border border-slate-200'
+                        }`}>
+                          {doc.documentType}
+                        </span>
+                        {doc.isVerified && (
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                            ✅ Extracted
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 flex-wrap">
+                        <span>{(doc.fileSizeBytes / 1024).toFixed(0)} KB</span>
+                        <span>•</span>
+                        <span>Uploaded: {new Date(doc.uploadedAt).toLocaleString()}</span>
+                        {extraction?.extractedData && (
+                          <>
+                            <span>•</span>
+                            <span className="text-slate-600 font-medium">
+                              {Array.isArray(extraction.extractedData.items) ? `${extraction.extractedData.items.length} materials` : ''}
+                              {Array.isArray(extraction.extractedData.activities) ? ` • ${extraction.extractedData.activities.length} activities` : ''}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-end sm:self-center">
+                    {isRfi && (
+                      <button
+                        onClick={() => handleSyncRfi(doc.id)}
+                        disabled={syncingDocId === doc.id}
+                        className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold transition disabled:opacity-50"
+                        title="Re-extract and accumulate materials & activities from this RFI"
+                      >
+                        {syncingDocId === doc.id ? 'Syncing...' : '🔄 Sync Scope'}
+                      </button>
+                    )}
+                    {isItp && (
+                      <button
+                        onClick={() => handleSyncItp(doc.id)}
+                        disabled={syncingDocId === doc.id}
+                        className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold transition disabled:opacity-50"
+                        title="Re-extract and accumulate ITP activities"
+                      >
+                        {syncingDocId === doc.id ? 'Syncing...' : '🔄 Sync ITP'}
+                      </button>
+                    )}
+                    <a
+                      href={`/api/documents/${doc.id}/download`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition"
+                      title="Download original file"
+                    >
+                      ⬇️ Download
+                    </a>
+                    <button
+                      onClick={() => handleDeleteDoc(doc.id, doc.originalFilename)}
+                      disabled={deletingDocId === doc.id}
+                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                      title="Delete document"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -5741,6 +6346,7 @@ function InspectionsPage({ currentUser }: { currentUser?: any }) {
           <p className="text-sm text-slate-500 mt-1">
             {currentUser?.role === 'ADMIN' && 'Showing company-wide inspections across all teams.'}
             {currentUser?.role === 'MANAGER' && 'Showing inspections for your team and subordinates.'}
+            {currentUser?.role === 'REPORT_ONLY' && 'Showing your quick report inspections (5-day post-export retention active).'}
             {currentUser?.role === 'INSPECTOR' && 'Showing inspections assigned to you.'}
           </p>
         </div>
@@ -5768,13 +6374,35 @@ function InspectionsPage({ currentUser }: { currentUser?: any }) {
             <Link to={`/inspections/${insp.id}`} className="flex-1 block">
               <div className="flex justify-between items-start">
                 <div>
-                  <span className="font-semibold text-slate-800 hover:text-blue-600">{insp.reportNumber}</span>
-                  <span className="ml-2 text-sm text-slate-500">{insp.project?.projectNumber}</span>
-                  <div className="flex items-center gap-2 mt-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-slate-800 hover:text-blue-600">{insp.reportNumber}</span>
+                    <span className="text-sm text-slate-500">{insp.project?.projectNumber}</span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                      insp.reportFormatType === 'FR' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-blue-100 text-blue-800 border border-blue-200'
+                    }`}>
+                      {insp.reportFormatType === 'FR' ? '⚡ FR' : '📄 IR'}
+                    </span>
+                    {insp.isPurged && (
+                      <span className="text-[10px] font-bold text-red-700 bg-red-100 border border-red-200 px-1.5 py-0.5 rounded">
+                        ⚠️ Data Purged
+                      </span>
+                    )}
+                    {insp.retentionExpiryDate && !insp.isPurged && (
+                      <span className="text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded" title={`Retention expires on ${new Date(insp.retentionExpiryDate).toLocaleString()}`}>
+                        ⏳ Purge on {new Date(insp.retentionExpiryDate).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <p className="text-sm text-slate-500">{insp.inspectionType} — {insp.location} — {new Date(insp.startDate).toLocaleDateString()}</p>
                     {insp.inspector && (
                       <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
                         👤 {insp.inspector.fullName}
+                      </span>
+                    )}
+                    {insp.documents?.length > 0 && (
+                      <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200">
+                        📁 {insp.documents.length} doc{insp.documents.length > 1 ? 's' : ''}
                       </span>
                     )}
                   </div>

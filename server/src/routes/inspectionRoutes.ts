@@ -45,6 +45,7 @@ router.get('/', async (req, res) => {
         photos: true,
         observations: true,
         instruments: true,
+        documents: { include: { extractions: true }, orderBy: { uploadedAt: 'desc' } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -80,6 +81,7 @@ router.get('/:id', async (req, res) => {
         photos: true,
         observations: true,
         instruments: true,
+        documents: { include: { extractions: true }, orderBy: { uploadedAt: 'desc' } },
       },
     });
     if (!inspection) return res.status(404).json({ error: 'Inspection not found' });
@@ -92,7 +94,7 @@ router.get('/:id', async (req, res) => {
 // CREATE inspection
 router.post('/', async (req, res) => {
   try {
-    const { projectId, reportNumber, inspectionType, location, startDate, endDate, previousVisitDate, nextVisitDate, workingHours, travelHours, travelDistanceKm, summaryNarrative, disposition } = req.body;
+    const { projectId, reportNumber, inspectionType, location, startDate, endDate, previousVisitDate, nextVisitDate, workingHours, travelHours, travelDistanceKm, summaryNarrative, disposition, selectedTemplate, reportFormatType } = req.body;
     const user = (req as any).user;
     let inspectorId = (req as any).userId || user?.id;
 
@@ -111,6 +113,10 @@ router.post('/', async (req, res) => {
       if (adminUser) inspectorId = adminUser.id;
     }
 
+    const tpl = selectedTemplate || 'master-template.docx';
+    const isFR = String(tpl).toLowerCase().includes('fr') || String(tpl).toLowerCase().includes('flash') || String(tpl).toLowerCase().includes('fir');
+    const formatType = reportFormatType || (isFR ? 'FR' : 'IR');
+
     const inspection = await prisma.inspection.create({
       data: {
         projectId,
@@ -127,10 +133,13 @@ router.post('/', async (req, res) => {
         inspectorId,
         summaryNarrative,
         disposition,
+        selectedTemplate: tpl,
+        reportFormatType: formatType,
       },
       include: {
         project: true,
         inspector: { select: { id: true, fullName: true, email: true, role: true } },
+        documents: { include: { extractions: true } },
       },
     });
 
@@ -443,23 +452,6 @@ router.post('/:id/import-rfi', async (req, res) => {
     }
 
     if (itemsToProcess && Array.isArray(itemsToProcess) && itemsToProcess.length > 0) {
-      // Remove any previously existing items that do not belong to this RFI/Offer list
-      const validTags = new Set(itemsToProcess.map((i: any) => i.tagNumber));
-      const invalidItems = (inspection.items || []).filter(i => !validTags.has(i.tagNumber));
-      if (invalidItems.length > 0) {
-        const invalidItemIds = invalidItems.map(i => i.id);
-        await prisma.photo.updateMany({
-          where: { itemId: { in: invalidItemIds } },
-          data: { itemId: null },
-        });
-        await prisma.inspectionResult.deleteMany({
-          where: { itemId: { in: invalidItemIds } },
-        });
-        await prisma.inspectionItem.deleteMany({
-          where: { id: { in: invalidItemIds } },
-        });
-      }
-
       for (const item of itemsToProcess) {
         const existing = inspection.items.find(i => i.tagNumber === item.tagNumber || (item.serialNumber && i.serialNumber === item.serialNumber));
         if (!existing) {
@@ -515,16 +507,6 @@ router.post('/:id/import-rfi', async (req, res) => {
       : [];
 
     if (normalizedActivities.length > 0) {
-      // Remove non-RFI activities (e.g. if all ITP clauses were previously imported)
-      const rfiClauses = new Set(normalizedActivities.map(a => a.clauseNumber));
-      const currentDbActs = await prisma.inspectionActivity.findMany({ where: { inspectionId } });
-      const unneededActs = currentDbActs.filter(a => !rfiClauses.has((a.clauseNumber || '').replace(',', '.').trim()));
-      if (unneededActs.length > 0) {
-        const unneededIds = unneededActs.map(a => a.id);
-        await prisma.inspectionResult.deleteMany({ where: { activityId: { in: unneededIds } } });
-        await prisma.inspectionActivity.deleteMany({ where: { id: { in: unneededIds } } });
-      }
-
       for (const act of normalizedActivities) {
         const clause = act.clauseNumber;
         const name = act.activityName || `Clause ${clause}`;
@@ -617,14 +599,29 @@ router.post('/:id/import-rfi', async (req, res) => {
       }
     }
 
+    // Merge RFI number into notificationNo
+    let combinedNotificationNo = inspection.notificationNo || '';
+    if (extractedData.rfiNumber) {
+      const existing = (combinedNotificationNo || '').split(/[,&]/).map(s => s.trim().toLowerCase());
+      if (!existing.includes(extractedData.rfiNumber.trim().toLowerCase())) {
+        combinedNotificationNo = combinedNotificationNo ? `${combinedNotificationNo}, ${extractedData.rfiNumber.trim()}` : extractedData.rfiNumber.trim();
+      }
+    }
+
+    // Ensure document is linked to this inspection
+    await prisma.document.update({
+      where: { id: document.id },
+      data: { inspectionId },
+    }).catch(() => {});
+
     // Link RFI document and update Inspection metadata
     await prisma.inspection.update({
       where: { id: inspectionId },
       data: {
-        rfiDocumentId: document.id,
+        ...(inspection.rfiDocumentId ? {} : { rfiDocumentId: document.id }),
         location: extractedData.inspectionLocation || inspection.location,
         ...(shouldUpdateReportNum && { reportNumber: extractedData.rfiNumber }),
-        ...(extractedData.rfiNumber && { notificationNo: extractedData.rfiNumber }),
+        notificationNo: combinedNotificationNo,
         ...(newStartDate && { startDate: newStartDate }),
         ...(extractedData.inspectionDates && { inspectionDates: extractedData.inspectionDates }),
         ...(extractedData.itpReference && { itpNumber: extractedData.itpReference }),
@@ -880,6 +877,11 @@ router.post('/:id/import-itp', async (req, res) => {
     const stdsJson = extractedData.standards && extractedData.standards.length > 0 ? JSON.stringify(extractedData.standards) : undefined;
     const dwgsJson = extractedData.drawings && extractedData.drawings.length > 0 ? JSON.stringify(extractedData.drawings) : undefined;
 
+    await prisma.document.update({
+      where: { id: document.id },
+      data: { inspectionId },
+    }).catch(() => {});
+
     await prisma.inspection.update({
       where: { id: inspectionId },
       data: {
@@ -922,6 +924,184 @@ router.post('/:id/import-itp', async (req, res) => {
     });
   } catch (err: any) {
     console.error('Import ITP error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Directly upload an RFI, ITP, or any document specifically for this inspection
+router.post('/:id/upload-doc', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const inspectionId = req.params.id;
+    const inspection = await prisma.inspection.findUnique({
+      where: { id: inspectionId },
+      include: { project: true },
+    });
+    if (!inspection) return res.status(404).json({ error: 'Inspection not found' });
+
+    let documentType = req.body.documentType;
+    if (!documentType || documentType === 'AUTO') {
+      const filename = req.file.originalname.toLowerCase();
+      documentType = 'OTHER';
+      if (filename.includes('rfi')) documentType = 'RFI';
+      else if (filename.includes('itp') || filename.includes('inspection and test plan')) documentType = 'ITP';
+      else if (filename.includes('offer')) documentType = 'OFFER_LIST';
+      else if (filename.includes('calibration') || filename.includes('certificate')) documentType = 'CALIBRATION_CERTIFICATE';
+      else if (filename.includes('datasheet')) documentType = 'DATASHEET';
+      else if (filename.includes('gad') || filename.includes('drawing')) documentType = 'GAD';
+      else if (filename.includes('fat') || filename.includes('procedure')) documentType = 'FAT_PROCEDURE';
+    }
+
+    const document = await prisma.document.create({
+      data: {
+        projectId: inspection.projectId,
+        inspectionId: inspection.id,
+        documentType,
+        title: req.file.originalname,
+        originalFilename: req.file.originalname,
+        storageKey: req.file.path,
+        mimeType: req.file.mimetype,
+        fileSizeBytes: req.file.size,
+      },
+    });
+
+    const docService = new DocumentService();
+    const extractionResult = await docService.processDocument(document.id, path.resolve(document.storageKey), document.documentType);
+    await prisma.document.update({ where: { id: document.id }, data: { isVerified: true } });
+
+    // If RFI, automatically trigger import
+    if (documentType === 'RFI') {
+      const extractedData = extractionResult.extractedData || {};
+      let itemsToProcess = extractedData.items || [];
+      if (itemsToProcess && Array.isArray(itemsToProcess) && itemsToProcess.length > 0) {
+        for (const item of itemsToProcess) {
+          const existingItem = await prisma.inspectionItem.findFirst({
+            where: {
+              inspectionId: inspection.id,
+              OR: [{ tagNumber: item.tagNumber }, ...(item.serialNumber ? [{ serialNumber: item.serialNumber }] : [])],
+            },
+          });
+          if (!existingItem) {
+            const qty = item.presentedQty || item.orderedQty || 1;
+            await prisma.inspectionItem.create({
+              data: {
+                inspectionId: inspection.id,
+                poItemNo: item.poItemNo || "'1",
+                tagNumber: item.tagNumber,
+                serialNumber: item.serialNumber || '',
+                jobNo: item.jobNo || '',
+                itemName: item.itemName || 'Control Valve',
+                sizeInch: item.sizeInch || "24''",
+                rating: item.rating || 'ASME #600 RF',
+                bodyMaterial: item.bodyMaterial || 'Gr WCC',
+                valveSeries: item.valveSeries || '',
+                orderedQty: item.orderedQty || qty,
+                presentedQty: qty,
+                acceptedThisVisit: item.acceptedThisVisit || qty,
+                acceptedToDate: item.acceptedToDate || qty,
+              },
+            });
+          }
+        }
+      }
+
+      // Add activities
+      const rawActs = extractedData.activities || extractedData.activities_requested || [];
+      if (Array.isArray(rawActs) && rawActs.length > 0) {
+        for (let idx = 0; idx < rawActs.length; idx++) {
+          const a = rawActs[idx];
+          const rawClause = (a.clauseNumber || a.clause || a.itp_step_no || a.step || a.clause_no || `Scope-${idx + 1}`).toString().replace(',', '.').trim();
+          let rawName = (a.activityName || a.activity || a.description || a.desc || a.name || '').toString().trim();
+          rawName = rawName.split('\t')[0].trim();
+          rawName = rawName.replace(/^P\.O\.\s*item\(s\):?\s*/i, '').trim();
+          if (!rawClause || rawName.length < 3 || rawClause === '3.2' || /^\d{2}\.\d{4}$/.test(rawClause)) continue;
+
+          const existingAct = await prisma.inspectionActivity.findFirst({
+            where: { inspectionId: inspection.id, clauseNumber: rawClause },
+          });
+          if (!existingAct) {
+            await prisma.inspectionActivity.create({
+              data: {
+                inspectionId: inspection.id,
+                clauseNumber: rawClause,
+                activityName: rawName,
+                acceptanceCriteria: a.acceptanceCriteria || a.acceptance_criteria || 'Conform to approved ITP & project specifications',
+                interventionTPIA: a.interventionTPIA || 'W',
+                status: 'PENDING',
+                isMandatoryInRFI: true,
+              },
+            });
+          }
+        }
+      }
+
+      // Update RFI numbers into notificationNo
+      let combinedNotice = inspection.notificationNo || '';
+      if (extractedData.rfiNumber) {
+        const existingNotices = (combinedNotice || '').split(/[,&]/).map(s => s.trim().toLowerCase());
+        if (!existingNotices.includes(extractedData.rfiNumber.trim().toLowerCase())) {
+          combinedNotice = combinedNotice ? `${combinedNotice}, ${extractedData.rfiNumber.trim()}` : extractedData.rfiNumber.trim();
+        }
+      }
+
+      await prisma.inspection.update({
+        where: { id: inspection.id },
+        data: {
+          ...(inspection.rfiDocumentId ? {} : { rfiDocumentId: document.id }),
+          location: extractedData.inspectionLocation || inspection.location,
+          notificationNo: combinedNotice,
+          ...(extractedData.materialDescription && { materialDescription: extractedData.materialDescription }),
+        },
+      });
+    } else if (documentType === 'ITP') {
+      const extractedData = extractionResult.extractedData || {};
+      const clauses = extractedData.clauses || [];
+      if (Array.isArray(clauses) && clauses.length > 0) {
+        const currentActivities = await prisma.inspectionActivity.findMany({ where: { inspectionId: inspection.id } });
+        for (const cAct of currentActivities) {
+          const cNorm = (cAct.clauseNumber || '').replace(',', '.').trim();
+          const match = clauses.find((c: any) => (c.clauseNumber || '').replace(',', '.').trim() === cNorm);
+          if (match) {
+            await prisma.inspectionActivity.update({
+              where: { id: cAct.id },
+              data: {
+                acceptanceCriteria: match.acceptanceCriteria || match.referenceDocument || cAct.acceptanceCriteria,
+                interventionTPIA: match.interventionTPIA || cAct.interventionTPIA || 'W',
+              },
+            });
+          }
+        }
+      }
+
+      await prisma.inspection.update({
+        where: { id: inspection.id },
+        data: {
+          itpDocumentId: document.id,
+          ...(extractedData.itpNumber && { itpNumber: extractedData.itpNumber }),
+          ...(extractedData.revision && { itpRevision: extractedData.revision }),
+        },
+      });
+    }
+
+    const refreshed = await prisma.inspection.findUnique({
+      where: { id: inspection.id },
+      include: {
+        project: true,
+        items: true,
+        activities: true,
+        documents: { include: { extractions: true }, orderBy: { uploadedAt: 'desc' } },
+        photos: true,
+      },
+    });
+
+    res.json({
+      success: true,
+      document,
+      extraction: extractionResult,
+      inspection: refreshed,
+    });
+  } catch (err: any) {
+    console.error('Upload inspection doc error:', err);
     res.status(500).json({ error: err.message });
   }
 });

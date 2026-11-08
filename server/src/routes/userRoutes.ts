@@ -29,6 +29,8 @@ router.get('/', async (req, res) => {
         role: true,
         organization: true,
         isActive: true,
+        subscriptionStartDate: true,
+        subscriptionEndDate: true,
         managerId: true,
         manager: {
           select: { id: true, fullName: true, email: true },
@@ -103,7 +105,7 @@ router.post('/', async (req, res) => {
       return res.status(403).json({ error: 'Access denied: Only Admins and Managers can create staff accounts.' });
     }
 
-    const { email, password, fullName, role, managerId, organization } = req.body;
+    const { email, password, fullName, role, managerId, organization, subscriptionStartDate, subscriptionEndDate } = req.body;
 
     if (!email || !password || !fullName) {
       return res.status(400).json({ error: 'Full Name, Email, and Password are required.' });
@@ -140,6 +142,8 @@ router.post('/', async (req, res) => {
         role: assignedRole,
         managerId: assignedManagerId,
         organization: organization || currentUser.organization || 'Inspection Agency',
+        subscriptionStartDate: subscriptionStartDate ? new Date(subscriptionStartDate) : null,
+        subscriptionEndDate: subscriptionEndDate ? new Date(subscriptionEndDate) : null,
       },
       select: {
         id: true,
@@ -149,6 +153,8 @@ router.post('/', async (req, res) => {
         managerId: true,
         organization: true,
         isActive: true,
+        subscriptionStartDate: true,
+        subscriptionEndDate: true,
         createdAt: true,
       },
     });
@@ -179,7 +185,7 @@ router.put('/:id', async (req, res) => {
       }
     }
 
-    const { fullName, email, password, role, managerId, isActive, organization } = req.body;
+    const { fullName, email, password, role, managerId, isActive, organization, subscriptionStartDate, subscriptionEndDate } = req.body;
 
     const data: any = {};
     if (fullName) data.fullName = fullName;
@@ -187,6 +193,8 @@ router.put('/:id', async (req, res) => {
     if (password) data.passwordHash = password;
     if (organization !== undefined) data.organization = organization;
     if (isActive !== undefined) data.isActive = Boolean(isActive);
+    if (subscriptionStartDate !== undefined) data.subscriptionStartDate = subscriptionStartDate ? new Date(subscriptionStartDate) : null;
+    if (subscriptionEndDate !== undefined) data.subscriptionEndDate = subscriptionEndDate ? new Date(subscriptionEndDate) : null;
 
     // Only Admin can change roles or assign cross-tree managers
     if (currentUser.role === 'ADMIN') {
@@ -205,6 +213,8 @@ router.put('/:id', async (req, res) => {
         managerId: true,
         organization: true,
         isActive: true,
+        subscriptionStartDate: true,
+        subscriptionEndDate: true,
         updatedAt: true,
       },
     });
